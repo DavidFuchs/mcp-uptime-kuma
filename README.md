@@ -87,7 +87,7 @@ A docker-compose file is provided - update the included environment variables as
 
 `docker compose up -d`
 
-The MCP endpoint will be available on your Docker host at port 300 (configurable via `PORT` environment variable).
+The MCP endpoint will be available on your Docker host at port 3000 (configurable via `PORT` environment variable).
 
 If you'd prefer to run it directly on your host machine, see the Development Usage section below.
 
