@@ -1,0 +1,15 @@
+services:
+
+  mcp-uptime-kuma:
+    image: davidfuchs/mcp-uptime-kuma:latest
+    container_name: mcp-uptime-kuma
+    environment:
+      - UPTIME_KUMA_URL=${UPTIME_KUMA_URL}
+      - UPTIME_KUMA_USERNAME=${UPTIME_KUMA_USERNAME}
+      - UPTIME_KUMA_PASSWORD=${UPTIME_KUMA_PASSWORD}
+      - PORT=3000
+    ports:
+      - "3000:3000"
+    # Override default CMD to use streamable HTTP transport instead of stdio
+    command: ["-t", "streamable-http"]
+    restart: unless-stopped

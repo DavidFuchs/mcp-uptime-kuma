@@ -1,0 +1,62 @@
+{
+  "name": "@davidfuchs/mcp-uptime-kuma",
+  "version": "0.2.0",
+  "description": "A Model Context Protocol server with TypeScript supporting stdio and streamable HTTP transports",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "mcp-uptime-kuma": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "start": "node dist/index.js",
+    "start:stdio": "node dist/index.js -t stdio",
+    "start:http": "node dist/index.js -t streamable-http",
+    "dev": "tsx src/index.ts",
+    "dev:stdio": "tsx src/index.ts -t stdio",
+    "dev:http": "tsx src/index.ts -t streamable-http",
+    "watch": "tsc --watch",
+    "inspector": "npx @modelcontextprotocol/inspector tsx src/index.ts"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "typescript",
+    "server",
+    "stdio",
+    "http",
+    "uptime",
+    "kuma",
+    "uptime kuma"
+  ],
+  "author": "David Fuchs <david@davidfuchs.ca>",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DavidFuchs/mcp-uptime-kuma.git"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.22.0",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "socket.io-client": "^4.8.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
