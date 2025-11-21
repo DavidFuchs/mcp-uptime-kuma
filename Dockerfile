@@ -4,7 +4,7 @@ FROM node:18-alpine AS builder
 # Metadata labels
 LABEL org.opencontainers.image.title="mcp-uptime-kuma"
 LABEL org.opencontainers.image.description="A Model Context Protocol server for Uptime Kuma v2 supporting stdio and streamable HTTP transports"
-LABEL org.opencontainers.image.version="0.1.0"
+LABEL org.opencontainers.image.version="0.3.1"
 LABEL org.opencontainers.image.authors="David Fuchs <david@davidfuchs.ca>"
 LABEL org.opencontainers.image.url="https://github.com/DavidFuchs/mcp-uptime-kuma"
 LABEL org.opencontainers.image.source="https://github.com/DavidFuchs/mcp-uptime-kuma"
