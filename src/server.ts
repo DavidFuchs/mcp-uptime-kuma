@@ -20,23 +20,15 @@ export async function createServer(config: UptimeKumaConfig): Promise<McpServer>
   const server = new McpServer(
     {
       name: 'mcp-uptime-kuma',
-      version: '0.1.0',
+      version: '0.3.0',
     },
     {
       instructions: `
-        This MCP server provides access to Uptime Kuma monitoring data.
+        This MCP server provides access to Uptime Kuma monitoring data for system status and uptime/downtime information.
 
-        Available tools:
-        - getMonitor: Retrieve configuration and details for a specific monitor by ID
-        - listMonitors: Get all monitors with their configurations
-        - getHeartbeats: Retrieve status checks and uptime data for a specific monitor
-        - listAllHeartbeats: Get status checks and uptime data for all monitors
-
-        Monitors contain configuration information (URLs, check intervals, notification settings, etc.).
-        Heartbeats contain actual status data (up/down status, response times, timestamps, etc.).
-        To check if something is up or down, use heartbeat tools, not monitor tools.
-
-        By default, tools return only essential fields. Set includeAdditionalFields=true to get all available data.
+        START with 'getMonitorSummary' for status overview questions ("how is everything?", "what's down?").
+        Use 'getHeartbeats' or 'listHeartbeats' for historical data (limit to 5-10 heartbeats unless user requests more).
+        Use 'listMonitors' only when you need configuration details (URLs, intervals, notification settings).
       `
     }
   );
@@ -65,7 +57,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<McpServer>
     'getMonitor',
     {
       title: 'Get Monitor',
-      description: 'Retrieves detailed information about a specific monitor by its ID',
+      description: 'Retrieves configuration details for a specific monitor by ID (URL, check interval, notification settings, etc.). Use this when you need to examine or modify settings for a specific monitor. For current status, use getMonitorSummary instead. By default returns only core fields; set includeAdditionalFields to true to return all fields.',
       inputSchema: { 
         monitorID: z.number().int().positive().describe('The ID of the monitor to retrieve'),
         includeAdditionalFields: z.boolean().optional().describe('Include all additional fields from Uptime Kuma (default: false)')
@@ -110,7 +102,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<McpServer>
     'listMonitors',
     {
       title: 'List Monitors',
-      description: 'Retrieves the full list of all monitors the user has access to from the cache. By default returns all fields; set includeAdditionalFields to false to return only defined fields.',
+      description: 'Retrieves configuration details for all monitors (URLs, check intervals, notification settings, etc.). Use this when you need to examine or modify monitor settings. For status checks ("how is everything doing?", "what\'s down?"), use getMonitorSummary instead. By default returns only core fields; set includeAdditionalFields to true to return all fields.',
       inputSchema: {
         includeAdditionalFields: z.boolean().optional().describe('Include all additional fields from Uptime Kuma (default: false)')
       },
@@ -153,23 +145,29 @@ export async function createServer(config: UptimeKumaConfig): Promise<McpServer>
     }
   );
 
-  // Register getHeartbeats tool
+  // Register getMonitorSummary tool
   server.registerTool(
-    'getHeartbeats',
+    'getMonitorSummary',
     {
-      title: 'Get Heartbeats',
-      description: 'Retrieves heartbeats for a specific monitor from the cache. By default returns up to 100 most recent heartbeats; set includeAll to false to return only the most recent heartbeat.',
+      title: 'Get Monitor Summary',
+      description: 'START HERE for status overview questions. Retrieves current status for all monitors showing UP/DOWN/PENDING/MAINTENANCE states with the most recent heartbeat message. Use this when asked "how is everything doing?", "what\'s down?", "what\'s up?", or for any general status overview. Returns essential information (ID, name, pathName, active state, maintenance state, status, message). Optionally filter by keywords in the pathName.',
       inputSchema: {
-        monitorID: z.number().int().positive().describe('The ID of the monitor to get heartbeats for'),
-        includeAll: z.boolean().optional().describe('If true, returns all heartbeats (up to 100). If false, returns only the most recent heartbeat (default: false)')
+        keywords: z.string().optional().describe('Space-separated keywords to filter monitors by pathName (case-insensitive). All keywords must match for a monitor to be included.')
       },
       outputSchema: { 
-        monitorID: z.number(),
-        heartbeats: z.array(HeartbeatSchema),
+        summaries: z.array(z.object({
+          id: z.number(),
+          name: z.string(),
+          pathName: z.string(),
+          active: z.boolean(),
+          maintenance: z.boolean(),
+          status: z.number().optional().describe('0=DOWN, 1=UP, 2=PENDING, 3=MAINTENANCE'),
+          msg: z.string().optional().describe('Status message from the most recent heartbeat'),
+        })).describe('Array of monitor summaries'),
         count: z.number()
       },
     },
-    async ({ monitorID, includeAll }) => {
+    async ({ keywords }) => {
       if (!isAuthenticated) {
         throw new McpError(
           ErrorCode.InternalError,
@@ -178,15 +176,55 @@ export async function createServer(config: UptimeKumaConfig): Promise<McpServer>
       }
 
       try {
-        const includeAllFlag = includeAll ?? false;
-        let heartbeatsArray: any[];
+        const summaries = client.getMonitorSummary(keywords);
         
-        if (includeAllFlag) {
-          heartbeatsArray = client.getHeartbeatsForMonitor(monitorID, true);
-        } else {
-          const singleHeartbeat = client.getHeartbeatsForMonitor(monitorID, false);
-          heartbeatsArray = singleHeartbeat ? [singleHeartbeat] : [];
-        }
+        return {
+          content: [{ 
+            type: 'text', 
+            text: JSON.stringify(summaries, null, 2) 
+          }],
+          structuredContent: { 
+            summaries,
+            count: summaries.length 
+          },
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new McpError(
+          ErrorCode.InternalError,
+          `Failed to get monitor summary: ${errorMessage}`
+        );
+      }
+    }
+  );
+
+  // Register getHeartbeats tool
+  server.registerTool(
+    'getHeartbeats',
+    {
+      title: 'Get Heartbeats',
+      description: 'Retrieves historical heartbeat data for a specific monitor (response times, status changes over time). Use this for analyzing patterns or history for one monitor. By default returns only the most recent heartbeat; set maxHeartbeats (up to 100) for historical analysis. Keep maxHeartbeats ≤10 unless user requests more.',
+      inputSchema: {
+        monitorID: z.number().int().positive().describe('The ID of the monitor to get heartbeats for'),
+        maxHeartbeats: z.number().int().positive().max(100).optional().describe('If set, returns the most recent X heartbeats (up to 100). If unset, returns only the most recent heartbeat (default: 1)')
+      },
+      outputSchema: { 
+        monitorID: z.number(),
+        heartbeats: z.array(HeartbeatSchema),
+        count: z.number()
+      },
+    },
+    async ({ monitorID, maxHeartbeats }) => {
+      if (!isAuthenticated) {
+        throw new McpError(
+          ErrorCode.InternalError,
+          'Not authenticated with Uptime Kuma'
+        );
+      }
+
+      try {
+        const count = maxHeartbeats ?? 1;
+        const heartbeatsArray = client.getHeartbeatsForMonitor(monitorID, count);
         
         return {
           content: [{ 
@@ -211,12 +249,12 @@ export async function createServer(config: UptimeKumaConfig): Promise<McpServer>
 
   // Register listAllHeartbeats tool
   server.registerTool(
-    'listAllHeartbeats',
+    'listHeartbeats',
     {
-      title: 'List All Heartbeats',
-      description: 'Retrieves the complete heartbeat list for all monitors from the cache. By default, each monitor ID maps to an array of up to 100 recent heartbeats; set includeAll to false to return only the most recent heartbeat per monitor.',
+      title: 'List Heartbeats',
+      description: 'Retrieves historical heartbeat data for ALL monitors (response times, status changes over time). Use this for analyzing patterns across multiple monitors or correlating events. By default returns only the most recent heartbeat per monitor; set maxHeartbeats (up to 100) for historical analysis. Keep maxHeartbeats ≤5 unless user requests more.',
       inputSchema: {
-        includeAll: z.boolean().optional().describe('If true, returns all heartbeats (up to 100 per monitor). If false, returns only the most recent heartbeat per monitor (default: false)')
+        maxHeartbeats: z.number().int().positive().max(100).optional().describe('If set, returns the most recent X heartbeats per monitor (up to 100). If unset, returns only the most recent heartbeat per monitor (default: 1)')
       },
       outputSchema: { 
         heartbeats: z.record(z.string(), z.array(HeartbeatSchema)).describe('Map of monitor IDs to their heartbeat arrays'),
@@ -224,7 +262,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<McpServer>
         totalHeartbeatCount: z.number()
       },
     },
-    async ({ includeAll }) => {
+    async ({ maxHeartbeats }) => {
       if (!isAuthenticated) {
         throw new McpError(
           ErrorCode.InternalError,
@@ -233,20 +271,8 @@ export async function createServer(config: UptimeKumaConfig): Promise<McpServer>
       }
 
       try {
-        const includeAllFlag = includeAll ?? false;
-        const rawHeartbeatList = includeAllFlag 
-          ? client.getHeartbeatList(true)
-          : client.getHeartbeatList(false);
-        
-        // Normalize to always return arrays for consistent schema
-        const heartbeatList: { [monitorID: string]: any[] } = {};
-        for (const [monitorID, heartbeats] of Object.entries(rawHeartbeatList)) {
-          if (includeAllFlag) {
-            heartbeatList[monitorID] = heartbeats as any[];
-          } else {
-            heartbeatList[monitorID] = heartbeats ? [heartbeats] : [];
-          }
-        }
+        const count = maxHeartbeats ?? 1;
+        const heartbeatList = client.getHeartbeatList(count);
         
         // Calculate total heartbeat count
         const totalCount = Object.values(heartbeatList).reduce(

@@ -1,6 +1,6 @@
 {
   "name": "@davidfuchs/mcp-uptime-kuma",
-  "version": "0.2.2",
+  "version": "0.3.1",
   "description": "A Model Context Protocol (MCP) server for Uptime Kuma version 2, supporting both stdio and streamable HTTP transports.",
   "type": "module",
   "main": "dist/index.js",
@@ -47,6 +47,7 @@
     "@modelcontextprotocol/sdk": "^1.22.0",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
+    "fuzzysort": "^3.1.0",
     "socket.io-client": "^4.8.1",
     "zod": "^3.24.1"
   },

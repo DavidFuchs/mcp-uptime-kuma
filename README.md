@@ -4,13 +4,25 @@ A Model Context Protocol (MCP) server for [Uptime Kuma](https://github.com/louis
 
 ## Features
 
-- **Multiple Transports**: Supports both stdio (for local integration) and streamable HTTP (for remote access)
-- **Built with TypeScript**: Full type safety and modern tooling
+- **Uptime Kuma Integration**: Real-time access to monitors and heartbeats via WebSocket connection. This MCP server is immediately notified of status changes in Uptime Kuma.
+- **Context-Friendly**: Carefully controls the amount of data returned to avoid overwhelming the LLM context window. Tools default to returning only essential fields and recent heartbeats, with options to request more when needed.
+- **Multiple Transports**: Supports both stdio (for local integration) and streamable HTTP (for remote access).
 - **MCP SDK**: Uses the official `@modelcontextprotocol/sdk` package
-- **Uptime Kuma Integration**: Real-time access to monitors and heartbeats via WebSocket connection
 - **Comprehensive Tools**: Retrieve monitor configurations and status data (heartbeats)
 
 ## Available Tools
+
+### getMonitorSummary
+Retrieves a summarized list of all monitors with essential information and their current status.
+
+- **Input**:
+  - `keywords` (string, optional): Space-separated keywords to filter monitors by pathName (case-insensitive). All keywords must match for a monitor to be included.
+- **Output**: Array of monitor summaries with:
+  - Monitor ID, name, pathName
+  - Active and maintenance state
+  - Most recent heartbeat status (0=DOWN, 1=UP, 2=PENDING, 3=MAINTENANCE)
+  - Status message from the most recent heartbeat
+  - Total count of matching monitors
 
 ### getMonitor
 Retrieves detailed information about a specific monitor by its ID.
@@ -32,22 +44,30 @@ Retrieves heartbeats (status checks) for a specific monitor.
 
 - **Input**:
   - `monitorID` (number): The ID of the monitor to get heartbeats for
-  - `includeAll` (boolean, optional): If true, returns all heartbeats (up to 100). If false, returns only the most recent heartbeat (default: false)
-- **Output**: Array of heartbeat objects containing status, response time, timestamps, etc.
+  - `maxHeartbeats` (number, optional): Maximum number of most recent heartbeats to return (1-100). Default: 1
+- **Output**: Object containing:
+  - `monitorID`: The monitor ID
+  - `heartbeats`: Array of heartbeat objects with status, response time, timestamps, etc.
+  - `count`: Number of heartbeats returned
 
-### listAllHeartbeats
-Retrieves the complete heartbeat list for all monitors.
+### listHeartbeats
+Retrieves the heartbeats for all monitors.
 
 - **Input**:
-  - `includeAll` (boolean, optional): If true, returns all heartbeats (up to 100 per monitor). If false, returns only the most recent heartbeat per monitor (default: false)
-- **Output**: Map of monitor IDs to their heartbeat arrays, with monitor and heartbeat counts
+  - `maxHeartbeats` (number, optional): Maximum number of most recent heartbeats per monitor (1-100). Default: 1
+- **Output**: Object containing:
+  - `heartbeats`: Map of monitor IDs to their heartbeat arrays
+  - `monitorCount`: Number of monitors
+  - `totalHeartbeatCount`: Total number of heartbeats across all monitors
 
 ## Usage Notes
 
 - **Monitors** contain configuration information (URLs, check intervals, notification settings, etc.)
 - **Heartbeats** contain actual status data (up/down status, response times, timestamps, etc.)
 - To check if something is **up or down**, use the heartbeat tools, not the monitor tools
-- By default, tools return only essential fields. Set `includeAdditionalFields=true` to get all available data
+- Use **getMonitorSummary** for a quick overview of all monitors and their current status
+- By default, monitor tools return only essential fields. Set `includeAdditionalFields=true` to get all available data
+- By default, heartbeat tools return only the most recent heartbeat. Use `maxHeartbeats` to retrieve more historical data
 
 ## Prerequisites
 
@@ -79,11 +99,38 @@ For Claude Code, VS Code, or other MCP clients, you can configure the server as 
 }
 ```
 
+If you're using LibreChat (librechat.yaml), you can configure it like this:
+
+```yaml
+mcpServers:
+  uptime-kuma:                                                       
+    command: npx                                                     
+    args: ["-y", "@davidfuchs/mcp-uptime-kuma"]                      
+    customUserVars:                                                  
+      UPTIME_KUMA_URL:                                               
+        title: "Uptime Kuma URL"                                     
+        description: "The URL to log into Uptime Kuma."              
+      UPTIME_KUMA_USERNAME:                                          
+        title: "Uptime Kuma Username"                                
+        description: "The username to log into Uptime Kuma."         
+      UPTIME_KUMA_PASSWORD:                                          
+        title: "Uptime Kuma Password"                                
+        description: "The password to log into Uptime Kuma."         
+    env:                                                             
+      UPTIME_KUMA_URL: "{{UPTIME_KUMA_URL}}"                          
+      UPTIME_KUMA_USERNAME: "{{UPTIME_KUMA_USERNAME}}"               
+      UPTIME_KUMA_PASSWORD: "{{UPTIME_KUMA_PASSWORD}}"               
+    serverInstructions: true
+    startup: false 
+```
+
+If you're the only one using the LibreChat server, you can remove `customUserVars` and set the environment variables directly in the `env` section. You can also remove `startup: false` - that's only in there because without it, LibreChat tries to start the mcp-uptime-kuma MCP server immediately on startup, which fails because the user-provided credentials aren't available yet.
+
 ### For the Streamable HTTP Transport
 
 The recommended way to run the MCP server using streamable HTTP is to run it as a Docker container.
 
-A docker-compose file is provided - update the included environment variables as needed and run:
+A docker-compose file is provided in the Github repository. Grab it, update the included environment variables as needed for your Uptime Kuma deployment, and run:
 
 `docker compose up -d`
 
@@ -192,15 +239,18 @@ mcp-uptime-kuma/
 │   ├── uptime-kuma-client.ts   # WebSocket client for Uptime Kuma API
 │   └── types.ts                # TypeScript type definitions
 ├── dist/                       # Compiled JavaScript (generated)
+├── docker-compose.yml          # Docker Compose configuration
+├── Dockerfile                  # Docker image definition
 ├── package.json                # Project dependencies and scripts
 ├── tsconfig.json               # TypeScript configuration
 ├── .env                        # Environment configuration (create this)
+├── LICENSE                     # License file
 └── README.md                   # This file
 ```
 
 ## Development
 
-To add new tools or modify existing ones, edit `src/server.ts`. The Uptime Kuma client in `src/uptime-kuma-client.ts` handles the WebSocket connection and caches monitor and heartbeat data.
+To add new tools or modify existing ones, edit `src/server.ts`. The Uptime Kuma client in `src/uptime-kuma-client.ts` handles the WebSocket connection and retrieves monitor and heartbeat data.
 
 ## Learn More
 
