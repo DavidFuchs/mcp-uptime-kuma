@@ -29,9 +29,6 @@ jobs:
           node-version: '18'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Install latest npm
-        run: npm install -g npm@latest
-
       - name: Update package.json version
         run: |
           npm version ${{ steps.version.outputs.VERSION }} --no-git-tag-version
