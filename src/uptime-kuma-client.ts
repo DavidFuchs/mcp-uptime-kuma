@@ -191,37 +191,82 @@ export class UptimeKumaClient {
    * Get the cached heartbeat list
    * The list is populated after login and kept up-to-date via server events
    * 
-   * @param includeAll - If true, returns arrays of all heartbeats (up to 100). If false, returns only the most recent heartbeat for each monitor
-   * @returns The cached heartbeat list
+   * @param maxHeartbeats - Maximum number of heartbeats to return per monitor (default: 1)
+   * @returns The cached heartbeat list with arrays of heartbeats
    */
-  getHeartbeatList<T extends boolean = true>(includeAll: T = true as T): HeartbeatList<T> {
-    if (includeAll) {
-      return this.heartbeatListCache as HeartbeatList<T>;
+  getHeartbeatList(maxHeartbeats: number = 1): { [monitorID: string]: Heartbeat[] } {
+    const result: { [monitorID: string]: Heartbeat[] } = {};
+    
+    for (const [monitorID, heartbeats] of Object.entries(this.heartbeatListCache)) {
+      result[monitorID] = heartbeats.slice(0, maxHeartbeats);
     }
     
-    // Return only the most recent heartbeat for each monitor
-    const recentHeartbeats: { [monitorID: string]: Heartbeat | undefined } = {};
-    for (const [monitorID, heartbeats] of Object.entries(this.heartbeatListCache)) {
-      recentHeartbeats[monitorID] = heartbeats[0];
-    }
-    return recentHeartbeats as HeartbeatList<T>;
+    return result;
   }
 
   /**
    * Get heartbeats for a specific monitor from the cache
    * 
    * @param monitorID - The ID of the monitor
-   * @param includeAll - If true, returns all heartbeats (up to 100). If false, returns only the most recent heartbeat
-   * @returns Heartbeat(s) for the monitor, or empty array/undefined if none exist
+   * @param maxHeartbeats - Maximum number of heartbeats to return (default: 1)
+   * @returns Array of heartbeats for the monitor, or empty array if none exist
    */
-  getHeartbeatsForMonitor<T extends boolean = true>(monitorID: number, includeAll: T = true as T): T extends true ? Heartbeat[] : Heartbeat | undefined {
+  getHeartbeatsForMonitor(monitorID: number, maxHeartbeats: number = 1): Heartbeat[] {
     const heartbeats = this.heartbeatListCache[monitorID.toString()];
     
-    if (includeAll) {
-      return (heartbeats || []) as T extends true ? Heartbeat[] : Heartbeat | undefined;
+    if (!heartbeats) {
+      return [];
     }
     
-    return (heartbeats?.[0]) as T extends true ? Heartbeat[] : Heartbeat | undefined;
+    return heartbeats.slice(0, maxHeartbeats);
+  }
+
+  /**
+   * Get a summarized list of all monitors with their most recent heartbeat status
+   * 
+   * @param keywords - Optional space-separated keywords to filter by pathName (case-insensitive)
+   * @returns Array of monitor summaries containing essential info and latest heartbeat status
+   */
+  getMonitorSummary(keywords?: string): Array<{
+    id: number;
+    name: string;
+    pathName: string;
+    active: boolean;
+    maintenance: boolean;
+    status?: number;
+    msg?: string;
+  }> {
+    const summaries = [];
+    
+    // Parse keywords into an array
+    const keywordArray = keywords ? keywords.trim().split(/\s+/).map(k => k.toLowerCase()) : [];
+    
+    for (const [monitorID, monitor] of Object.entries(this.monitorListCache)) {
+      // Filter by keywords if provided
+      if (keywordArray.length > 0) {
+        const pathNameLower = monitor.pathName.toLowerCase();
+        const matchesAllKeywords = keywordArray.every(keyword => pathNameLower.includes(keyword));
+        if (!matchesAllKeywords) {
+          continue;
+        }
+      }
+      
+      // Get the most recent heartbeat for this monitor
+      const heartbeats = this.heartbeatListCache[monitorID];
+      const latestHeartbeat = heartbeats && heartbeats.length > 0 ? heartbeats[0] : undefined;
+      
+      summaries.push({
+        id: monitor.id,
+        name: monitor.name,
+        pathName: monitor.pathName,
+        active: monitor.active,
+        maintenance: monitor.maintenance,
+        status: latestHeartbeat?.status,
+        msg: latestHeartbeat?.msg,
+      });
+    }
+    
+    return summaries;
   }
 
   /**
