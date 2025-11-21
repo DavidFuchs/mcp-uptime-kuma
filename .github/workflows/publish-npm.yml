@@ -40,4 +40,4 @@ jobs:
         run: npm run build --if-present
 
       - name: Publish to NPM
-        run: npm publish
+        run: npm publish --provenance --access public
