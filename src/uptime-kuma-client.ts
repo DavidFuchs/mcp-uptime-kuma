@@ -1,4 +1,5 @@
 import { io, Socket } from 'socket.io-client';
+import fuzzysort from 'fuzzysort';
 import type {
   MonitorBase,
   MonitorWithAdditionalFields,
@@ -239,13 +240,18 @@ export class UptimeKumaClient {
     const summaries = [];
     
     // Parse keywords into an array
-    const keywordArray = keywords ? keywords.trim().split(/\s+/).map(k => k.toLowerCase()) : [];
+    const keywordArray = keywords ? keywords.trim().split(/\s+/) : [];
     
     for (const [monitorID, monitor] of Object.entries(this.monitorListCache)) {
-      // Filter by keywords if provided
+      // Filter by keywords if provided using fuzzy matching
       if (keywordArray.length > 0) {
-        const pathNameLower = monitor.pathName.toLowerCase();
-        const matchesAllKeywords = keywordArray.every(keyword => pathNameLower.includes(keyword));
+        const pathName = monitor.pathName;
+        // All keywords must match with a reasonable score
+        const matchesAllKeywords = keywordArray.every(keyword => {
+          const result = fuzzysort.single(keyword, pathName);
+          // Accept matches with score > 0.3 (0 = no match, 1 = perfect match)
+          return result && result.score > 0.3;
+        });
         if (!matchesAllKeywords) {
           continue;
         }

@@ -24,20 +24,11 @@ export async function createServer(config: UptimeKumaConfig): Promise<McpServer>
     },
     {
       instructions: `
-        This MCP server provides access to Uptime Kuma monitoring data. This data is useful if the user is asking
-        for information about the status of a system, or historical uptime/downtime information.
+        This MCP server provides access to Uptime Kuma monitoring data for system status and uptime/downtime information.
 
-        Monitors contain configuration information (URLs, check intervals, notification settings, etc.).
-        Heartbeats contain actual status data (up/down status, response times, timestamps, etc.).
-        To check if something is up or down, use heartbeat tools, not monitor tools.
-        Prefer to use the 'getMonitorSummary' tool to get a quick overview of all monitors and their current status
-        before using other monitor or heartbeat tools.
-        
-        Be clear in your response how many heartbeats you're consulting for status information.
-        Do not exceed 5 heartbeats when using the 'listHeartbeats' tool unless the user asks you to.
-        Do not exceed 10 heartbeats when using the 'getHeartbeats' tool unless the user asks you to.
-
-        By default, monitor tools return only essential fields. Set includeAdditionalFields=true to get all available data.
+        START with 'getMonitorSummary' for status overview questions ("how is everything?", "what's down?").
+        Use 'getHeartbeats' or 'listHeartbeats' for historical data (limit to 5-10 heartbeats unless user requests more).
+        Use 'listMonitors' only when you need configuration details (URLs, intervals, notification settings).
       `
     }
   );
@@ -66,7 +57,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<McpServer>
     'getMonitor',
     {
       title: 'Get Monitor',
-      description: 'Retrieves detailed information about a specific monitor by its ID. By default returns only core fields; set includeAdditionalFields to true to return all fields.',
+      description: 'Retrieves configuration details for a specific monitor by ID (URL, check interval, notification settings, etc.). Use this when you need to examine or modify settings for a specific monitor. For current status, use getMonitorSummary instead. By default returns only core fields; set includeAdditionalFields to true to return all fields.',
       inputSchema: { 
         monitorID: z.number().int().positive().describe('The ID of the monitor to retrieve'),
         includeAdditionalFields: z.boolean().optional().describe('Include all additional fields from Uptime Kuma (default: false)')
@@ -111,7 +102,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<McpServer>
     'listMonitors',
     {
       title: 'List Monitors',
-      description: 'Retrieves the full list of all monitors the user has access to. By default returns only core fields; set includeAdditionalFields to true to return all fields.',
+      description: 'Retrieves configuration details for all monitors (URLs, check intervals, notification settings, etc.). Use this when you need to examine or modify monitor settings. For status checks ("how is everything doing?", "what\'s down?"), use getMonitorSummary instead. By default returns only core fields; set includeAdditionalFields to true to return all fields.',
       inputSchema: {
         includeAdditionalFields: z.boolean().optional().describe('Include all additional fields from Uptime Kuma (default: false)')
       },
@@ -159,7 +150,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<McpServer>
     'getMonitorSummary',
     {
       title: 'Get Monitor Summary',
-      description: 'Retrieves a summarized list of all monitors with essential information (ID, name, pathName, active state, maintenance state) and the status and message from the most recent heartbeat. This is useful for getting a quick overview of all monitors. Optionally filter by keywords in the pathName of the monitor.',
+      description: 'START HERE for status overview questions. Retrieves current status for all monitors showing UP/DOWN/PENDING/MAINTENANCE states with the most recent heartbeat message. Use this when asked "how is everything doing?", "what\'s down?", "what\'s up?", or for any general status overview. Returns essential information (ID, name, pathName, active state, maintenance state, status, message). Optionally filter by keywords in the pathName.',
       inputSchema: {
         keywords: z.string().optional().describe('Space-separated keywords to filter monitors by pathName (case-insensitive). All keywords must match for a monitor to be included.')
       },
@@ -212,7 +203,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<McpServer>
     'getHeartbeats',
     {
       title: 'Get Heartbeats',
-      description: 'Retrieves heartbeats for a specific monitor. By default returns only the most recent heartbeat; set maxHeartbeats to return up to 100 heartbeats.',
+      description: 'Retrieves historical heartbeat data for a specific monitor (response times, status changes over time). Use this for analyzing patterns or history for one monitor. By default returns only the most recent heartbeat; set maxHeartbeats (up to 100) for historical analysis. Keep maxHeartbeats ≤10 unless user requests more.',
       inputSchema: {
         monitorID: z.number().int().positive().describe('The ID of the monitor to get heartbeats for'),
         maxHeartbeats: z.number().int().positive().max(100).optional().describe('If set, returns the most recent X heartbeats (up to 100). If unset, returns only the most recent heartbeat (default: 1)')
@@ -261,7 +252,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<McpServer>
     'listHeartbeats',
     {
       title: 'List Heartbeats',
-      description: 'Retrieves the heartbeats for all monitors. By default, each monitor ID maps to an array of the one most recent heartbeat; set maxHeartbeats to return up to 100 heartbeats for each monitor.',
+      description: 'Retrieves historical heartbeat data for ALL monitors (response times, status changes over time). Use this for analyzing patterns across multiple monitors or correlating events. By default returns only the most recent heartbeat per monitor; set maxHeartbeats (up to 100) for historical analysis. Keep maxHeartbeats ≤5 unless user requests more.',
       inputSchema: {
         maxHeartbeats: z.number().int().positive().max(100).optional().describe('If set, returns the most recent X heartbeats per monitor (up to 100). If unset, returns only the most recent heartbeat per monitor (default: 1)')
       },
