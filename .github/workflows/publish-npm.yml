@@ -33,6 +33,10 @@ jobs:
         run: |
           npm version ${{ steps.version.outputs.VERSION }} --no-git-tag-version
 
+      - name: Inject version into code
+        run: |
+          echo "export const VERSION = '${{ steps.version.outputs.VERSION }}';" > src/version.ts
+
       - name: Install dependencies
         run: npm ci
 

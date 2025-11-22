@@ -1,6 +1,16 @@
 import { z } from 'zod';
 
 /**
+ * Configuration interface for Uptime Kuma
+ */
+export interface UptimeKumaConfig {
+  url: string;
+  username: string | undefined;
+  password: string | undefined;
+  readWriteEnabled: boolean;
+}
+
+/**
  * Zod schema for Monitor tag object
  */
 const MonitorTagSchema = z.object({
@@ -69,6 +79,35 @@ export interface ApiResponse {
 export interface LoginResponse extends ApiResponse {
   token?: string;
   tokenRequired?: boolean;
+}
+
+/**
+ * Zod schema for Uptime Kuma settings
+ */
+export const SettingsSchema = z.object({
+  serverTimezone: z.string(),
+  checkUpdate: z.boolean(),
+  searchEngineIndex: z.boolean(),
+  entryPage: z.string(),
+  dnsCache: z.boolean(),
+  keepDataPeriodDays: z.number(),
+  tlsExpiryNotifyDays: z.array(z.number()),
+  trustProxy: z.boolean(),
+  nscd: z.boolean(),
+  disableAuth: z.boolean(),
+  primaryBaseURL: z.string().optional(),
+});
+
+/**
+ * Settings type inferred from the Zod schema
+ */
+export type Settings = z.infer<typeof SettingsSchema>;
+
+/*
+ * Get settings response
+*/
+export interface GetSettingsResponse extends ApiResponse {
+  data?: Settings;
 }
 
 /**

@@ -10,6 +10,8 @@ import type {
   MonitorList,
   Heartbeat,
   HeartbeatList,
+  GetSettingsResponse,
+  Settings,
 } from './types.js';
 
 /**
@@ -75,31 +77,55 @@ export class UptimeKumaClient {
    * @param token - Optional 2FA token if required
    * @returns Promise resolving to the login response
    */
-  login(username: string, password: string, token?: string): Promise<LoginResponse> {
+  login(username: string | undefined, password: string | undefined, token?: string): Promise<LoginResponse> {
     return new Promise((resolve, reject) => {
       if (!this.socket || !this.socket.connected) {
         reject(new Error('Not connected to server'));
         return;
       }
 
-      const loginData: { username: string; password: string; token?: string } = {
-        username,
-        password
-      };
-      
-      if (token) {
-        loginData.token = token;
-      }
-
       // Set up listeners for monitor list and heartbeat updates before login
       this.setupMonitorListListeners();
       this.setupHeartbeatListeners();
 
-      this.socket.emit('login', loginData, (response: LoginResponse) => {
-        if (response.ok) {
+      const loginData: { username: string | undefined; password: string | undefined; token?: string } = {
+        username,
+        password,
+        token
+      };
+      
+      if ( !loginData.username && !loginData.token ) {
+        this.socket.emit('login');
+        resolve({ ok: true, tokenRequired: false });
+      } else {
+        this.socket.emit('login', loginData, (response: LoginResponse) => {
+          if (response.ok) {
+            resolve(response);
+          } else {
+            reject(new Error(response.msg || 'Login failed'));
+          }
+        });
+      }
+    });
+  }
+
+  getSettings(): Promise<GetSettingsResponse> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      this.socket.emit('getSettings', (response: GetSettingsResponse) => {
+        if (response.ok && response.data) {
+          // Filter out sensitive fields like steamAPIKey
+          const { steamAPIKey, ...filteredData } = response.data as any;
+          console.error('Successfully retrieved settings from Uptime Kuma', filteredData);
+          resolve({ ...response, data: filteredData as Settings });
+        } else if (response.ok) {
           resolve(response);
         } else {
-          reject(new Error(response.msg || 'Login failed'));
+          reject(new Error(response.msg || 'Failed to get settings'));
         }
       });
     });
@@ -114,16 +140,22 @@ export class UptimeKumaClient {
 
     // Listen for the full monitor list (sent after login or on major changes)
     this.socket.on('monitorList', (monitorList: MonitorList<true>) => {
+      const monitorCount = Object.keys(monitorList).length;
+      console.error(`Received monitorList with ${monitorCount} monitors`);
       this.monitorListCache = monitorList;
     });
 
     // Listen for updates to specific monitors
     this.socket.on('updateMonitorIntoList', (updates: MonitorList<true>) => {
+      const updateCount = Object.keys(updates).length;
+      const monitorIDs = Object.keys(updates).join(', ');
+      console.error(`Received updateMonitorIntoList for ${updateCount} monitor(s): ${monitorIDs}`);
       Object.assign(this.monitorListCache, updates);
     });
 
     // Listen for monitor deletions
     this.socket.on('deleteMonitorFromList', (monitorID: number) => {
+      console.error(`Received deleteMonitorFromList for monitor ${monitorID}`);
       delete this.monitorListCache[monitorID.toString()];
     });
   }

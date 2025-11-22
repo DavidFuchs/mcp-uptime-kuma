@@ -2,16 +2,9 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { UptimeKumaClient, filterMonitorFields } from './uptime-kuma-client.js';
-import { HeartbeatSchema, MonitorBaseSchema } from './types.js';
-
-/**
- * Configuration interface for Uptime Kuma
- */
-export interface UptimeKumaConfig {
-  url: string;
-  username: string;
-  password: string;
-}
+import { HeartbeatSchema, MonitorBaseSchema, SettingsSchema } from './types.js';
+import type { UptimeKumaConfig } from './types.js';
+import { VERSION } from './version.js';
 
 /**
  * Creates and configures the MCP server with tools, resources, and prompts
@@ -20,7 +13,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<McpServer>
   const server = new McpServer(
     {
       name: 'mcp-uptime-kuma',
-      version: '0.3.0',
+      version: VERSION,
     },
     {
       instructions: `
@@ -41,6 +34,10 @@ export async function createServer(config: UptimeKumaConfig): Promise<McpServer>
   try {
     await client.connect();
     await client.login(config.username, config.password);
+
+    // Logging in anonymously gives no indication that authentication failed.
+    // So instead, we issue a getSettings call after login, to prove the connection is working.
+    await client.getSettings();
     isAuthenticated = true;
     console.error('Successfully authenticated with Uptime Kuma');
   } catch (error) {
@@ -242,6 +239,46 @@ export async function createServer(config: UptimeKumaConfig): Promise<McpServer>
         throw new McpError(
           ErrorCode.InternalError,
           `Failed to get heartbeats: ${errorMessage}`
+        );
+      }
+    }
+  );
+
+  // Register getSettings tool
+  server.registerTool(
+    'getSettings',
+    {
+      title: 'Get Settings',
+      description: 'Retrieves the current Uptime Kuma server settings including timezone, authentication status, primary base URL, and other configuration options.',
+      inputSchema: {},
+      outputSchema: {
+        settings: SettingsSchema.describe('Current Uptime Kuma server settings')
+      },
+    },
+    async () => {
+      if (!isAuthenticated) {
+        throw new McpError(
+          ErrorCode.InternalError,
+          'Not authenticated with Uptime Kuma'
+        );
+      }
+
+      try {
+        const response = await client.getSettings();
+        
+        if (!response.data) {
+          throw new Error('No settings data returned');
+        }
+        
+        return {
+          content: [{ type: 'text', text: JSON.stringify(response.data, null, 2) }],
+          structuredContent: { settings: response.data },
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new McpError(
+          ErrorCode.InternalError,
+          `Failed to get settings: ${errorMessage}`
         );
       }
     }
