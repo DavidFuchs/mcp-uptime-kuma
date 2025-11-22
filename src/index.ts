@@ -16,21 +16,14 @@ function validateEnvironment(readWriteEnabled: boolean): UptimeKumaConfig {
   const url = process.env.UPTIME_KUMA_URL;
   const username = process.env.UPTIME_KUMA_USERNAME;
   const password = process.env.UPTIME_KUMA_PASSWORD;
+  const token = process.env.UPTIME_KUMA_2FA_TOKEN;
 
   if (!url) {
     console.error('Error: UPTIME_KUMA_URL environment variable is required');
     process.exit(1);
   }
 
-  if (!username) {
-    console.error('Warning: UPTIME_KUMA_USERNAME environment variable has not been provided - using anonymous auth');
-  }
-
-  if (!password) {
-    console.error('Warning: UPTIME_KUMA_PASSWORD environment variable has not been provided - using anonymous auth');
-  }
-
-  return { url, username, password, readWriteEnabled };
+  return { url, username, password, token, readWriteEnabled };
 }
 
 // Parse command-line arguments

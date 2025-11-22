@@ -94,7 +94,7 @@ export class UptimeKumaClient {
         token
       };
       
-      if ( !loginData.username && !loginData.token ) {
+      if ( !loginData.username ) {
         this.socket.emit('login');
         resolve({ ok: true, tokenRequired: false });
       } else {

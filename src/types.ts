@@ -7,6 +7,7 @@ export interface UptimeKumaConfig {
   url: string;
   username: string | undefined;
   password: string | undefined;
+  token: string | undefined;
   readWriteEnabled: boolean;
 }
 
