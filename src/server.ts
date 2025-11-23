@@ -33,7 +33,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<McpServer>
   
   try {
     await client.connect();
-    await client.login(config.username, config.password, config.token);
+    await client.login(config.username, config.password, config.token, config.jwtToken);
 
     // Logging in anonymously gives no indication that authentication failed.
     // So instead, we issue a getSettings call after login, to prove the connection is working.
