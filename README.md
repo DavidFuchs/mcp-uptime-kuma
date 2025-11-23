@@ -2,6 +2,18 @@
 
 A Model Context Protocol (MCP) server for [Uptime Kuma](https://github.com/louislam/uptime-kuma) *version 2*, built with TypeScript and supporting both stdio and streamable HTTP transports.
 
+![GitHub Stars](https://img.shields.io/github/stars/DavidFuchs/mcp-uptime-kuma?style=flat)
+![GitHub Last Commit](https://img.shields.io/github/last-commit/DavidFuchs/mcp-uptime-kuma?style=flat)
+![GitHub Repo Size](https://img.shields.io/github/repo-size/DavidFuchs/mcp-uptime-kuma?style=flat)
+
+![GitHub Actions - npmjs](https://img.shields.io/github/actions/workflow/status/DavidFuchs/mcp-uptime-kuma/publish-npm.yml?style=flat&label=npmjs%20build&link=https://www.npmjs.com/package/@davidfuchs/mcp-uptime-kuma)
+![npmjs Version](https://img.shields.io/npm/v/%40davidfuchs%2Fmcp-uptime-kuma?style=flat&label=npmjs%20package%20version)
+![npmjs Downloads](https://img.shields.io/npm/d18m/%40davidfuchs%2Fmcp-uptime-kuma?style=flat&label=npmjs%20downloads&color=blue)
+
+![GitHub Actions - DockerHub](https://img.shields.io/github/actions/workflow/status/DavidFuchs/mcp-uptime-kuma/publish-docker.yml?style=flat&label=docker%20build&link=https://www.npmjs.com/package/@davidfuchs/mcp-uptime-kuma)
+![Docker Version](https://img.shields.io/docker/v/davidfuchs/mcp-uptime-kuma?style=flat&label=docker%20image%20version)
+![Docker Pulls](https://img.shields.io/docker/pulls/davidfuchs/mcp-uptime-kuma?style=flat)
+
 ## Features
 
 - **Uptime Kuma Integration**: Real-time access to monitors and heartbeats via WebSocket connection. This MCP server is immediately notified of status changes in Uptime Kuma.
