@@ -1,9 +1,11 @@
 name: Publish Docker Image
 
 on:
-  push:
-    tags:
-      - 'v*'
+  release:
+    types: [created]
+
+permissions:
+  contents: read
 
 jobs:
   publish-docker:
