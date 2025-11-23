@@ -134,7 +134,6 @@ For Claude Code, VS Code, or other MCP clients, you can configure the server as 
 ```
 
 See the [Configuration](#create-the-environment-configuration) section below for instructions on how to find your JWT token.
-```
 
 If you're using LibreChat (librechat.yaml), you can configure it like this:
 
