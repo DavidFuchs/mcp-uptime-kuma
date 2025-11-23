@@ -7,12 +7,13 @@ on:
     branches:
       - main
 
+permissions:
+  contents: write
+
 jobs:
   build:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-22.04
-    permissions:
-      contents: write
     steps:
     - uses: actions/checkout@v4
       with:
@@ -25,3 +26,4 @@ jobs:
         TAG_PREFIX: v
         PRERELEASE: true
         DRY_RUN: true
+        DEFAULT_BRANCH: main
