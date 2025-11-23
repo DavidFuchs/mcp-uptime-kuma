@@ -17,13 +17,14 @@ function validateEnvironment(readWriteEnabled: boolean): UptimeKumaConfig {
   const username = process.env.UPTIME_KUMA_USERNAME;
   const password = process.env.UPTIME_KUMA_PASSWORD;
   const token = process.env.UPTIME_KUMA_2FA_TOKEN;
+  const jwtToken = process.env.UPTIME_KUMA_JWT_TOKEN;
 
   if (!url) {
     console.error('Error: UPTIME_KUMA_URL environment variable is required');
     process.exit(1);
   }
 
-  return { url, username, password, token, readWriteEnabled };
+  return { url, username, password, token, jwtToken, readWriteEnabled };
 }
 
 // Parse command-line arguments

@@ -60,6 +60,23 @@ Retrieves the heartbeats for all monitors.
   - `monitorCount`: Number of monitors
   - `totalHeartbeatCount`: Total number of heartbeats across all monitors
 
+### getSettings
+Retrieves the current Uptime Kuma server settings.
+
+- **Input**: None
+- **Output**: Settings object containing:
+  - `serverTimezone`: Server timezone setting
+  - `checkUpdate`: Whether to check for updates
+  - `searchEngineIndex`: Search engine indexing setting
+  - `entryPage`: Entry page configuration
+  - `dnsCache`: DNS cache setting
+  - `keepDataPeriodDays`: Data retention period in days
+  - `tlsExpiryNotifyDays`: TLS expiry notification days
+  - `trustProxy`: Trust proxy setting
+  - `nscd`: NSCD setting
+  - `disableAuth`: Authentication disabled status
+  - `primaryBaseURL`: Primary base URL (optional)
+
 ## Usage Notes
 
 - **Monitors** contain configuration information (URLs, check intervals, notification settings, etc.)
@@ -83,6 +100,7 @@ This MCP server supports both stdio and streamable HTTP transports.
 
 For Claude Code, VS Code, or other MCP clients, you can configure the server as follows:
 
+**Option 1: Username/Password Authentication**
 ```json
 {
   "mcpServers": {
@@ -99,8 +117,28 @@ For Claude Code, VS Code, or other MCP clients, you can configure the server as 
 }
 ```
 
+**Option 2: JWT Token Authentication**
+```json
+{
+  "mcpServers": {
+    "uptime-kuma": {
+      "command": "npx",
+      "args": ["-y", "@davidfuchs/mcp-uptime-kuma"],
+      "env": {
+        "UPTIME_KUMA_URL": "http://your-uptime-kuma-instance:3001",
+        "UPTIME_KUMA_JWT_TOKEN": "your_jwt_token"
+      }
+    }
+  }
+}
+```
+
+See the [Configuration](#create-the-environment-configuration) section below for instructions on how to find your JWT token.
+```
+
 If you're using LibreChat (librechat.yaml), you can configure it like this:
 
+**Using Username/Password:**
 ```yaml
 mcpServers:
   uptime-kuma:                                                       
@@ -123,6 +161,28 @@ mcpServers:
     serverInstructions: true
     startup: false 
 ```
+
+**Using JWT Token:**
+```yaml
+mcpServers:
+  uptime-kuma:                                                       
+    command: npx                                                     
+    args: ["-y", "@davidfuchs/mcp-uptime-kuma"]                      
+    customUserVars:                                                  
+      UPTIME_KUMA_URL:                                               
+        title: "Uptime Kuma URL"                                     
+        description: "The URL to log into Uptime Kuma."              
+      UPTIME_KUMA_JWT_TOKEN:                                         
+        title: "Uptime Kuma JWT Token"                               
+        description: "JWT token for Uptime Kuma authentication."     
+    env:                                                             
+      UPTIME_KUMA_URL: "{{UPTIME_KUMA_URL}}"                          
+      UPTIME_KUMA_JWT_TOKEN: "{{UPTIME_KUMA_JWT_TOKEN}}"             
+    serverInstructions: true
+    startup: false 
+```
+
+See the [Configuration](#create-the-environment-configuration) section below for instructions on how to find your JWT token.
 
 If you're the only one using the LibreChat server, you can remove `customUserVars` and set the environment variables directly in the `env` section. You can also remove `startup: false` - that's only in there because without it, LibreChat tries to start the mcp-uptime-kuma MCP server immediately on startup, which fails because the user-provided credentials aren't available yet.
 
@@ -156,10 +216,37 @@ These are the required variables:
 
 ```env
 UPTIME_KUMA_URL=http://your-uptime-kuma-instance:3001
+
+# Authentication - Choose ONE of the following methods:
+
+# Method 1: Username/Password (with optional 2FA)
 UPTIME_KUMA_USERNAME=your_username
 UPTIME_KUMA_PASSWORD=your_password
-PORT=3000  # Optional, only for HTTP transport
+UPTIME_KUMA_2FA_TOKEN=your_2fa_token  # Optional, only if 2FA is enabled
+
+# Method 2: JWT Token
+UPTIME_KUMA_JWT_TOKEN=your_jwt_token  # Use this for token-based authentication
+
+# Optional settings
+PORT=3000  # Only for HTTP transport (default: 3000)
 ```
+
+**Authentication Methods:**
+- **Username/Password**: Standard authentication using your Uptime Kuma credentials. If 2FA is enabled on your account, also provide `UPTIME_KUMA_2FA_TOKEN`.
+- **JWT Token**: If you have a JWT token from Uptime Kuma, you can use `UPTIME_KUMA_JWT_TOKEN` instead of username/password. This takes precedence if both are provided.
+
+**How to Find Your JWT Token:**
+
+To obtain your JWT token from an existing Uptime Kuma session:
+
+1. Log into your Uptime Kuma instance in your web browser
+2. Open your browser's Developer Tools (F12 or right-click → Inspect)
+3. Navigate to the **Storage** tab (Firefox) or **Application** tab (Chrome/Edge)
+4. Under **Local Storage** or **Session Storage**, find your Uptime Kuma domain
+5. Look for a key named `token` - the value is your JWT token (it should start with 'ey...')
+6. Copy the token value and use it as `UPTIME_KUMA_JWT_TOKEN`
+
+Note: The JWT token is tied to your session and may expire based on your Uptime Kuma configuration.
 
 ## Building
 

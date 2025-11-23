@@ -70,14 +70,15 @@ export class UptimeKumaClient {
   }
 
   /**
-   * Login using username and password
+   * Login using username and password, or JWT token
    * 
    * @param username - Username (can be empty string)
    * @param password - Password/API key
    * @param token - Optional 2FA token if required
+   * @param jwtToken - Optional JWT token for token-based authentication
    * @returns Promise resolving to the login response
    */
-  login(username: string | undefined, password: string | undefined, token?: string): Promise<LoginResponse> {
+  login(username: string | undefined, password: string | undefined, token?: string, jwtToken?: string): Promise<LoginResponse> {
     return new Promise((resolve, reject) => {
       if (!this.socket || !this.socket.connected) {
         reject(new Error('Not connected to server'));
@@ -87,6 +88,18 @@ export class UptimeKumaClient {
       // Set up listeners for monitor list and heartbeat updates before login
       this.setupMonitorListListeners();
       this.setupHeartbeatListeners();
+
+      // If JWT token is provided, use token-based authentication
+      if (jwtToken) {
+        this.socket.emit('loginByToken', jwtToken, (response: LoginResponse) => {
+          if (response.ok) {
+            resolve(response);
+          } else {
+            reject(new Error(response.msg || 'JWT token login failed'));
+          }
+        });
+        return;
+      }
 
       const loginData: { username: string | undefined; password: string | undefined; token?: string } = {
         username,
