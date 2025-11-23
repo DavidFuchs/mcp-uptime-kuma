@@ -4,6 +4,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import express from 'express';
 import { createServer } from './server.js';
+import type { UptimeKumaConfig } from './types.js';
 
 /**
  * Main entry point for @davidfuchs/mcp-uptime-kuma
@@ -11,33 +12,25 @@ import { createServer } from './server.js';
  */
 
 // Validate required environment variables
-function validateEnvironment(): { url: string; username: string; password: string; } {
+function validateEnvironment(readWriteEnabled: boolean): UptimeKumaConfig {
   const url = process.env.UPTIME_KUMA_URL;
   const username = process.env.UPTIME_KUMA_USERNAME;
   const password = process.env.UPTIME_KUMA_PASSWORD;
+  const token = process.env.UPTIME_KUMA_2FA_TOKEN;
 
   if (!url) {
     console.error('Error: UPTIME_KUMA_URL environment variable is required');
     process.exit(1);
   }
 
-  if (!username) {
-    console.error('Error: UPTIME_KUMA_USERNAME environment variable is required');
-    process.exit(1);
-  }
-
-  if (!password) {
-    console.error('Error: UPTIME_KUMA_PASSWORD environment variable is required');
-    process.exit(1);
-  }
-
-  return { url, username, password };
+  return { url, username, password, token, readWriteEnabled };
 }
 
 // Parse command-line arguments
 function parseArgs() {
   const args = process.argv.slice(2);
   let transport: 'stdio' | 'streamable-http' = 'stdio';
+  let readWriteEnabled = false;
   
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '-t' || args[i] === '--transport') {
@@ -49,28 +42,33 @@ function parseArgs() {
         console.error(`Invalid transport: ${value}. Must be 'stdio' or 'streamable-http'`);
         process.exit(1);
       }
+    } else if (args[i] === '--read-write') {
+      readWriteEnabled = true;
     } else if (args[i] === '-h' || args[i] === '--help') {
       console.log(`Usage: mcp-uptime-kuma [options]
 
 Options:
   -t, --transport <type>  Transport type: 'stdio' (default) or 'streamable-http'
+  --read-write            Enable read-write operations (default: read-only)
   -h, --help              Show this help message
 
 Examples:
-  mcp-uptime-kuma                          # Run with stdio transport (default)
-  mcp-uptime-kuma -t stdio                 # Run with stdio transport
-  mcp-uptime-kuma -t streamable-http       # Run with streamable HTTP transport (port 3000)
+  mcp-uptime-kuma                          # Run with stdio transport (read-only)
+  mcp-uptime-kuma --read-write             # Run with stdio transport (read-write enabled)
+  mcp-uptime-kuma -t stdio                 # Run with stdio transport (read-only)
+  mcp-uptime-kuma -t streamable-http       # Run with streamable HTTP transport (read-only, port 3000)
+  mcp-uptime-kuma -t streamable-http --read-write  # Run HTTP with read-write enabled
   PORT=8080 mcp-uptime-kuma -t streamable-http  # Run HTTP on custom port
 `);
       process.exit(0);
     }
   }
   
-  return { transport };
+  return { transport, readWriteEnabled };
 }
 
 // Run with the stdio transport
-async function runStdio(config: { url: string; username: string; password: string; }) {
+async function runStdio(config: UptimeKumaConfig) {
   try {
     const server = await createServer(config);
     const transport = new StdioServerTransport();
@@ -85,7 +83,7 @@ async function runStdio(config: { url: string; username: string; password: strin
 }
 
 // Run with the streamable HTTP transport
-async function runHttp(config: { url: string; username: string; password: string; }) {
+async function runHttp(config: UptimeKumaConfig) {
   const app = express();
   app.use(express.json());
 
@@ -140,8 +138,8 @@ async function runHttp(config: { url: string; username: string; password: string
 
 // Main entry point
 async function main() {
-  const config = validateEnvironment();
-  const { transport } = parseArgs();
+  const { transport, readWriteEnabled } = parseArgs();
+  const config = validateEnvironment(readWriteEnabled);
   
   if (transport === 'stdio') {
     await runStdio(config);
