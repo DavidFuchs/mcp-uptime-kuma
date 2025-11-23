@@ -110,7 +110,8 @@ For Claude Code, VS Code, or other MCP clients, you can configure the server as 
       "env": {
         "UPTIME_KUMA_URL": "http://your-uptime-kuma-instance:3001",
         "UPTIME_KUMA_USERNAME": "your_username",
-        "UPTIME_KUMA_PASSWORD": "your_password"
+        "UPTIME_KUMA_PASSWORD": "your_password",
+        "UPTIME_KUMA_2FA_TOKEN": "your_2fa_token"  // Optional, only if 2FA is enabled
       }
     }
   }
@@ -145,40 +146,44 @@ mcpServers:
     args: ["-y", "@davidfuchs/mcp-uptime-kuma"]                      
     customUserVars:                                                  
       UPTIME_KUMA_URL:                                               
-        title: "Uptime Kuma URL"                                     
-        description: "The URL to log into Uptime Kuma."              
-      UPTIME_KUMA_USERNAME:                                          
-        title: "Uptime Kuma Username"                                
-        description: "The username to log into Uptime Kuma."         
-      UPTIME_KUMA_PASSWORD:                                          
-        title: "Uptime Kuma Password"                                
-        description: "The password to log into Uptime Kuma."         
-    env:                                                             
-      UPTIME_KUMA_URL: "{{UPTIME_KUMA_URL}}"                          
-      UPTIME_KUMA_USERNAME: "{{UPTIME_KUMA_USERNAME}}"               
-      UPTIME_KUMA_PASSWORD: "{{UPTIME_KUMA_PASSWORD}}"               
+        title: "Uptime Kuma URL"
+        description: "The URL to log into Uptime Kuma."
+      UPTIME_KUMA_USERNAME:
+        title: "Uptime Kuma Username"
+        description: "The username to log into Uptime Kuma."
+      UPTIME_KUMA_PASSWORD:
+        title: "Uptime Kuma Password"
+        description: "The password to log into Uptime Kuma."
+      UPTIME_KUMA_2FA_TOKEN:  # Optional, only if 2FA is enabled
+        title: "Uptime Kuma 2FA Token"
+        description: "The 2FA token for Uptime Kuma (optional)."
+    env:
+      UPTIME_KUMA_URL: "{{UPTIME_KUMA_URL}}"
+      UPTIME_KUMA_USERNAME: "{{UPTIME_KUMA_USERNAME}}"
+      UPTIME_KUMA_PASSWORD: "{{UPTIME_KUMA_PASSWORD}}"
+      UPTIME_KUMA_2FA_TOKEN: "{{UPTIME_KUMA_2FA_TOKEN}}" # Optional, only if 2FA is enabled
     serverInstructions: true
-    startup: false 
+    startup: false
 ```
 
 **Using JWT Token:**
 ```yaml
 mcpServers:
-  uptime-kuma:                                                       
-    command: npx                                                     
-    args: ["-y", "@davidfuchs/mcp-uptime-kuma"]                      
-    customUserVars:                                                  
-      UPTIME_KUMA_URL:                                               
-        title: "Uptime Kuma URL"                                     
-        description: "The URL to log into Uptime Kuma."              
-      UPTIME_KUMA_JWT_TOKEN:                                         
-        title: "Uptime Kuma JWT Token"                               
-        description: "JWT token for Uptime Kuma authentication."     
+  uptime-kuma:
+    command: npx
+    args: ["-y", "@davidfuchs/mcp-uptime-kuma"]
+    customUserVars:
+      UPTIME_KUMA_URL:
+        title: "Uptime Kuma URL"
+        description: "The URL to log into Uptime Kuma."
+      UPTIME_KUMA_JWT_TOKEN:
+        title: "Uptime Kuma JWT Token"
+        description: "JWT token for Uptime Kuma authentication."
     env:                                                             
-      UPTIME_KUMA_URL: "{{UPTIME_KUMA_URL}}"                          
-      UPTIME_KUMA_JWT_TOKEN: "{{UPTIME_KUMA_JWT_TOKEN}}"             
+      UPTIME_KUMA_URL: "{{UPTIME_KUMA_URL}}"
+      UPTIME_KUMA_JWT_TOKEN: "{{UPTIME_KUMA_JWT_TOKEN}}"
     serverInstructions: true
-    startup: false 
+    startup: false
 ```
 
 See the [Configuration](#create-the-environment-configuration) section below for instructions on how to find your JWT token.
