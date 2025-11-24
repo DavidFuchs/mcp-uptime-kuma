@@ -28,3 +28,4 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         TAG_PREFIX: v
         PRERELEASE: true
+        DEFAULT_BRANCH: ${{ github.event.pull_request.base.ref }}
