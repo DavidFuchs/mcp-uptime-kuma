@@ -22,6 +22,8 @@ export class UptimeKumaClient {
   private url: string;
   private monitorListCache: MonitorList<true> = {};
   private heartbeatListCache: HeartbeatList<true> = {};
+  private uptimeCache: { [monitorID: string]: { [periodKey: string]: number } } = {};
+  private avgPingCache: { [monitorID: string]: number | null } = {};
 
   constructor(url: string) {
     this.url = url;
@@ -67,6 +69,8 @@ export class UptimeKumaClient {
     // Clear the caches
     this.monitorListCache = {};
     this.heartbeatListCache = {};
+    this.uptimeCache = {};
+    this.avgPingCache = {};
   }
 
   /**
@@ -88,6 +92,8 @@ export class UptimeKumaClient {
       // Set up listeners for monitor list and heartbeat updates before login
       this.setupMonitorListListeners();
       this.setupHeartbeatListeners();
+      this.setupUptimeListeners();
+      this.setupAvgPingListeners();
 
       // If JWT token is provided, use token-based authentication
       if (jwtToken) {
@@ -214,23 +220,89 @@ export class UptimeKumaClient {
   }
 
   /**
+   * Set up event listeners for uptime updates
+   * These listeners keep the cached uptime data in sync with the server
+   */
+  private setupUptimeListeners(): void {
+    if (!this.socket) return;
+
+    // Listen for uptime percentage updates
+    this.socket.on('uptime', (monitorID: number, periodKey: string, percentage: number) => {
+      console.error(`Received uptime for monitor ${monitorID}, period ${periodKey}: ${percentage}%`);
+      
+      const monitorIDStr = monitorID.toString();
+      
+      // Initialize uptime object for this monitor if it doesn't exist
+      if (!this.uptimeCache[monitorIDStr]) {
+        this.uptimeCache[monitorIDStr] = {};
+      }
+      
+      // Store the uptime percentage for this period
+      this.uptimeCache[monitorIDStr][periodKey] = percentage;
+    });
+  }
+
+  /**
+   * Set up event listeners for average ping updates
+   * These listeners keep the cached average ping data in sync with the server
+   */
+  private setupAvgPingListeners(): void {
+    if (!this.socket) return;
+
+    // Listen for average ping updates
+    this.socket.on('avgPing', (monitorID: number, avgPing: number | null) => {
+      console.error(`Received avgPing for monitor ${monitorID}: ${avgPing}ms`);
+      
+      const monitorIDStr = monitorID.toString();
+      
+      // Store the average ping for this monitor
+      this.avgPingCache[monitorIDStr] = avgPing;
+    });
+  }
+
+  /**
    * Get a specific monitor by ID from the cache
    * 
    * @param monitorID - The ID of the monitor to retrieve
    * @returns The monitor data with all fields, or undefined if not found
    */
   getMonitor(monitorID: number): MonitorWithAdditionalFields | undefined {
-    return this.monitorListCache[monitorID.toString()];
+    const monitor = this.monitorListCache[monitorID.toString()];
+    if (!monitor) return undefined;
+    
+    const monitorIDStr = monitorID.toString();
+    
+    // Merge uptime and avgPing data into the monitor object
+    const uptime = this.uptimeCache[monitorIDStr];
+    const avgPing = monitorIDStr in this.avgPingCache ? this.avgPingCache[monitorIDStr] : undefined;
+    
+    return {
+      ...monitor,
+      uptime: uptime || {},
+      avgPing,
+    };
   }
 
   /**
    * Get the cached full list of monitors the user has access to
    * The list is populated after login and kept up-to-date via server events
    * 
-   * @returns The cached monitor list with all fields
+   * @returns The cached monitor list with all fields including uptime data
    */
   getMonitorList(): MonitorList<true> {
-    return this.monitorListCache;
+    const result: MonitorList<true> = {};
+    
+    for (const [monitorID, monitor] of Object.entries(this.monitorListCache)) {
+      const avgPing = monitorID in this.avgPingCache ? this.avgPingCache[monitorID] : undefined;
+      
+      result[monitorID] = {
+        ...monitor,
+        uptime: this.uptimeCache[monitorID] || {},
+        avgPing,
+      };
+    }
+    
+    return result;
   }
 
   /**
@@ -281,6 +353,8 @@ export class UptimeKumaClient {
     maintenance: boolean;
     status?: number;
     msg?: string;
+    uptime?: { [periodKey: string]: number };
+    avgPing?: number | null;
   }> {
     const summaries = [];
     
@@ -306,6 +380,10 @@ export class UptimeKumaClient {
       const heartbeats = this.heartbeatListCache[monitorID];
       const latestHeartbeat = heartbeats && heartbeats.length > 0 ? heartbeats[0] : undefined;
       
+      // Get uptime and avgPing data
+      const uptime = this.uptimeCache[monitorID];
+      const avgPing = monitorID in this.avgPingCache ? this.avgPingCache[monitorID] : undefined;
+      
       summaries.push({
         id: monitor.id,
         name: monitor.name,
@@ -314,6 +392,8 @@ export class UptimeKumaClient {
         maintenance: monitor.maintenance,
         status: latestHeartbeat?.status,
         msg: latestHeartbeat?.msg,
+        uptime: uptime || {},
+        avgPing,
       });
     }
     
@@ -357,6 +437,8 @@ export function filterMonitorFields(monitor: MonitorWithAdditionalFields): Monit
   if (monitor.notificationIDList !== undefined) filtered.notificationIDList = monitor.notificationIDList;
   if (monitor.accepted_statuscodes_json !== undefined) filtered.accepted_statuscodes_json = monitor.accepted_statuscodes_json;
   if (monitor.conditions !== undefined) filtered.conditions = monitor.conditions;
+  if (monitor.uptime !== undefined) filtered.uptime = monitor.uptime;
+  if (monitor.avgPing !== undefined) filtered.avgPing = monitor.avgPing;
 
   return filtered;
 }
