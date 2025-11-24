@@ -28,7 +28,7 @@ const MonitorTagSchema = z.object({
  */
 export const MonitorBaseSchema = z.object({
   id: z.number().describe('Monitor ID'),
-  name: z.string().describe('Monitor name'),
+  name: z.string().describe('Monitor name (e.g., "nginx")'),
   type: z.string().describe('Type: http, ping, dns, etc.'),
   url: z.string().optional().describe('URL to monitor'),
   method: z.string().optional().describe('HTTP method'),
@@ -43,7 +43,7 @@ export const MonitorBaseSchema = z.object({
   notificationIDList: z.record(z.string(), z.boolean()).optional().describe('Notification ID to enabled map'),
   accepted_statuscodes_json: z.string().optional().describe('Accepted HTTP status codes (JSON)'),
   conditions: z.array(z.any()).optional().describe('Monitor conditions'),
-  pathName: z.string().describe('Full path with groups'),
+  pathName: z.string().describe('Full hierarchical path (e.g., "Homelab / Web / nginx")'),
   maintenance: z.boolean().describe('In maintenance mode'),
   uptime: z.record(z.string(), z.number()).optional().describe('Uptime % by period (24/720/1y)'),
   avgPing: z.number().nullable().optional().describe('24h avg ping (ms)'),
@@ -169,8 +169,8 @@ export type HeartbeatList<T extends boolean = true> = T extends true
  */
 export const MonitorSummarySchema = z.object({
   id: z.number().describe('Monitor ID'),
-  name: z.string().describe('Monitor name'),
-  pathName: z.string().describe('Full path with groups'),
+  name: z.string().describe('Monitor name (e.g., "mx2")'),
+  pathName: z.string().describe('Full hierarchical path (e.g., "Homelab / App / E-Mail / mx2") where intermediate segments are groups/folders, not monitors'),
   active: z.boolean().describe('Active/enabled'),
   maintenance: z.boolean().describe('In maintenance mode'),
   status: z.number().optional().describe('0=DOWN 1=UP 2=PENDING 3=MAINT'),
