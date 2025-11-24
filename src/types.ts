@@ -16,37 +16,37 @@ export interface UptimeKumaConfig {
  * Zod schema for Monitor tag object
  */
 const MonitorTagSchema = z.object({
-  tag_id: z.number(),
-  monitor_id: z.number(),
-  value: z.string().nullable(),
-  name: z.string(),
-  color: z.string(),
+  tag_id: z.number().describe('Tag ID'),
+  monitor_id: z.number().describe('Monitor ID'),
+  value: z.string().nullable().describe('Tag value'),
+  name: z.string().describe('Tag name'),
+  color: z.string().describe('Tag color'),
 });
 
 /**
  * Zod schema for Base Monitor Object structure from Uptime Kuma (defined fields only)
  */
 export const MonitorBaseSchema = z.object({
-  id: z.number().describe('Unique monitor ID'),
-  name: z.string().describe('Display name of the monitor'),
-  type: z.string().describe('Monitor type (e.g., "http", "ping", "dns", etc.)'),
-  url: z.string().optional().describe('URL to monitor (for HTTP/HTTPS monitors)'),
-  method: z.string().optional().describe('HTTP method (GET, POST, etc.)'),
-  interval: z.number().describe('Check interval in seconds'),
-  retryInterval: z.number().describe('Retry interval in seconds when check fails'),
-  resendInterval: z.number().describe('Resend notification interval in seconds'),
-  maxretries: z.number().describe('Maximum number of retries before marking as down'),
-  hostname: z.string().nullable().optional().describe('Hostname for port/ping monitors'),
-  port: z.number().nullable().optional().describe('Port number for port monitors'),
-  active: z.boolean().describe('Whether the monitor is currently active/enabled'),
-  tags: z.array(MonitorTagSchema).optional().describe('Tags associated with this monitor'),
-  notificationIDList: z.record(z.string(), z.boolean()).optional().describe('Map of notification IDs to enabled state'),
-  accepted_statuscodes_json: z.string().optional().describe('JSON string of accepted HTTP status codes'),
-  conditions: z.array(z.any()).optional().describe('Monitor conditions (for advanced monitor types)'),
-  pathName: z.string().describe('Full path name including parent groups (e.g., "Group / Monitor Name")'),
-  maintenance: z.boolean().describe('Whether the monitor is currently in maintenance mode'),
-  uptime: z.record(z.string(), z.number()).optional().describe('Map of period keys ("24", "720", "1y") to uptime percentages'),
-  avgPing: z.number().nullable().optional().describe('24-hour average ping time in milliseconds'),
+  id: z.number().describe('Monitor ID'),
+  name: z.string().describe('Monitor name'),
+  type: z.string().describe('Type: http, ping, dns, etc.'),
+  url: z.string().optional().describe('URL to monitor'),
+  method: z.string().optional().describe('HTTP method'),
+  interval: z.number().describe('Check interval (seconds)'),
+  retryInterval: z.number().describe('Retry interval (seconds)'),
+  resendInterval: z.number().describe('Notification resend interval (seconds)'),
+  maxretries: z.number().describe('Max retries before down'),
+  hostname: z.string().nullable().optional().describe('Hostname for port/ping'),
+  port: z.number().nullable().optional().describe('Port number'),
+  active: z.boolean().describe('Active/enabled'),
+  tags: z.array(MonitorTagSchema).optional().describe('Associated tags'),
+  notificationIDList: z.record(z.string(), z.boolean()).optional().describe('Notification ID to enabled map'),
+  accepted_statuscodes_json: z.string().optional().describe('Accepted HTTP status codes (JSON)'),
+  conditions: z.array(z.any()).optional().describe('Monitor conditions'),
+  pathName: z.string().describe('Full path with groups'),
+  maintenance: z.boolean().describe('In maintenance mode'),
+  uptime: z.record(z.string(), z.number()).optional().describe('Uptime % by period (24/720/1y)'),
+  avgPing: z.number().nullable().optional().describe('24h avg ping (ms)'),
 });
 
 /**
@@ -89,17 +89,17 @@ export interface LoginResponse extends ApiResponse {
  * Zod schema for Uptime Kuma settings
  */
 export const SettingsSchema = z.object({
-  serverTimezone: z.string(),
-  checkUpdate: z.boolean(),
-  searchEngineIndex: z.boolean(),
-  entryPage: z.string(),
-  dnsCache: z.boolean(),
-  keepDataPeriodDays: z.number(),
-  tlsExpiryNotifyDays: z.array(z.number()),
-  trustProxy: z.boolean(),
-  nscd: z.boolean(),
-  disableAuth: z.boolean(),
-  primaryBaseURL: z.string().optional(),
+  serverTimezone: z.string().describe('Server timezone'),
+  checkUpdate: z.boolean().describe('Check for updates'),
+  searchEngineIndex: z.boolean().describe('Allow search engine indexing'),
+  entryPage: z.string().describe('Entry page (dashboard/statuspage)'),
+  dnsCache: z.boolean().describe('DNS cache enabled'),
+  keepDataPeriodDays: z.number().describe('Data retention period (days)'),
+  tlsExpiryNotifyDays: z.array(z.number()).describe('TLS expiry notification days'),
+  trustProxy: z.boolean().describe('Trust proxy headers'),
+  nscd: z.boolean().describe('NSCD enabled'),
+  disableAuth: z.boolean().describe('Authentication disabled'),
+  primaryBaseURL: z.string().optional().describe('Primary base URL'),
 });
 
 /**
@@ -133,21 +133,21 @@ export interface MonitorList<T extends boolean = true> {
  */
 export const HeartbeatSchema = z.object({
   // Required fields
-  status: z.number().describe('0=DOWN, 1=UP, 2=PENDING, 3=MAINTENANCE'),
-  time: z.string().describe('Timestamp string'),
-  msg: z.string().describe('Status message or error'),
-  important: z.union([z.boolean(), z.number()]).transform(val => Boolean(val)).describe('Was this heartbeat a status change?'),
+  status: z.number().describe('0=DOWN 1=UP 2=PENDING 3=MAINT'),
+  time: z.string().describe('Timestamp'),
+  msg: z.string().describe('Status message'),
+  important: z.union([z.boolean(), z.number()]).transform(val => Boolean(val)).describe('Status change flag'),
   // Optional fields
-  id: z.number().optional().describe('Unique heartbeat ID'),
-  monitor_id: z.number().optional().describe('The monitor this heartbeat belongs to'),
-  ping: z.number().nullable().optional().describe('Response time in ms, null if not applicable'),
-  duration: z.number().optional().describe('Seconds since the last heartbeat for this monitor'),
-  down_count: z.number().optional().describe('Consecutive down count for resend logic'),
-  retries: z.number().optional().describe('Number of retries attempted for this state'),
-  end_time: z.string().optional().describe('End time of the heartbeat check'),
-  monitorID: z.number().optional().describe('camelCase alias (used in some events)'),
-  localDateTime: z.string().optional().describe('Formatted time in server\'s timezone'),
-  timezone: z.string().optional().describe('Server\'s timezone name'),
+  id: z.number().optional().describe('Heartbeat ID'),
+  monitor_id: z.number().optional().describe('Monitor ID'),
+  ping: z.number().nullable().optional().describe('Response time (ms)'),
+  duration: z.number().optional().describe('Seconds since last check'),
+  down_count: z.number().optional().describe('Consecutive down count'),
+  retries: z.number().optional().describe('Retry attempts'),
+  end_time: z.string().optional().describe('Check end time'),
+  monitorID: z.number().optional().describe('Monitor ID (camelCase)'),
+  localDateTime: z.string().optional().describe('Local formatted time'),
+  timezone: z.string().optional().describe('Server timezone'),
 });
 
 /**
@@ -168,15 +168,15 @@ export type HeartbeatList<T extends boolean = true> = T extends true
  * Zod schema for Monitor Summary object
  */
 export const MonitorSummarySchema = z.object({
-  id: z.number().describe('Unique monitor ID'),
-  name: z.string().describe('Display name of the monitor'),
-  pathName: z.string().describe('Full path name including parent groups (e.g., "Group / Monitor Name")'),
-  active: z.boolean().describe('Whether the monitor is currently active/enabled'),
-  maintenance: z.boolean().describe('Whether the monitor is currently in maintenance mode'),
-  status: z.number().optional().describe('0=DOWN, 1=UP, 2=PENDING, 3=MAINTENANCE'),
-  msg: z.string().optional().describe('Status message from the most recent heartbeat'),
-  uptime: z.record(z.string(), z.number()).optional().describe('Map of period keys ("24", "720", "1y") to uptime percentages'),
-  avgPing: z.number().nullable().optional().describe('24-hour average ping time in milliseconds'),
+  id: z.number().describe('Monitor ID'),
+  name: z.string().describe('Monitor name'),
+  pathName: z.string().describe('Full path with groups'),
+  active: z.boolean().describe('Active/enabled'),
+  maintenance: z.boolean().describe('In maintenance mode'),
+  status: z.number().optional().describe('0=DOWN 1=UP 2=PENDING 3=MAINT'),
+  msg: z.string().optional().describe('Latest status message'),
+  uptime: z.record(z.string(), z.number()).optional().describe('Uptime % by period (24/720/1y)'),
+  avgPing: z.number().nullable().optional().describe('24h avg ping (ms)'),
 });
 
 /**
