@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { UptimeKumaClient, filterMonitorFields } from './uptime-kuma-client.js';
-import { HeartbeatSchema, MonitorBaseSchema, SettingsSchema } from './types.js';
+import { HeartbeatSchema, MonitorBaseSchema, MonitorSummarySchema, SettingsSchema } from './types.js';
 import type { UptimeKumaConfig } from './types.js';
 import { VERSION } from './version.js';
 
@@ -152,15 +152,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<McpServer>
         keywords: z.string().optional().describe('Space-separated keywords to filter monitors by pathName (case-insensitive). All keywords must match for a monitor to be included.')
       },
       outputSchema: { 
-        summaries: z.array(z.object({
-          id: z.number(),
-          name: z.string(),
-          pathName: z.string(),
-          active: z.boolean(),
-          maintenance: z.boolean(),
-          status: z.number().optional().describe('0=DOWN, 1=UP, 2=PENDING, 3=MAINTENANCE'),
-          msg: z.string().optional().describe('Status message from the most recent heartbeat'),
-        })).describe('Array of monitor summaries'),
+        summaries: z.array(MonitorSummarySchema).describe('Array of monitor summaries'),
         count: z.number()
       },
     },
