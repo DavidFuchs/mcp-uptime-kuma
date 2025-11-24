@@ -6,6 +6,7 @@ on:
       - closed
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -19,6 +20,10 @@ jobs:
       with:
         ref: ${{ github.event.pull_request.merge_commit_sha }}
         fetch-depth: '0'
+        fetch-tags: true
+
+    - name: Show refs
+      run: git show-ref
 
     - name: Bump version and push tag
       uses: anothrNick/github-tag-action@v1 # Don't use @master or @v1 unless you're happy to test the latest version
