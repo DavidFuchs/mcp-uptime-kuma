@@ -27,24 +27,26 @@ const MonitorTagSchema = z.object({
  * Zod schema for Base Monitor Object structure from Uptime Kuma (defined fields only)
  */
 export const MonitorBaseSchema = z.object({
-  id: z.number(),
-  name: z.string(),
-  type: z.string(),
-  url: z.string().optional(),
-  method: z.string().optional(),
-  interval: z.number(),
-  retryInterval: z.number(),
-  resendInterval: z.number(),
-  maxretries: z.number(),
-  hostname: z.string().nullable().optional(),
-  port: z.number().nullable().optional(),
-  active: z.boolean(),
-  tags: z.array(MonitorTagSchema).optional(),
-  notificationIDList: z.record(z.string(), z.boolean()).optional(),
-  accepted_statuscodes_json: z.string().optional(),
-  conditions: z.array(z.any()).optional(),
-  pathName: z.string(),
-  maintenance: z.boolean(),
+  id: z.number().describe('Unique monitor ID'),
+  name: z.string().describe('Display name of the monitor'),
+  type: z.string().describe('Monitor type (e.g., "http", "ping", "dns", etc.)'),
+  url: z.string().optional().describe('URL to monitor (for HTTP/HTTPS monitors)'),
+  method: z.string().optional().describe('HTTP method (GET, POST, etc.)'),
+  interval: z.number().describe('Check interval in seconds'),
+  retryInterval: z.number().describe('Retry interval in seconds when check fails'),
+  resendInterval: z.number().describe('Resend notification interval in seconds'),
+  maxretries: z.number().describe('Maximum number of retries before marking as down'),
+  hostname: z.string().nullable().optional().describe('Hostname for port/ping monitors'),
+  port: z.number().nullable().optional().describe('Port number for port monitors'),
+  active: z.boolean().describe('Whether the monitor is currently active/enabled'),
+  tags: z.array(MonitorTagSchema).optional().describe('Tags associated with this monitor'),
+  notificationIDList: z.record(z.string(), z.boolean()).optional().describe('Map of notification IDs to enabled state'),
+  accepted_statuscodes_json: z.string().optional().describe('JSON string of accepted HTTP status codes'),
+  conditions: z.array(z.any()).optional().describe('Monitor conditions (for advanced monitor types)'),
+  pathName: z.string().describe('Full path name including parent groups (e.g., "Group / Monitor Name")'),
+  maintenance: z.boolean().describe('Whether the monitor is currently in maintenance mode'),
+  uptime: z.record(z.string(), z.number()).optional().describe('Map of period keys ("24", "720", "1y") to uptime percentages'),
+  avgPing: z.number().nullable().optional().describe('24-hour average ping time in milliseconds'),
 });
 
 /**
@@ -161,3 +163,23 @@ export type Heartbeat = z.infer<typeof HeartbeatSchema>;
 export type HeartbeatList<T extends boolean = true> = T extends true
   ? { [monitorID: string]: Heartbeat[] }
   : { [monitorID: string]: Heartbeat | undefined };
+
+/**
+ * Zod schema for Monitor Summary object
+ */
+export const MonitorSummarySchema = z.object({
+  id: z.number().describe('Unique monitor ID'),
+  name: z.string().describe('Display name of the monitor'),
+  pathName: z.string().describe('Full path name including parent groups (e.g., "Group / Monitor Name")'),
+  active: z.boolean().describe('Whether the monitor is currently active/enabled'),
+  maintenance: z.boolean().describe('Whether the monitor is currently in maintenance mode'),
+  status: z.number().optional().describe('0=DOWN, 1=UP, 2=PENDING, 3=MAINTENANCE'),
+  msg: z.string().optional().describe('Status message from the most recent heartbeat'),
+  uptime: z.record(z.string(), z.number()).optional().describe('Map of period keys ("24", "720", "1y") to uptime percentages'),
+  avgPing: z.number().nullable().optional().describe('24-hour average ping time in milliseconds'),
+});
+
+/**
+ * Monitor Summary type inferred from the Zod schema
+ */
+export type MonitorSummary = z.infer<typeof MonitorSummarySchema>;
