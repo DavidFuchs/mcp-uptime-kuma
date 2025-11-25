@@ -59,15 +59,22 @@ If authentication is disabled on your Uptime Kuma instance, you can remove the u
 
 - Node.js (v18 or higher)
 - An Uptime Kuma instance (version 2)
-- Environment variables for configuration (see Configuration section)
 
 ### Authentication Methods
 
 This MCP server supports three authentication methods for connecting to your Uptime Kuma instance.
 
-> *A note about 2FA:* If you're using 2FA, it's recommended that you avoid username/password authentication and go straight for the JWT approach, as your 2FA token will need to be refreshed every time you initialize the MCP server. Even with the JWT method, you may still run into issues depending on how Uptime Kuma handles token expiry. As of this writing, the JWT returned by Uptime Kuma does not contain an expiry claim, so you may be fine, but be aware of potential issues. Hopefully future versions of Uptime Kuma will allow API keys to be used for the Socket.IO interface (API keys are currently only used for reading Prometheus metrics).
+> **A note about 2FA:** If you're using 2FA, it's recommended that you go straight for the JWT authentication approach and avoid username/password authentication, as your 2FA token will need to be refreshed every time you initialize the MCP server.
+>
+> Even with the JWT method, you may run into issues with token expiry, but as of this writing the JWT returned by Uptime Kuma does not appear to expire.
 
-#### 1. Username/Password Authentication
+#### 1. Anonymous Authentication
+If your Uptime Kuma instance has authentication disabled, you can connect without providing any credentials. Only the `UPTIME_KUMA_URL` environment variable is required.
+
+- **Required Variables:**
+  - `UPTIME_KUMA_URL`: The URL of your Uptime Kuma instance
+
+#### 2. Username/Password Authentication
 Standard authentication using your Uptime Kuma credentials. This method uses the `UPTIME_KUMA_USERNAME` and `UPTIME_KUMA_PASSWORD` environment variables.
 
 - **Required Variables:**
@@ -78,14 +85,14 @@ Standard authentication using your Uptime Kuma credentials. This method uses the
 - **Optional Variable:**
   - `UPTIME_KUMA_2FA_TOKEN`: Your 2FA token (only required if two-factor authentication is enabled on your account)
 
-#### 2. JWT Token Authentication
+#### 3. JWT Token Authentication
 Token-based authentication using a JWT token from Uptime Kuma. This method uses the `UPTIME_KUMA_JWT_TOKEN` environment variable and takes precedence over username/password if both are provided.
 
 - **Required Variables:**
   - `UPTIME_KUMA_URL`: The URL of your Uptime Kuma instance
   - `UPTIME_KUMA_JWT_TOKEN`: Your JWT token (see instructions below for how to obtain it)
 
-**How to Find Your JWT Token:**
+##### How to Find Your JWT Token:
 
 1. Log into your Uptime Kuma instance in your web browser
 2. Open your browser's Developer Tools (F12 or right-click → Inspect)
@@ -93,16 +100,6 @@ Token-based authentication using a JWT token from Uptime Kuma. This method uses 
 4. Under **Local Storage** or **Session Storage**, find your Uptime Kuma domain
 5. Look for a key named `token` - the value is your JWT token (it should start with 'ey...')
 6. Copy the token value and use it as `UPTIME_KUMA_JWT_TOKEN`
-
-Note: The JWT token is tied to your session and may expire based on your Uptime Kuma configuration.
-
-#### 3. Anonymous Authentication
-If your Uptime Kuma instance has authentication disabled (`disableAuth` setting), you can connect without providing any credentials. Only the `UPTIME_KUMA_URL` environment variable is required.
-
-- **Required Variables:**
-  - `UPTIME_KUMA_URL`: The URL of your Uptime Kuma instance
-
-**Note:** Anonymous authentication only works if your Uptime Kuma instance has disabled authentication. This is not recommended for production environments.
 
 ### Setting up mcp-uptime-kuma using the stdio transport
 
@@ -119,7 +116,6 @@ For many MCP clients, you can configure the server as follows:
         "UPTIME_KUMA_URL": "http://your-uptime-kuma-instance:3001",
         "UPTIME_KUMA_USERNAME": "your_username",
         "UPTIME_KUMA_PASSWORD": "your_password",
-        "UPTIME_KUMA_2FA_TOKEN": "your_2fa_token"  // Optional, only if 2FA is enabled
       }
     }
   }
@@ -142,7 +138,7 @@ For many MCP clients, you can configure the server as follows:
 }
 ```
 
-See the [JWT Token Authentication](#2-jwt-token-authentication) section for instructions on how to find your JWT token.
+See the [How to Find Your JWT Token](#how-to-find-your-jwt-token) section for instructions on how to obtain it.
 
 If you're using LibreChat (librechat.yaml), you can configure it like this:
 
@@ -162,14 +158,10 @@ mcpServers:
       UPTIME_KUMA_PASSWORD:
         title: "Uptime Kuma Password"
         description: "The password to log into Uptime Kuma."
-      UPTIME_KUMA_2FA_TOKEN:  # Optional, only if 2FA is enabled
-        title: "Uptime Kuma 2FA Token"
-        description: "The 2FA token for Uptime Kuma (optional)."
     env:
       UPTIME_KUMA_URL: "{{UPTIME_KUMA_URL}}"
       UPTIME_KUMA_USERNAME: "{{UPTIME_KUMA_USERNAME}}"
       UPTIME_KUMA_PASSWORD: "{{UPTIME_KUMA_PASSWORD}}"
-      UPTIME_KUMA_2FA_TOKEN: "{{UPTIME_KUMA_2FA_TOKEN}}" # Optional, only if 2FA is enabled
     serverInstructions: true
     startup: false
 ```
@@ -194,7 +186,7 @@ mcpServers:
     startup: false
 ```
 
-See the [JWT Token Authentication](#2-jwt-token-authentication) section for instructions on how to find your JWT token.
+See the [How to Find Your JWT Token](#how-to-find-your-jwt-token) section for instructions on how to obtain it.
 
 If you're the only one using the LibreChat server, you can remove `customUserVars` and set the environment variables directly in the `env` section. You can also remove `startup: false` - that's only in there because without it, LibreChat tries to start the mcp-uptime-kuma MCP server immediately on startup, which fails because the user-provided credentials aren't available yet.
 
@@ -220,6 +212,8 @@ Retrieves a summarized list of all monitors with essential information and their
   - Active and maintenance state
   - Most recent heartbeat status (0=DOWN, 1=UP, 2=PENDING, 3=MAINTENANCE)
   - Status message from the most recent heartbeat
+  - Uptime percentages for different periods (24h, 720h, 1y)
+  - Average ping in milliseconds
   - Total count of matching monitors
 
 ### getMonitor
