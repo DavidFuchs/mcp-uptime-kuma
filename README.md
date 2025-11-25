@@ -1,6 +1,6 @@
 # mcp-uptime-kuma
 
-A Model Context Protocol (MCP) server for [Uptime Kuma](https://github.com/louislam/uptime-kuma) *version 2*, built with TypeScript and supporting both stdio and streamable HTTP transports.
+A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for [Uptime Kuma](https://github.com/louislam/uptime-kuma) *version 2*. Supports stdio and streamable HTTP transports.
 
 ![GitHub Stars](https://img.shields.io/github/stars/DavidFuchs/mcp-uptime-kuma?style=flat)
 ![GitHub Last Commit](https://img.shields.io/github/last-commit/DavidFuchs/mcp-uptime-kuma?style=flat)
@@ -16,7 +16,7 @@ A Model Context Protocol (MCP) server for [Uptime Kuma](https://github.com/louis
 
 ## Features
 
-- **Uptime Kuma Integration**: Real-time access to monitors and heartbeats via WebSocket connection. This MCP server is immediately notified of status changes in Uptime Kuma and caches this information for fast retrieval.
+- **Uptime Kuma Integration**: Real-time access to monitors, heartbeats, uptime, and responsiveness metrics from Uptime Kuma via a Socket.IO connection. This MCP server is immediately notified of status changes in Uptime Kuma and caches this information for fast retrieval.
 - **Context-Friendly**: Carefully controls the amount of data returned to avoid overwhelming the LLM context window. Tools default to returning only essential fields and recent heartbeats, with options to request more when needed.
 - **Multiple Transports**: Supports both stdio (for local integration) and streamable HTTP (for remote access).
 
@@ -30,6 +30,11 @@ A Model Context Protocol (MCP) server for [Uptime Kuma](https://github.com/louis
 | `getHeartbeats` | Get status check history for a specific monitor |
 | `listHeartbeats` | Get status check history for all monitors |
 | `getSettings` | Get Uptime Kuma server settings |
+
+## Example Conversation
+
+![MCP server answering questions about Uptime Kuma monitors](.github/images/screenshot-1.png)
+*Conversation in [LibreChat](https://github.com/danny-avila/LibreChat) where the `mcp-uptime-kuma` server is providing real-time information from Uptime Kuma.*
 
 ## Quick Start
 
