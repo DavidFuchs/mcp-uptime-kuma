@@ -1,0 +1,57 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+  "name": "io.github.DavidFuchs/mcp-uptime-kuma",
+  "description": "A Model Context Protocol (MCP) server for Uptime Kuma version 2.",
+  "repository": {
+    "url": "https://github.com/DavidFuchs/mcp-uptime-kuma",
+    "source": "github"
+  },
+  "version": "0.0.0-dev",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@davidfuchs/mcp-uptime-kuma",
+      "version": "0.0.0-dev",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "description": "The URL of your Uptime Kuma instance",
+          "isRequired": true,
+          "format": "string",
+          "isSecret": false,
+          "name": "UPTIME_KUMA_URL"
+        },
+        {
+          "description": "Your Uptime Kuma username (not required if using JWT token authentication or if authentication is disabled)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false,
+          "name": "UPTIME_KUMA_USERNAME"
+        },
+        {
+          "description": "Your Uptime Kuma password (not required if using JWT token authentication or if authentication is disabled)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true,
+          "name": "UPTIME_KUMA_PASSWORD"
+        },
+        {
+          "description": "Your 2FA token (only required if two-factor authentication is enabled on your account)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true,
+          "name": "UPTIME_KUMA_2FA_TOKEN"
+        },
+        {
+          "description": "Your JWT token for authentication (takes precedence over username/password if provided)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true,
+          "name": "UPTIME_KUMA_JWT_TOKEN"
+        }
+      ]
+    }
+  ]
+}
