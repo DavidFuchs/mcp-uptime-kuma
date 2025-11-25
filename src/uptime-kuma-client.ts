@@ -24,9 +24,25 @@ export class UptimeKumaClient {
   private heartbeatListCache: HeartbeatList<true> = {};
   private uptimeCache: { [monitorID: string]: { [periodKey: string]: number } } = {};
   private avgPingCache: { [monitorID: string]: number | null } = {};
+  private server?: { sendLoggingMessage: (params: { level: 'debug' | 'info' | 'notice' | 'warning' | 'error' | 'critical' | 'alert' | 'emergency'; data: unknown }) => Promise<void> };
 
-  constructor(url: string) {
+  constructor(url: string, server?: { sendLoggingMessage: (params: { level: 'debug' | 'info' | 'notice' | 'warning' | 'error' | 'critical' | 'alert' | 'emergency'; data: unknown }) => Promise<void> }) {
     this.url = url;
+    this.server = server;
+  }
+
+  /**
+   * Helper to safely log messages - only logs if server is available and connected
+   */
+  private async safeLog(level: 'debug' | 'info' | 'notice' | 'warning' | 'error' | 'critical' | 'alert' | 'emergency', data: string): Promise<void> {
+    if (this.server) {
+      try {
+        await this.server.sendLoggingMessage({ level, data });
+      } catch (error) {
+        // Silently ignore logging errors to prevent breaking the application
+        // This handles the case where server is not yet connected to transport
+      }
+    }
   }
 
   /**
@@ -41,10 +57,12 @@ export class UptimeKumaClient {
       });
 
       this.socket.on('connect', () => {
+        this.safeLog('info', 'Successfully connected to Uptime Kuma server');
         resolve();
       });
 
       this.socket.on('connect_error', (error: Error) => {
+        this.safeLog('error', `Connection error: ${error.message}`);
         reject(new Error(`Connection failed: ${error.message}`));
       });
     });
@@ -139,12 +157,60 @@ export class UptimeKumaClient {
         if (response.ok && response.data) {
           // Filter out sensitive fields like steamAPIKey
           const { steamAPIKey, ...filteredData } = response.data as any;
-          console.error('Successfully retrieved settings from Uptime Kuma', filteredData);
+          this.safeLog('debug', 'Successfully retrieved settings from Uptime Kuma');
           resolve({ ...response, data: filteredData as Settings });
         } else if (response.ok) {
           resolve(response);
         } else {
           reject(new Error(response.msg || 'Failed to get settings'));
+        }
+      });
+    });
+  }
+
+  /**
+   * Pause a monitor
+   * 
+   * @param monitorID - The ID of the monitor to pause
+   * @returns Promise resolving to the API response
+   */
+  pauseMonitor(monitorID: number): Promise<ApiResponse> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      this.socket.emit('pauseMonitor', monitorID, (response: ApiResponse) => {
+        if (response.ok) {
+          this.safeLog('info', `Successfully paused monitor ${monitorID}`);
+          resolve(response);
+        } else {
+          reject(new Error(response.msg || 'Failed to pause monitor'));
+        }
+      });
+    });
+  }
+
+  /**
+   * Resume a monitor
+   * 
+   * @param monitorID - The ID of the monitor to resume
+   * @returns Promise resolving to the API response
+   */
+  resumeMonitor(monitorID: number): Promise<ApiResponse> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      this.socket.emit('resumeMonitor', monitorID, (response: ApiResponse) => {
+        if (response.ok) {
+          this.safeLog('info', `Successfully resumed monitor ${monitorID}`);
+          resolve(response);
+        } else {
+          reject(new Error(response.msg || 'Failed to resume monitor'));
         }
       });
     });
@@ -160,7 +226,7 @@ export class UptimeKumaClient {
     // Listen for the full monitor list (sent after login or on major changes)
     this.socket.on('monitorList', (monitorList: MonitorList<true>) => {
       const monitorCount = Object.keys(monitorList).length;
-      console.error(`Received monitorList with ${monitorCount} monitors`);
+      this.safeLog('debug', `Received monitorList with ${monitorCount} monitors`);
       this.monitorListCache = monitorList;
     });
 
@@ -168,13 +234,13 @@ export class UptimeKumaClient {
     this.socket.on('updateMonitorIntoList', (updates: MonitorList<true>) => {
       const updateCount = Object.keys(updates).length;
       const monitorIDs = Object.keys(updates).join(', ');
-      console.error(`Received updateMonitorIntoList for ${updateCount} monitor(s): ${monitorIDs}`);
+      this.safeLog('debug', `Received updateMonitorIntoList for ${updateCount} monitor(s): ${monitorIDs}`);
       Object.assign(this.monitorListCache, updates);
     });
 
     // Listen for monitor deletions
     this.socket.on('deleteMonitorFromList', (monitorID: number) => {
-      console.error(`Received deleteMonitorFromList for monitor ${monitorID}`);
+      this.safeLog('debug', `Received deleteMonitorFromList for monitor ${monitorID}`);
       delete this.monitorListCache[monitorID.toString()];
     });
   }
@@ -190,7 +256,7 @@ export class UptimeKumaClient {
     this.socket.on('heartbeatList', (monitorID: number, heartbeatList: Heartbeat[], important?: boolean | number) => {
       // The heartbeatList event sends data per monitor, not all at once
       // Format: (monitorID, array of heartbeats, important flag)
-      console.error(`Received heartbeatList for monitor ${monitorID}:`, heartbeatList.length, 'heartbeats');
+      this.safeLog('debug', `Received heartbeatList for monitor ${monitorID}: ${heartbeatList.length} heartbeats`);
       this.heartbeatListCache[monitorID.toString()] = heartbeatList;
     });
 
@@ -198,11 +264,12 @@ export class UptimeKumaClient {
     this.socket.on('heartbeat', (heartbeat: Heartbeat) => {
       // The heartbeat event should always include monitorID
       if (!heartbeat.monitorID) {
-        console.error('Received heartbeat without monitorID:', heartbeat);
+        this.safeLog('warning', 'Received heartbeat without monitorID');
         return;
       }
       
       const monitorID = heartbeat.monitorID.toString();
+      this.safeLog('debug', `Received heartbeat for monitor ${monitorID}: status=${heartbeat.status}, msg="${heartbeat.msg || ''}", ping=${heartbeat.ping || 'N/A'}ms`);
       
       // Initialize array for this monitor if it doesn't exist
       if (!this.heartbeatListCache[monitorID]) {
@@ -228,7 +295,7 @@ export class UptimeKumaClient {
 
     // Listen for uptime percentage updates
     this.socket.on('uptime', (monitorID: number, periodKey: string, percentage: number) => {
-      console.error(`Received uptime for monitor ${monitorID}, period ${periodKey}: ${percentage}%`);
+      this.safeLog('debug', `Received uptime for monitor ${monitorID}, period ${periodKey}: ${percentage}%`);
       
       const monitorIDStr = monitorID.toString();
       
@@ -251,7 +318,7 @@ export class UptimeKumaClient {
 
     // Listen for average ping updates
     this.socket.on('avgPing', (monitorID: number, avgPing: number | null) => {
-      console.error(`Received avgPing for monitor ${monitorID}: ${avgPing}ms`);
+      this.safeLog('debug', `Received avgPing for monitor ${monitorID}: ${avgPing}ms`);
       
       const monitorIDStr = monitorID.toString();
       

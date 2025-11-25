@@ -25,10 +25,12 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for [U
 | Tool | Purpose |
 |------|---------|
 | `getMonitorSummary` | Get a quick overview of all monitors with their current status |
-| `getMonitor` | Get detailed configuration for a specific monitor by ID |
 | `listMonitors` | Get the full list of all monitors with configurations |
-| `getHeartbeats` | Get status check history for a specific monitor |
+| `getMonitor` | Get detailed configuration for a specific monitor by ID |
+| `pauseMonitor` | Pause a monitor to stop performing checks |
+| `resumeMonitor` | Resume a paused monitor to restart checks |
 | `listHeartbeats` | Get status check history for all monitors |
+| `getHeartbeats` | Get status check history for a specific monitor |
 | `getSettings` | Get Uptime Kuma server settings |
 
 ## Example Conversation
@@ -273,6 +275,24 @@ Retrieves the current Uptime Kuma server settings.
   - `nscd`: NSCD setting
   - `disableAuth`: Authentication disabled status
   - `primaryBaseURL`: Primary base URL (optional)
+
+### pauseMonitor
+Pauses a monitor, stopping it from performing checks. The monitor will remain in the system but will not send notifications or collect data until resumed.
+
+- **Input**:
+  - `monitorID` (number): The ID of the monitor to pause
+- **Output**: Object containing:
+  - `ok`: Boolean indicating success
+  - `msg`: Optional status message
+
+### resumeMonitor
+Resumes a paused monitor, restarting its checks and notifications.
+
+- **Input**:
+  - `monitorID` (number): The ID of the monitor to resume
+- **Output**: Object containing:
+  - `ok`: Boolean indicating success
+  - `msg`: Optional status message
 
 ## Developing
 
