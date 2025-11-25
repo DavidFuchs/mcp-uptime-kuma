@@ -3,6 +3,7 @@ name: Publish Docker Image
 on:
   release:
     types: [created]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -55,9 +56,10 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Update DockerHub description
-        uses: peter-evans/dockerhub-description@v3
+        uses: peter-evans/dockerhub-description@v5
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: davidfuchs/mcp-uptime-kuma
+          short-description: ${{ github.event.repository.description }}
           
