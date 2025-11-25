@@ -8,8 +8,9 @@ import { VERSION } from './version.js';
 
 /**
  * Creates and configures the MCP server with tools, resources, and prompts
+ * Note: Authentication must be done separately after connecting the transport
  */
-export async function createServer(config: UptimeKumaConfig): Promise<McpServer> {
+export async function createServer(config: UptimeKumaConfig): Promise<{ server: McpServer; client: UptimeKumaClient; authenticateClient: () => Promise<void> }> {
   const server = new McpServer(
     {
       name: 'mcp-uptime-kuma',
@@ -22,32 +23,44 @@ export async function createServer(config: UptimeKumaConfig): Promise<McpServer>
         START with 'getMonitorSummary' for status overview questions ("how is everything?", "what's down?").
         Use 'getHeartbeats' or 'listHeartbeats' for historical data (limit to 5-10 heartbeats unless user requests more).
         Use 'listMonitors' only when you need configuration details (URLs, intervals, notification settings).
-      `
+      `,
+      capabilities: {
+        logging: {}
+      }
     }
   );
 
-
-  // Initialize Uptime Kuma client and login
-  const client = new UptimeKumaClient(config.url);
+  // Initialize Uptime Kuma client (but don't authenticate yet)
+  const client = new UptimeKumaClient(config.url, server);
   let isAuthenticated = false;
   
-  try {
-    await client.connect();
-    await client.login(config.username, config.password, config.token, config.jwtToken);
+  // Function to authenticate the client (to be called after transport is connected)
+  const authenticateClient = async () => {
+    try {
+      await client.connect();
+      await client.login(config.username, config.password, config.token, config.jwtToken);
 
-    // Logging in anonymously gives no indication that authentication failed.
-    // So instead, we issue a getSettings call after login, to prove the connection is working.
-    await client.getSettings();
-    isAuthenticated = true;
-    console.error('Successfully authenticated with Uptime Kuma');
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('Failed to authenticate with Uptime Kuma:', error);
-    throw new McpError(
-      ErrorCode.InternalError,
-      `Failed to authenticate with Uptime Kuma: ${errorMessage}`
-    );
-  }
+      // Logging in anonymously gives no indication that authentication failed.
+      // So instead, we issue a getSettings call after login, to prove the connection is working.
+      await client.getSettings();
+      isAuthenticated = true;
+      
+      await server.sendLoggingMessage({
+        level: 'info',
+        data: 'Successfully authenticated with Uptime Kuma'
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      await server.sendLoggingMessage({
+        level: 'error',
+        data: `Failed to authenticate with Uptime Kuma: ${errorMessage}`
+      });
+      throw new McpError(
+        ErrorCode.InternalError,
+        `Failed to authenticate with Uptime Kuma: ${errorMessage}`
+      );
+    }
+  };
 
   // Register getMonitor tool
   server.registerTool(
@@ -341,5 +354,5 @@ export async function createServer(config: UptimeKumaConfig): Promise<McpServer>
     process.exit(0);
   });
 
-  return server;
+  return { server, client, authenticateClient };
 }

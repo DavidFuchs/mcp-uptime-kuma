@@ -71,14 +71,15 @@ Examples:
 // Run with the stdio transport
 async function runStdio(config: UptimeKumaConfig) {
   try {
-    const server = await createServer(config);
+    const { server, authenticateClient } = await createServer(config);
     const transport = new StdioServerTransport();
     
     await server.connect(transport);
     
-    console.error('mcp-uptime-kuma server running on stdio transport');
+    // Now authenticate after transport is connected so we can log properly
+    await authenticateClient();
   } catch (error) {
-    console.error('Fatal error in stdio transport:', error);
+    process.stderr.write(`Fatal error in stdio transport: ${error}\n`);
     process.exit(1);
   }
 }
@@ -89,7 +90,11 @@ async function runHttp(config: UptimeKumaConfig) {
   app.use(express.json());
 
   // Create the MCP server once (reused across requests)
-  const server = await createServer(config);
+  const { server, authenticateClient } = await createServer(config);
+  
+  // For HTTP transport, we need to connect once to authenticate
+  // Create a temporary transport just for authentication
+  let authenticated = false;
 
   // Handle MCP requests
   app.post('/mcp', async (req, res) => {
@@ -105,6 +110,13 @@ async function runHttp(config: UptimeKumaConfig) {
       });
 
       await server.connect(transport);
+      
+      // Authenticate on first request
+      if (!authenticated) {
+        await authenticateClient();
+        authenticated = true;
+      }
+      
       await transport.handleRequest(req, res, req.body);
     } catch (error) {
       console.error('Error handling MCP request:', error);
@@ -132,7 +144,7 @@ async function runHttp(config: UptimeKumaConfig) {
     console.log(`mcp-uptime-kuma server running on http://localhost:${port}/mcp`);
     console.log(`Health check available at http://localhost:${port}/health`);
   }).on('error', (error) => {
-    console.error('Server error:', error);
+    process.stderr.write(`Server error: ${error}\n`);
     process.exit(1);
   });
 }
