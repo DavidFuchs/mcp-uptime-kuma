@@ -343,6 +343,96 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     }
   );
 
+  // Register pauseMonitor tool
+  server.registerTool(
+    'pauseMonitor',
+    {
+      title: 'Pause Monitor',
+      description: 'Pauses a monitor, stopping it from performing checks. The monitor will remain in the system but will not send notifications or collect data until resumed.',
+      inputSchema: {
+        monitorID: z.number().int().positive().describe('The ID of the monitor to pause')
+      },
+      outputSchema: {
+        ok: z.boolean(),
+        msg: z.string().optional()
+      },
+    },
+    async ({ monitorID }) => {
+      if (!isAuthenticated) {
+        throw new McpError(
+          ErrorCode.InternalError,
+          'Not authenticated with Uptime Kuma'
+        );
+      }
+
+      try {
+        const response = await client.pauseMonitor(monitorID);
+        
+        return {
+          content: [{ 
+            type: 'text', 
+            text: response.msg || `Monitor ${monitorID} paused successfully` 
+          }],
+          structuredContent: {
+            ok: response.ok,
+            msg: response.msg
+          },
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new McpError(
+          ErrorCode.InternalError,
+          `Failed to pause monitor: ${errorMessage}`
+        );
+      }
+    }
+  );
+
+  // Register resumeMonitor tool
+  server.registerTool(
+    'resumeMonitor',
+    {
+      title: 'Resume Monitor',
+      description: 'Resumes a paused monitor, restarting its checks and notifications.',
+      inputSchema: {
+        monitorID: z.number().int().positive().describe('The ID of the monitor to resume')
+      },
+      outputSchema: {
+        ok: z.boolean(),
+        msg: z.string().optional()
+      },
+    },
+    async ({ monitorID }) => {
+      if (!isAuthenticated) {
+        throw new McpError(
+          ErrorCode.InternalError,
+          'Not authenticated with Uptime Kuma'
+        );
+      }
+
+      try {
+        const response = await client.resumeMonitor(monitorID);
+        
+        return {
+          content: [{ 
+            type: 'text', 
+            text: response.msg || `Monitor ${monitorID} resumed successfully` 
+          }],
+          structuredContent: {
+            ok: response.ok,
+            msg: response.msg
+          },
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new McpError(
+          ErrorCode.InternalError,
+          `Failed to resume monitor: ${errorMessage}`
+        );
+      }
+    }
+  );
+
   // Clean up on server shutdown
   process.on('SIGINT', () => {
     client.disconnect();

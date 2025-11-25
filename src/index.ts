@@ -12,7 +12,7 @@ import type { UptimeKumaConfig } from './types.js';
  */
 
 // Validate required environment variables
-function validateEnvironment(readWriteEnabled: boolean): UptimeKumaConfig {
+function validateEnvironment(): UptimeKumaConfig {
   const url = process.env.UPTIME_KUMA_URL;
   const username = process.env.UPTIME_KUMA_USERNAME;
   const password = process.env.UPTIME_KUMA_PASSWORD;
@@ -24,14 +24,13 @@ function validateEnvironment(readWriteEnabled: boolean): UptimeKumaConfig {
     process.exit(1);
   }
 
-  return { url, username, password, token, jwtToken, readWriteEnabled };
+  return { url, username, password, token, jwtToken };
 }
 
 // Parse command-line arguments
 function parseArgs() {
   const args = process.argv.slice(2);
   let transport: 'stdio' | 'streamable-http' = 'stdio';
-  let readWriteEnabled = false;
   
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '-t' || args[i] === '--transport') {
@@ -43,29 +42,24 @@ function parseArgs() {
         console.error(`Invalid transport: ${value}. Must be 'stdio' or 'streamable-http'`);
         process.exit(1);
       }
-    } else if (args[i] === '--read-write') {
-      readWriteEnabled = true;
     } else if (args[i] === '-h' || args[i] === '--help') {
       console.log(`Usage: mcp-uptime-kuma [options]
 
 Options:
   -t, --transport <type>  Transport type: 'stdio' (default) or 'streamable-http'
-  --read-write            Enable read-write operations (default: read-only)
   -h, --help              Show this help message
 
 Examples:
-  mcp-uptime-kuma                          # Run with stdio transport (read-only)
-  mcp-uptime-kuma --read-write             # Run with stdio transport (read-write enabled)
-  mcp-uptime-kuma -t stdio                 # Run with stdio transport (read-only)
-  mcp-uptime-kuma -t streamable-http       # Run with streamable HTTP transport (read-only, port 3000)
-  mcp-uptime-kuma -t streamable-http --read-write  # Run HTTP with read-write enabled
+  mcp-uptime-kuma                          # Run with stdio transport
+  mcp-uptime-kuma -t stdio                 # Run with stdio transport
+  mcp-uptime-kuma -t streamable-http       # Run with streamable HTTP transport (port 3000)
   PORT=8080 mcp-uptime-kuma -t streamable-http  # Run HTTP on custom port
 `);
       process.exit(0);
     }
   }
   
-  return { transport, readWriteEnabled };
+  return { transport };
 }
 
 // Run with the stdio transport
@@ -151,8 +145,8 @@ async function runHttp(config: UptimeKumaConfig) {
 
 // Main entry point
 async function main() {
-  const { transport, readWriteEnabled } = parseArgs();
-  const config = validateEnvironment(readWriteEnabled);
+  const { transport } = parseArgs();
+  const config = validateEnvironment();
   
   if (transport === 'stdio') {
     await runStdio(config);

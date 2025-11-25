@@ -169,6 +169,54 @@ export class UptimeKumaClient {
   }
 
   /**
+   * Pause a monitor
+   * 
+   * @param monitorID - The ID of the monitor to pause
+   * @returns Promise resolving to the API response
+   */
+  pauseMonitor(monitorID: number): Promise<ApiResponse> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      this.socket.emit('pauseMonitor', monitorID, (response: ApiResponse) => {
+        if (response.ok) {
+          this.safeLog('info', `Successfully paused monitor ${monitorID}`);
+          resolve(response);
+        } else {
+          reject(new Error(response.msg || 'Failed to pause monitor'));
+        }
+      });
+    });
+  }
+
+  /**
+   * Resume a monitor
+   * 
+   * @param monitorID - The ID of the monitor to resume
+   * @returns Promise resolving to the API response
+   */
+  resumeMonitor(monitorID: number): Promise<ApiResponse> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      this.socket.emit('resumeMonitor', monitorID, (response: ApiResponse) => {
+        if (response.ok) {
+          this.safeLog('info', `Successfully resumed monitor ${monitorID}`);
+          resolve(response);
+        } else {
+          reject(new Error(response.msg || 'Failed to resume monitor'));
+        }
+      });
+    });
+  }
+
+  /**
    * Set up event listeners for monitor list updates
    * These listeners keep the cached monitor list in sync with the server
    */
