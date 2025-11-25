@@ -33,6 +33,10 @@ jobs:
         run: |
           echo "export const VERSION = '${{ steps.version.outputs.VERSION }}';" > src/version.ts
 
+      - name: Set version in server.json
+        run: |
+          jq --arg v "${{ steps.version.outputs.VERSION }}" '.version = $v | .packages[0].version = $v' server.json > server.tmp && mv server.tmp server.json
+
       - name: Install dependencies
         run: npm ci
 
@@ -43,3 +47,13 @@ jobs:
         run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+
+      - name: Authenticate to MCP Registry
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish server to MCP Registry
+        run: ./mcp-publisher publish
