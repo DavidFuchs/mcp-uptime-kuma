@@ -149,6 +149,7 @@ Or for LibreChat (librechat.yaml):
 ```yaml
 mcpServers:
   uptime-kuma:
+    type: streamable-http
     url: "http://mcp-uptime-kuma:3000/mcp"
     serverInstructions: true
 ```
