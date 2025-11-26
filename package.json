@@ -46,10 +46,13 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.22.0",
+    "@types/cors": "^2.8.19",
+    "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "express-rate-limit": "^8.2.1",
     "fuzzysort": "^3.1.0",
+    "node-cache": "^5.1.2",
     "socket.io-client": "^4.8.1",
     "zod": "^3.24.1"
   },

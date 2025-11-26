@@ -2,8 +2,12 @@
 import 'dotenv/config';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import express from 'express';
+import cors from 'cors';
 import rateLimit from 'express-rate-limit';
+import { randomUUID } from 'node:crypto';
+import NodeCache from 'node-cache';
 import { createServer } from './server.js';
 import type { UptimeKumaConfig } from './types.js';
 
@@ -84,6 +88,16 @@ async function runHttp(config: UptimeKumaConfig) {
   const app = express();
   app.use(express.json());
 
+  // CORS configuration for MCP client compatibility
+  app.use(
+    cors({
+      origin: process.env.ALLOWED_ORIGIN || '*', // Configure via environment variable
+      exposedHeaders: ['mcp-session-id'],
+      allowedHeaders: ['Content-Type', 'mcp-session-id', 'mcp-protocol-version'],
+      // MUST include 'mcp-protocol-version' otherwise preflight check will error out
+    })
+  );
+
   // Rate limiting configuration
   const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
@@ -99,31 +113,66 @@ async function runHttp(config: UptimeKumaConfig) {
   // Create the MCP server once (reused across requests)
   const { server, authenticateClient } = await createServer(config);
   
-  // For HTTP transport, we need to connect once to authenticate
-  // Create a temporary transport just for authentication
+  // Store transports by session ID
+  const transportCache = new NodeCache({
+    stdTTL: 3600, // 1-hour expiry
+    checkperiod: 0,
+    useClones: false, // MUST include this to store references instead of cloning objects
+    // otherwise the StreamableHTTPServerTransport object will be broken!
+  });
+
   let authenticated = false;
 
-  // Handle MCP requests
+  // Handle POST requests for client-to-server communication
   app.post('/mcp', async (req, res) => {
     try {
-      // Create a new transport for each request to prevent request ID collisions
-      const transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: undefined,
-        enableJsonResponse: true,
-      });
+      // Check for existing session ID
+      const sessionId = req.headers['mcp-session-id'] as string | undefined;
 
-      res.on('close', () => {
-        transport.close();
-      });
-
-      await server.connect(transport);
+      let transport: StreamableHTTPServerTransport | undefined;
       
-      // Authenticate on first request
-      if (!authenticated) {
-        await authenticateClient();
-        authenticated = true;
+      // Check if the session ID exists in the transport cache; if so reuse the transport
+      if (sessionId) {
+        transport = transportCache.get(sessionId);
       }
-      
+
+      if (!transport && isInitializeRequest(req.body)) {
+        // Create a new transport only for new initialization request
+        transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: () => randomUUID(),
+          onsessioninitialized: (sessionId) => {
+            // Store the transport by session ID
+            transportCache.set(sessionId, transport!);
+          },
+        });
+
+        // Clean up transport when closed
+        transport.onclose = () => {
+          if (sessionId) transportCache.del(sessionId);
+        };
+        
+        // Connect the transport to the MCP server
+        await server.connect(transport);
+        
+        // Authenticate on first connection
+        if (!authenticated) {
+          await authenticateClient();
+          authenticated = true;
+        }
+      } else if (!transport) {
+        // Invalid request - no valid session ID and not an initialization request
+        res.status(400).json({
+          jsonrpc: '2.0',
+          error: {
+            code: -32000,
+            message: 'Bad Request: No valid session ID provided',
+          },
+          id: null,
+        });
+        return;
+      }
+
+      // Handle the request
       await transport.handleRequest(req, res, req.body);
     } catch (error) {
       console.error('Error handling MCP request:', error);
@@ -139,6 +188,32 @@ async function runHttp(config: UptimeKumaConfig) {
       }
     }
   });
+
+  // Reusable handler for GET and DELETE requests
+  const handleSessionRequest = async (req: express.Request, res: express.Response) => {
+    const sessionId = req.headers['mcp-session-id'] as string | undefined;
+
+    let transport: StreamableHTTPServerTransport | undefined;
+    
+    // Check if the session ID exists in the transport cache; if so reuse the transport
+    if (sessionId) {
+      transport = transportCache.get(sessionId);
+    }
+
+    if (!sessionId || !transport) {
+      res.status(400).send('Invalid or missing session ID');
+      return;
+    }
+    
+    // Handle the request
+    await transport.handleRequest(req, res);
+  };
+
+  // Handle GET requests for server-to-client notifications via SSE
+  app.get('/mcp', handleSessionRequest);
+
+  // Handle DELETE requests for session termination
+  app.delete('/mcp', handleSessionRequest);
 
   // Health check endpoint
   app.get('/health', (req, res) => {
