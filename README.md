@@ -24,14 +24,35 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for [U
 
 | Tool | Purpose |
 |------|---------|
-| `getMonitorSummary` | Get a quick overview of all monitors with their current status |
-| `listMonitors` | Get the full list of all monitors with configurations |
+| `getMonitorSummary` | Get a quick overview of all monitors with their current status. Supports filtering by keywords, type, active/maintenance status, tags, and current status. |
+| `listMonitors` | Get the full list of all monitors with configurations. Supports filtering by keywords, type, active/maintenance status, and tags. |
 | `getMonitor` | Get detailed configuration for a specific monitor by ID |
 | `pauseMonitor` | Pause a monitor to stop performing checks |
 | `resumeMonitor` | Resume a paused monitor to restart checks |
 | `listHeartbeats` | Get status check history for all monitors |
 | `getHeartbeats` | Get status check history for a specific monitor |
 | `getSettings` | Get Uptime Kuma server settings |
+
+### Enhanced Filtering
+
+Both `getMonitorSummary` and `listMonitors` support powerful filtering options:
+
+- **Keywords**: Space-separated keywords for fuzzy matching against monitor pathNames
+- **Type**: Filter by monitor type(s). Comma-separated for multiple types - e.g., `"http"` or `"http,ping,dns"`
+- **Active Status**: Filter by active (`true`) or inactive (`false`) monitors
+- **Maintenance Status**: Filter by maintenance mode status
+- **Tags**: Filter by tag name and optional value. Comma-separated for multiple tags - format: `"tagName"` or `"tagName=value"`. Monitors must have all specified tags.
+- **Status** (getMonitorSummary only): Filter by current heartbeat status. Comma-separated for multiple - `"0"`=DOWN, `"1"`=UP, `"2"`=PENDING, `"3"`=MAINTENANCE
+
+**Examples:**
+- Get all DOWN monitors: `getMonitorSummary({ status: "0" })`
+- Get all HTTP monitors in maintenance: `getMonitorSummary({ type: "http", maintenance: true })`
+- Get all inactive monitors with tag "production": `listMonitors({ active: false, tags: "production" })`
+- Get monitors with environment tag set to "staging": `getMonitorSummary({ tags: "env=staging" })`
+- Get monitors with multiple tags: `listMonitors({ tags: "production,region=us-east" })`
+- Get DOWN or PENDING monitors: `getMonitorSummary({ status: "0,2" })`
+- Get HTTP or ping monitors: `getMonitorSummary({ type: "http,ping" })`
+- Get monitors matching "web" or "api": `getMonitorSummary({ keywords: "web api" })`
 
 ## Example Conversation
 
@@ -213,12 +234,19 @@ The MCP endpoint will be available on your Docker host at port 3000 (configurabl
 Retrieves a summarized list of all monitors with essential information and their current status.
 
 - **Input**:
-  - `keywords` (string, optional): Space-separated keywords to filter monitors by pathName (case-insensitive). All keywords must match for a monitor to be included.
+  - `keywords` (string, optional): Space-separated keywords to filter monitors by pathName (case-insensitive fuzzy match). All keywords must match for a monitor to be included.
+  - `type` (string, optional): Filter by monitor type(s). Comma-separated for multiple types. Examples: `"http"`, `"http,ping,dns"`, `"port,docker"`
+  - `active` (boolean, optional): Filter by active status. `true`=only active monitors, `false`=only inactive monitors
+  - `maintenance` (boolean, optional): Filter by maintenance status. `true`=only monitors in maintenance, `false`=only monitors not in maintenance
+  - `tags` (string, optional): Filter by tag name and optional value. Comma-separated for multiple tags. Format: `"tagName"` or `"tagName=value"`. Monitor must have all specified tags. Case-insensitive. Examples: `"production"`, `"env=staging"`, `"production,region=us-east"`
+  - `status` (string, optional): Filter by current heartbeat status. Comma-separated for multiple statuses. `"0"`=DOWN, `"1"`=UP, `"2"`=PENDING, `"3"`=MAINTENANCE. Examples: `"0"`, `"0,2"`
 - **Output**: Array of monitor summaries with:
   - Monitor ID, name, pathName
+  - Monitor type
   - Active and maintenance state
   - Most recent heartbeat status (0=DOWN, 1=UP, 2=PENDING, 3=MAINTENANCE)
   - Status message from the most recent heartbeat
+  - Associated tags
   - Uptime percentages for different periods (24h, 720h, 1y)
   - Average ping in milliseconds
   - Total count of matching monitors
@@ -232,11 +260,20 @@ Retrieves detailed information about a specific monitor by its ID.
 - **Output**: Monitor configuration object with details like URL, type, check interval, notification settings, etc.
 
 ### listMonitors
-Retrieves the full list of all monitors the user has access to.
+Retrieves the full list of all monitors the user has access to with their configuration details.
 
 - **Input**:
   - `includeAdditionalFields` (boolean, optional): Include all additional fields from Uptime Kuma (default: false)
-- **Output**: Array of monitor objects with count
+  - `keywords` (string, optional): Space-separated keywords to filter monitors by pathName (case-insensitive fuzzy match). All keywords must match for a monitor to be included.
+  - `type` (string, optional): Filter by monitor type(s). Comma-separated for multiple types. Examples: `"http"`, `"http,ping,dns"`, `"port,docker"`
+  - `active` (boolean, optional): Filter by active status. `true`=only active monitors, `false`=only inactive monitors
+  - `maintenance` (boolean, optional): Filter by maintenance status. `true`=only monitors in maintenance, `false`=only monitors not in maintenance
+  - `tags` (string, optional): Filter by tag name and optional value. Comma-separated for multiple tags. Format: `"tagName"` or `"tagName=value"`. Monitor must have all specified tags. Case-insensitive. Examples: `"production"`, `"env=staging"`, `"production,region=us-east"`
+- **Output**: Array of monitor configuration objects with:
+  - All monitor settings (URL, check interval, retry settings, notification configuration, etc.)
+  - Tags and pathName
+  - Uptime percentages and average ping
+  - Total count of matching monitors
 
 ### getHeartbeats
 Retrieves heartbeats (status checks) for a specific monitor.
