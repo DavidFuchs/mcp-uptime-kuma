@@ -112,16 +112,21 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     'listMonitors',
     {
       title: 'List Monitors',
-      description: 'Retrieves configuration details for all monitors (URLs, check intervals, notification settings, etc.). Use this when you need to examine or modify monitor settings. For status checks ("how is everything doing?", "what\'s down?"), use getMonitorSummary instead. By default returns only core fields; set includeAdditionalFields to true to return all fields.',
+      description: 'Retrieves configuration details for all monitors (URLs, check intervals, notification settings, etc.). Use this when you need to examine or modify monitor settings. For status checks ("how is everything doing?", "what\'s down?"), use getMonitorSummary instead. By default returns only core fields; set includeAdditionalFields to true to return all fields. Supports filtering by keywords, type, active/maintenance status, and tags.',
       inputSchema: {
-        includeAdditionalFields: z.boolean().optional().describe('Include all additional fields from Uptime Kuma (default: false)')
+        includeAdditionalFields: z.boolean().optional().describe('Include all additional fields from Uptime Kuma (default: false)'),
+        keywords: z.string().optional().describe('Space-separated keywords to filter monitors by pathName (case-insensitive fuzzy match). All keywords must match for a monitor to be included.'),
+        type: z.string().optional().describe('Filter by monitor type(s). Comma-separated for multiple types. Examples: "http", "http,ping,dns", "port,docker".'),
+        active: z.boolean().optional().describe('Filter by active status. true=only active monitors, false=only inactive monitors.'),
+        maintenance: z.boolean().optional().describe('Filter by maintenance status. true=only monitors in maintenance, false=only monitors not in maintenance.'),
+        tags: z.string().optional().describe('Filter by tag name and optional value. Comma-separated for multiple tags. Format: "tagName" or "tagName=value". Monitor must have all specified tags. Case-insensitive. Examples: "production", "env=staging", "production,region=us-east"')
       },
       outputSchema: { 
         monitors: z.array(MonitorBaseSchema.passthrough()).describe('Array of monitor objects (may include additional fields beyond base schema when includeAdditionalFields is true)'),
         count: z.number()
       },
     },
-    async ({ includeAdditionalFields }) => {
+    async ({ includeAdditionalFields, keywords, type, active, maintenance, tags }) => {
       if (!isAuthenticated) {
         throw new McpError(
           ErrorCode.InternalError,
@@ -130,7 +135,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       }
 
       try {
-        const monitorList = client.getMonitorList();
+        const monitorList = client.getMonitorList({ keywords, type, active, maintenance, tags });
         const monitors = Object.values(monitorList).map(monitor => 
           (includeAdditionalFields ?? false) ? monitor : filterMonitorFields(monitor)
         );
@@ -160,16 +165,21 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     'getMonitorSummary',
     {
       title: 'Get Monitor Summary',
-      description: 'START HERE for status overview questions. Retrieves current status for all monitors showing UP/DOWN/PENDING/MAINTENANCE states with the most recent heartbeat message. Use this when asked "how is everything doing?", "what\'s down?", "what\'s up?", or for any general status overview. Returns essential information (ID, name, pathName, active state, maintenance state, status, message). Optionally filter by keywords in the pathName.',
+      description: 'START HERE for status overview questions. Retrieves current status for all monitors showing UP/DOWN/PENDING/MAINTENANCE states with the most recent heartbeat message. Use this when asked "how is everything doing?", "what\'s down?", "what\'s up?", or for any general status overview. Returns essential information (ID, name, pathName, active state, maintenance state, status, message, type, tags). Supports filtering by keywords, type, active/maintenance status, tags, and current status.',
       inputSchema: {
-        keywords: z.string().optional().describe('Space-separated keywords to filter monitors by pathName (case-insensitive). All keywords must match for a monitor to be included.')
+        keywords: z.string().optional().describe('Space-separated keywords to filter monitors by pathName (case-insensitive fuzzy match). All keywords must match for a monitor to be included.'),
+        type: z.string().optional().describe('Filter by monitor type(s). Comma-separated for multiple types. Examples: "http", "http,ping,dns", "port,docker".'),
+        active: z.boolean().optional().describe('Filter by active status. true=only active monitors, false=only inactive monitors.'),
+        maintenance: z.boolean().optional().describe('Filter by maintenance status. true=only monitors in maintenance, false=only monitors not in maintenance.'),
+        tags: z.string().optional().describe('Filter by tag name and optional value. Comma-separated for multiple tags. Format: "tagName" or "tagName=value". Monitor must have all specified tags. Case-insensitive. Examples: "production", "env=staging", "production,region=us-east"'),
+        status: z.string().optional().describe('Filter by current heartbeat status. Comma-separated for multiple statuses. 0=DOWN, 1=UP, 2=PENDING, 3=MAINTENANCE. Examples: "0", "1", "0,2"')
       },
       outputSchema: { 
         summaries: z.array(MonitorSummarySchema).describe('Array of monitor summaries'),
         count: z.number()
       },
     },
-    async ({ keywords }) => {
+    async ({ keywords, type, active, maintenance, tags, status }) => {
       if (!isAuthenticated) {
         throw new McpError(
           ErrorCode.InternalError,
@@ -178,7 +188,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       }
 
       try {
-        const summaries = client.getMonitorSummary(keywords);
+        const summaries = client.getMonitorSummary({ keywords, type, active, maintenance, tags, status });
         
         return {
           content: [{ 

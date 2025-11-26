@@ -354,12 +354,81 @@ export class UptimeKumaClient {
    * Get the cached full list of monitors the user has access to
    * The list is populated after login and kept up-to-date via server events
    * 
+   * @param filters - Optional filter criteria
    * @returns The cached monitor list with all fields including uptime data
    */
-  getMonitorList(): MonitorList<true> {
+  getMonitorList(filters?: {
+    keywords?: string;
+    type?: string;
+    active?: boolean;
+    maintenance?: boolean;
+    tags?: string;
+  }): MonitorList<true> {
     const result: MonitorList<true> = {};
     
+    // Parse keywords into an array
+    const keywordArray = filters?.keywords ? filters.keywords.trim().split(/\s+/) : [];
+    
+    // Parse type filter from comma-separated string
+    const typeFilter = filters?.type ? filters.type.split(',').map(t => t.trim()).filter(t => t.length > 0) : [];
+    
+    // Parse tag filter from comma-separated string
+    const tagFilter = filters?.tags ? filters.tags.split(',').map(t => t.trim()).filter(t => t.length > 0) : [];
+    
     for (const [monitorID, monitor] of Object.entries(this.monitorListCache)) {
+      // Filter by keywords if provided using fuzzy matching
+      if (keywordArray.length > 0) {
+        const pathName = monitor.pathName;
+        const matchesAllKeywords = keywordArray.every(keyword => {
+          const result = fuzzysort.single(keyword, pathName);
+          return result && result.score > 0.3;
+        });
+        if (!matchesAllKeywords) {
+          continue;
+        }
+      }
+      
+      // Filter by type
+      if (typeFilter.length > 0 && !typeFilter.includes(monitor.type)) {
+        continue;
+      }
+      
+      // Filter by active status
+      if (filters?.active !== undefined && monitor.active !== filters.active) {
+        continue;
+      }
+      
+      // Filter by maintenance status
+      if (filters?.maintenance !== undefined && monitor.maintenance !== filters.maintenance) {
+        continue;
+      }
+      
+      // Filter by tags (name and optional value)
+      if (tagFilter.length > 0) {
+        const monitorTags = monitor.tags || [];
+        const hasAllTags = tagFilter.every(tagFilter => {
+          // Parse tag filter as 'name' or 'name=value'
+          const [filterName, filterValue] = tagFilter.split('=').map(s => s.trim().toLowerCase());
+          
+          return monitorTags.some(tag => {
+            const tagNameMatches = tag.name.toLowerCase() === filterName;
+            
+            // If no value specified in filter, just match name
+            if (filterValue === undefined) {
+              return tagNameMatches;
+            }
+            
+            // If value specified, match both name and value
+            const tagValue = tag.value?.toLowerCase() || '';
+            return tagNameMatches && tagValue === filterValue;
+          });
+        });
+        
+        if (!hasAllTags) {
+          continue;
+        }
+      }
+      
       const avgPing = monitorID in this.avgPingCache ? this.avgPingCache[monitorID] : undefined;
       
       result[monitorID] = {
@@ -409,10 +478,17 @@ export class UptimeKumaClient {
   /**
    * Get a summarized list of all monitors with their most recent heartbeat status
    * 
-   * @param keywords - Optional space-separated keywords to filter by pathName (case-insensitive)
+   * @param filters - Optional filter criteria
    * @returns Array of monitor summaries containing essential info and latest heartbeat status
    */
-  getMonitorSummary(keywords?: string): Array<{
+  getMonitorSummary(filters?: {
+    keywords?: string;
+    type?: string;
+    active?: boolean;
+    maintenance?: boolean;
+    tags?: string;
+    status?: string;
+  }): Array<{
     id: number;
     name: string;
     pathName: string;
@@ -422,11 +498,22 @@ export class UptimeKumaClient {
     msg?: string;
     uptime?: { [periodKey: string]: number };
     avgPing?: number | null;
+    type: string;
+    tags?: Array<{ tag_id: number; monitor_id: number; value: string | null; name: string; color: string }>;
   }> {
     const summaries = [];
     
     // Parse keywords into an array
-    const keywordArray = keywords ? keywords.trim().split(/\s+/) : [];
+    const keywordArray = filters?.keywords ? filters.keywords.trim().split(/\s+/) : [];
+    
+    // Parse type filter from comma-separated string
+    const typeFilter = filters?.type ? filters.type.split(',').map(t => t.trim()).filter(t => t.length > 0) : [];
+    
+    // Parse tag filter from comma-separated string
+    const tagFilter = filters?.tags ? filters.tags.split(',').map(t => t.trim()).filter(t => t.length > 0) : [];
+    
+    // Parse status filter from comma-separated string
+    const statusFilter = filters?.status ? filters.status.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n)) : [];
     
     for (const [monitorID, monitor] of Object.entries(this.monitorListCache)) {
       // Filter by keywords if provided using fuzzy matching
@@ -443,9 +530,60 @@ export class UptimeKumaClient {
         }
       }
       
+      // Filter by type
+      if (typeFilter.length > 0 && !typeFilter.includes(monitor.type)) {
+        continue;
+      }
+      
+      // Filter by active status
+      if (filters?.active !== undefined && monitor.active !== filters.active) {
+        continue;
+      }
+      
+      // Filter by maintenance status
+      if (filters?.maintenance !== undefined && monitor.maintenance !== filters.maintenance) {
+        continue;
+      }
+      
+      // Filter by tags (name and optional value)
+      if (tagFilter.length > 0) {
+        const monitorTags = monitor.tags || [];
+        const hasAllTags = tagFilter.every(tagFilter => {
+          // Parse tag filter as 'name' or 'name=value'
+          const [filterName, filterValue] = tagFilter.split('=').map(s => s.trim().toLowerCase());
+          
+          return monitorTags.some(tag => {
+            const tagNameMatches = tag.name.toLowerCase() === filterName;
+            
+            // If no value specified in filter, just match name
+            if (filterValue === undefined) {
+              return tagNameMatches;
+            }
+            
+            // If value specified, match both name and value
+            const tagValue = tag.value?.toLowerCase() || '';
+            return tagNameMatches && tagValue === filterValue;
+          });
+        });
+        
+        if (!hasAllTags) {
+          continue;
+        }
+      }
+      
       // Get the most recent heartbeat for this monitor
       const heartbeats = this.heartbeatListCache[monitorID];
       const latestHeartbeat = heartbeats && heartbeats.length > 0 ? heartbeats[0] : undefined;
+      
+      // Filter by current status
+      if (statusFilter.length > 0 && latestHeartbeat?.status !== undefined) {
+        if (!statusFilter.includes(latestHeartbeat.status)) {
+          continue;
+        }
+      } else if (statusFilter.length > 0 && !latestHeartbeat) {
+        // If status filter is specified but no heartbeat exists, skip this monitor
+        continue;
+      }
       
       // Get uptime and avgPing data
       const uptime = this.uptimeCache[monitorID];
@@ -461,6 +599,8 @@ export class UptimeKumaClient {
         msg: latestHeartbeat?.msg,
         uptime: uptime || {},
         avgPing,
+        type: monitor.type,
+        tags: monitor.tags,
       });
     }
     

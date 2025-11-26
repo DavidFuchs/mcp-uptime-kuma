@@ -12,6 +12,24 @@ export interface UptimeKumaConfig {
 }
 
 /**
+ * Filter options for querying monitors
+ */
+export interface MonitorFilterOptions {
+  /** Space-separated keywords to filter by pathName (case-insensitive, fuzzy match) */
+  keywords?: string;
+  /** Filter by monitor type(s). Comma-separated for multiple types - e.g., 'http' or 'http,ping,dns' */
+  type?: string;
+  /** Filter by active/inactive status */
+  active?: boolean;
+  /** Filter by maintenance status */
+  maintenance?: boolean;
+  /** Filter by tag name and optional value. Comma-separated for multiple tags. Format: 'tagName' or 'tagName=value'. Case-insensitive. */
+  tags?: string;
+  /** Filter by current status. Comma-separated for multiple statuses - 0=DOWN, 1=UP, 2=PENDING, 3=MAINTENANCE */
+  status?: string;
+}
+
+/**
  * Zod schema for Monitor tag object
  */
 const MonitorTagSchema = z.object({
@@ -176,6 +194,8 @@ export const MonitorSummarySchema = z.object({
   msg: z.string().optional().describe('Latest status message'),
   uptime: z.record(z.string(), z.number()).optional().describe('Uptime % by period (24/720/1y)'),
   avgPing: z.number().nullable().optional().describe('24h avg ping (ms)'),
+  type: z.string().describe('Type: http, ping, dns, port, etc.'),
+  tags: z.array(MonitorTagSchema).optional().describe('Associated tags'),
 });
 
 /**
