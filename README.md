@@ -33,7 +33,7 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for [U
 | `getHeartbeats` | Get status check history for a specific monitor |
 | `getSettings` | Get Uptime Kuma server settings |
 
-### Enhanced Filtering
+### Filtering
 
 Both `getMonitorSummary` and `listMonitors` support powerful filtering options:
 
@@ -61,6 +61,8 @@ Both `getMonitorSummary` and `listMonitors` support powerful filtering options:
 
 ## Quick Start
 
+### Using npx (stdio transport)
+
 Most folks will want to configure mcp-uptime-kuma using stdio as follows.
 
 ```json
@@ -80,6 +82,76 @@ Most folks will want to configure mcp-uptime-kuma using stdio as follows.
 ```
 
 If authentication is disabled on your Uptime Kuma instance, you can remove the username/password environment variables. See the [Usage Instructions](#usage-instructions) section for more details on authentication methods.
+
+### Using Docker (streamable HTTP transport)
+
+For remote access or containerized deployments, you can run mcp-uptime-kuma as a Docker container using the streamable HTTP transport.
+
+**Option 1: Using Docker Compose**
+
+Create a `docker-compose.yml` file:
+
+```yaml
+services:
+  mcp-uptime-kuma:
+    image: davidfuchs/mcp-uptime-kuma:latest
+    container_name: mcp-uptime-kuma
+    environment:
+      - UPTIME_KUMA_URL=http://your-uptime-kuma-instance:3001
+      - UPTIME_KUMA_USERNAME=your_username  # Optional
+      - UPTIME_KUMA_PASSWORD=your_password  # Optional
+      # OR use JWT token authentication:
+      # - UPTIME_KUMA_JWT_TOKEN=your_jwt_token
+      - PORT=3000  # Optional, defaults to 3000
+    ports:
+      - "3000:3000"
+    command: ["-t", "streamable-http"]
+    restart: unless-stopped
+```
+
+Then run:
+
+```bash
+docker compose up -d
+```
+
+**Option 2: Using Docker Run**
+
+```bash
+docker run -d \
+  --name mcp-uptime-kuma \
+  -p 3000:3000 \
+  -e UPTIME_KUMA_URL=http://your-uptime-kuma-instance:3001 \
+  -e UPTIME_KUMA_USERNAME=your_username \
+  -e UPTIME_KUMA_PASSWORD=your_password \
+  davidfuchs/mcp-uptime-kuma:latest \
+  -t streamable-http
+```
+
+The MCP endpoint will be available at `http://mcp-uptime-kuma:3000/mcp` on your Docker host.
+
+**Configuring Your MCP Client**
+
+After starting the Docker container, configure your MCP client to connect to it:
+
+```json
+{
+  "mcpServers": {
+    "uptime-kuma": {
+      "url": "http://mcp-uptime-kuma:3000/mcp"
+    }
+  }
+}
+```
+
+Or for LibreChat (librechat.yaml):
+
+```yaml
+mcpServers:
+  uptime-kuma:
+    url: "http://mcp-uptime-kuma:3000/mcp"
+    serverInstructions: true
+```
 
 ## Usage Instructions
 
