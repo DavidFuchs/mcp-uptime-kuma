@@ -1,5 +1,11 @@
 #!/usr/bin/env node
-import 'dotenv/config';
+
+// Load .env file only if not in test mode (when MCP_TEST_MODE is set)
+// This allows tests to pass environment variables directly without .env file interference
+if (!process.env.MCP_TEST_MODE) {
+  await import('dotenv/config');
+}
+
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';

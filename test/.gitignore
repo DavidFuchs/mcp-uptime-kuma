@@ -1,0 +1,5 @@
+# Test environment configuration
+.env.test
+
+# Test data
+test/integration/data/

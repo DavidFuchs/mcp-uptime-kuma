@@ -22,7 +22,8 @@
     "dev:stdio": "tsx src/index.ts -t stdio",
     "dev:http": "tsx src/index.ts -t streamable-http",
     "watch": "tsc --watch",
-    "inspector": "npx @modelcontextprotocol/inspector tsx src/index.ts"
+    "inspector": "npx @modelcontextprotocol/inspector tsx src/index.ts",
+    "test:integration": "cd test/integration && ./run-tests.sh"
   },
   "keywords": [
     "mcp",
