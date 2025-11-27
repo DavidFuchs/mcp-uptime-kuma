@@ -1,5 +1,5 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
+import { McpError, ErrorCode, SetLevelRequestSchema, LoggingLevelSchema, type LoggingLevel } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { UptimeKumaClient, filterMonitorFields } from './uptime-kuma-client.js';
 import { HeartbeatSchema, MonitorBaseSchema, MonitorSummarySchema, SettingsSchema } from './types.js';
@@ -11,6 +11,9 @@ import { VERSION } from './version.js';
  * Note: Authentication must be done separately after connecting the transport
  */
 export async function createServer(config: UptimeKumaConfig): Promise<{ server: McpServer; client: UptimeKumaClient; authenticateClient: () => Promise<void> }> {
+  // Track current logging level (default: info)
+  let currentLogLevel: LoggingLevel = 'info';
+
   const server = new McpServer(
     {
       name: 'mcp-uptime-kuma',
@@ -30,8 +33,24 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     }
   );
 
-  // Initialize Uptime Kuma client (but don't authenticate yet)
-  const client = new UptimeKumaClient(config.url, server);
+  // Handle logging level changes via the underlying server
+  server.server.setRequestHandler(SetLevelRequestSchema, async (request) => {
+    const level = request.params?.level as LoggingLevel | undefined;
+    if (level && LoggingLevelSchema.safeParse(level).success) {
+      currentLogLevel = level;
+      return {};
+    }
+    throw new McpError(ErrorCode.InvalidParams, `Invalid log level: ${level}`);
+  });
+
+  // Initialize Uptime Kuma client with a function to check if a log level should be sent
+  // LoggingLevelSchema enum values are already in order: debug < info < notice < ... < emergency
+  const logLevels = LoggingLevelSchema.options;
+  const shouldLog = (level: LoggingLevel): boolean => {
+    return logLevels.indexOf(level) >= logLevels.indexOf(currentLogLevel);
+  };
+  
+  const client = new UptimeKumaClient(config.url, server, shouldLog);
   let isAuthenticated = false;
   
   // Function to authenticate the client (to be called after transport is connected)
@@ -69,7 +88,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       title: 'Get Monitor',
       description: 'Retrieves configuration details for a specific monitor by ID (URL, check interval, notification settings, etc.). Use this when you need to examine or modify settings for a specific monitor. For current status, use getMonitorSummary instead. By default returns only core fields; set includeAdditionalFields to true to return all fields.',
       inputSchema: { 
-        monitorID: z.number().int().positive().describe('The ID of the monitor to retrieve'),
+        monitorID: z.number().int().nonnegative().describe('The ID of the monitor to retrieve'),
         includeAdditionalFields: z.boolean().optional().describe('Include all additional fields from Uptime Kuma (default: false)')
       },
       outputSchema: { 
@@ -217,7 +236,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       title: 'Get Heartbeats',
       description: 'Retrieves historical heartbeat data for a specific monitor (response times, status changes over time). Use this for analyzing patterns or history for one monitor. By default returns only the most recent heartbeat; set maxHeartbeats (up to 100) for historical analysis. Keep maxHeartbeats ≤10 unless user requests more.',
       inputSchema: {
-        monitorID: z.number().int().positive().describe('The ID of the monitor to get heartbeats for'),
+        monitorID: z.number().int().nonnegative().describe('The ID of the monitor to get heartbeats for'),
         maxHeartbeats: z.number().int().positive().max(100).optional().describe('If set, returns the most recent X heartbeats (up to 100). If unset, returns only the most recent heartbeat (default: 1)')
       },
       outputSchema: { 
@@ -360,7 +379,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       title: 'Pause Monitor',
       description: 'Pauses a monitor, stopping it from performing checks. The monitor will remain in the system but will not send notifications or collect data until resumed.',
       inputSchema: {
-        monitorID: z.number().int().positive().describe('The ID of the monitor to pause')
+        monitorID: z.number().int().nonnegative().describe('The ID of the monitor to pause')
       },
       outputSchema: {
         ok: z.boolean(),
@@ -403,9 +422,9 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     'resumeMonitor',
     {
       title: 'Resume Monitor',
-      description: 'Resumes a paused monitor, restarting its checks and notifications.',
+      description: 'Resumes a paused monitor, restarting all checks. Use this to re-enable monitoring after pausing.',
       inputSchema: {
-        monitorID: z.number().int().positive().describe('The ID of the monitor to resume')
+        monitorID: z.number().int().nonnegative().describe('The ID of the monitor to resume')
       },
       outputSchema: {
         ok: z.boolean(),
