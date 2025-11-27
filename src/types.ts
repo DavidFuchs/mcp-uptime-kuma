@@ -104,18 +104,19 @@ export interface LoginResponse extends ApiResponse {
 
 /**
  * Zod schema for Uptime Kuma settings
+ * Fields are optional as fresh installations may not have all values set
  */
 export const SettingsSchema = z.object({
-  serverTimezone: z.string().describe('Server timezone'),
-  checkUpdate: z.boolean().describe('Check for updates'),
-  searchEngineIndex: z.boolean().describe('Allow search engine indexing'),
-  entryPage: z.string().describe('Entry page (dashboard/statuspage)'),
-  dnsCache: z.boolean().describe('DNS cache enabled'),
-  keepDataPeriodDays: z.number().describe('Data retention period (days)'),
-  tlsExpiryNotifyDays: z.array(z.number()).describe('TLS expiry notification days'),
-  trustProxy: z.boolean().describe('Trust proxy headers'),
-  nscd: z.boolean().describe('NSCD enabled'),
-  disableAuth: z.boolean().describe('Authentication disabled'),
+  serverTimezone: z.string().optional().describe('Server timezone'),
+  checkUpdate: z.boolean().optional().describe('Check for updates'),
+  searchEngineIndex: z.boolean().optional().describe('Allow search engine indexing'),
+  entryPage: z.string().optional().describe('Entry page (dashboard/statuspage)'),
+  dnsCache: z.boolean().optional().describe('DNS cache enabled'),
+  keepDataPeriodDays: z.number().optional().describe('Data retention period (days)'),
+  tlsExpiryNotifyDays: z.array(z.number()).optional().describe('TLS expiry notification days'),
+  trustProxy: z.boolean().optional().describe('Trust proxy headers'),
+  nscd: z.boolean().optional().describe('NSCD enabled'),
+  disableAuth: z.boolean().optional().describe('Authentication disabled'),
   primaryBaseURL: z.string().optional().describe('Primary base URL'),
 });
 
