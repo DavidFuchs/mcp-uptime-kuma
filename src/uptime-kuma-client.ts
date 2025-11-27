@@ -1,5 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 import fuzzysort from 'fuzzysort';
+import type { LoggingLevel } from '@modelcontextprotocol/sdk/types.js';
 import type {
   MonitorBase,
   MonitorWithAdditionalFields,
@@ -24,18 +25,24 @@ export class UptimeKumaClient {
   private heartbeatListCache: HeartbeatList<true> = {};
   private uptimeCache: { [monitorID: string]: { [periodKey: string]: number } } = {};
   private avgPingCache: { [monitorID: string]: number | null } = {};
-  private server?: { sendLoggingMessage: (params: { level: 'debug' | 'info' | 'notice' | 'warning' | 'error' | 'critical' | 'alert' | 'emergency'; data: unknown }) => Promise<void> };
+  private server?: { sendLoggingMessage: (params: { level: LoggingLevel; data: unknown }) => Promise<void> };
+  private shouldLog: (level: LoggingLevel) => boolean;
 
-  constructor(url: string, server?: { sendLoggingMessage: (params: { level: 'debug' | 'info' | 'notice' | 'warning' | 'error' | 'critical' | 'alert' | 'emergency'; data: unknown }) => Promise<void> }) {
+  constructor(
+    url: string, 
+    server?: { sendLoggingMessage: (params: { level: LoggingLevel; data: unknown }) => Promise<void> },
+    shouldLog?: (level: LoggingLevel) => boolean
+  ) {
     this.url = url;
     this.server = server;
+    this.shouldLog = shouldLog || (() => true); // Default: log everything
   }
 
   /**
-   * Helper to safely log messages - only logs if server is available and connected
+   * Helper to safely log messages - only logs if server is available, connected, and level is enabled
    */
-  private async safeLog(level: 'debug' | 'info' | 'notice' | 'warning' | 'error' | 'critical' | 'alert' | 'emergency', data: string): Promise<void> {
-    if (this.server) {
+  private async safeLog(level: LoggingLevel, data: string): Promise<void> {
+    if (this.server && this.shouldLog(level)) {
       try {
         await this.server.sendLoggingMessage({ level, data });
       } catch (error) {
