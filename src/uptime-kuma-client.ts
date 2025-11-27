@@ -2,17 +2,45 @@ import { io, Socket } from 'socket.io-client';
 import fuzzysort from 'fuzzysort';
 import type {
   MonitorBase,
-  MonitorWithAdditionalFields,
+  MonitorBaseWithExtendedData,
+  MonitorWithExtendedData,
+  MonitorRawData,
   Monitor,
   ApiResponse,
   LoginResponse,
   GetMonitorResponse,
   MonitorList,
+  MonitorSummary,
   Heartbeat,
   HeartbeatList,
   GetSettingsResponse,
   Settings,
-} from './types.js';
+} from './types/index.js';
+
+/**
+ * Helper function to filter a MonitorWithExtendedData down to MonitorBaseWithExtendedData
+ * Strips out type-specific fields while keeping common fields and runtime data
+ */
+function filterToBaseWithExtendedData(monitor: MonitorWithExtendedData): MonitorBaseWithExtendedData {
+  // Extract all MonitorBase fields plus runtime data
+  const {
+    id, name, description, type, active, parent, weight,
+    interval, retryInterval, resendInterval, timeout,
+    maxretries, upsideDown, accepted_statuscodes,
+    notificationIDList, tags,
+    user_id, maintenance, path, pathName, childrenIDs, forceInactive, includeSensitiveData,
+    uptime, avgPing
+  } = monitor;
+  
+  return {
+    id, name, description, type, active, parent, weight,
+    interval, retryInterval, resendInterval, timeout,
+    maxretries, upsideDown, accepted_statuscodes,
+    notificationIDList, tags,
+    user_id, maintenance, path, pathName, childrenIDs, forceInactive, includeSensitiveData,
+    uptime, avgPing
+  } as MonitorBaseWithExtendedData;
+}
 
 /**
  * Uptime Kuma Socket.io API Client
@@ -20,7 +48,7 @@ import type {
 export class UptimeKumaClient {
   private socket: Socket | null = null;
   private url: string;
-  private monitorListCache: MonitorList<true> = {};
+  private monitorListCache: { [monitorID: string]: MonitorRawData } = {};
   private heartbeatListCache: HeartbeatList<true> = {};
   private uptimeCache: { [monitorID: string]: { [periodKey: string]: number } } = {};
   private avgPingCache: { [monitorID: string]: number | null } = {};
@@ -224,18 +252,18 @@ export class UptimeKumaClient {
     if (!this.socket) return;
 
     // Listen for the full monitor list (sent after login or on major changes)
-    this.socket.on('monitorList', (monitorList: MonitorList<true>) => {
+    this.socket.on('monitorList', (monitorList: { [monitorID: string]: any }) => {
       const monitorCount = Object.keys(monitorList).length;
       this.safeLog('debug', `Received monitorList with ${monitorCount} monitors`);
-      this.monitorListCache = monitorList;
+      this.monitorListCache = monitorList as { [monitorID: string]: MonitorRawData };
     });
 
     // Listen for updates to specific monitors
-    this.socket.on('updateMonitorIntoList', (updates: MonitorList<true>) => {
+    this.socket.on('updateMonitorIntoList', (updates: { [monitorID: string]: any }) => {
       const updateCount = Object.keys(updates).length;
       const monitorIDs = Object.keys(updates).join(', ');
       this.safeLog('debug', `Received updateMonitorIntoList for ${updateCount} monitor(s): ${monitorIDs}`);
-      Object.assign(this.monitorListCache, updates);
+      Object.assign(this.monitorListCache, updates as { [monitorID: string]: MonitorRawData });
     });
 
     // Listen for monitor deletions
@@ -331,11 +359,12 @@ export class UptimeKumaClient {
    * Get a specific monitor by ID from the cache
    * 
    * @param monitorID - The ID of the monitor to retrieve
-   * @returns The monitor data with all fields, or undefined if not found
+   * @param includeTypeSpecificFields - If true, returns MonitorWithExtendedData with type-specific fields. If false, returns only MonitorBaseWithExtendedData (common fields + runtime data).
+   * @returns The monitor data, or undefined if not found
    */
-  getMonitor(monitorID: number): MonitorWithAdditionalFields | undefined {
-    const monitor = this.monitorListCache[monitorID.toString()];
-    if (!monitor) return undefined;
+  getMonitor<T extends boolean = true>(monitorID: number, includeTypeSpecificFields?: T): T extends true ? MonitorWithExtendedData | undefined : MonitorBaseWithExtendedData | undefined {
+    const rawMonitor = this.monitorListCache[monitorID.toString()];
+    if (!rawMonitor) return undefined as any;
     
     const monitorIDStr = monitorID.toString();
     
@@ -343,11 +372,18 @@ export class UptimeKumaClient {
     const uptime = this.uptimeCache[monitorIDStr];
     const avgPing = monitorIDStr in this.avgPingCache ? this.avgPingCache[monitorIDStr] : undefined;
     
-    return {
-      ...monitor,
+    const fullMonitor: MonitorWithExtendedData = {
+      ...rawMonitor,
       uptime: uptime || {},
       avgPing,
-    };
+    } as MonitorWithExtendedData;
+    
+    // If includeTypeSpecificFields is false, filter to base fields only (excluding type-specific fields)
+    if (includeTypeSpecificFields === false) {
+      return filterToBaseWithExtendedData(fullMonitor) as any;
+    }
+    
+    return fullMonitor as any;
   }
 
   /**
@@ -355,15 +391,16 @@ export class UptimeKumaClient {
    * The list is populated after login and kept up-to-date via server events
    * 
    * @param filters - Optional filter criteria
-   * @returns The cached monitor list with all fields including uptime data
+   * @returns The cached monitor list
    */
-  getMonitorList(filters?: {
+  getMonitorList<T extends boolean = true>(filters?: {
     keywords?: string;
     type?: string;
     active?: boolean;
     maintenance?: boolean;
     tags?: string;
-  }): MonitorList<true> {
+    includeTypeSpecificFields?: T;
+  }): MonitorList<T> {
     const result: MonitorList<true> = {};
     
     // Parse keywords into an array
@@ -376,11 +413,11 @@ export class UptimeKumaClient {
     const tagFilter = filters?.tags ? filters.tags.split(',').map(t => t.trim()).filter(t => t.length > 0) : [];
     
     for (const [monitorID, monitor] of Object.entries(this.monitorListCache)) {
-      // Filter by keywords if provided using fuzzy matching
-      if (keywordArray.length > 0) {
-        const pathName = monitor.pathName;
-        const matchesAllKeywords = keywordArray.every(keyword => {
-          const result = fuzzysort.single(keyword, pathName);
+    // Filter by keywords if provided using fuzzy matching
+    if (keywordArray.length > 0) {
+      const pathName = monitor.pathName || '';
+      const matchesAllKeywords = keywordArray.every(keyword => {
+        const result = fuzzysort.single(keyword, pathName);
           return result && result.score > 0.3;
         });
         if (!matchesAllKeywords) {
@@ -431,14 +468,21 @@ export class UptimeKumaClient {
       
       const avgPing = monitorID in this.avgPingCache ? this.avgPingCache[monitorID] : undefined;
       
-      result[monitorID] = {
+      const fullMonitor: MonitorWithExtendedData = {
         ...monitor,
         uptime: this.uptimeCache[monitorID] || {},
         avgPing,
-      };
+      } as MonitorWithExtendedData;
+      
+      // If includeTypeSpecificFields is false, filter to base fields only (excluding type-specific fields)
+      if (filters?.includeTypeSpecificFields === false) {
+        result[monitorID] = filterToBaseWithExtendedData(fullMonitor) as any;
+      } else {
+        result[monitorID] = fullMonitor as any;
+      }
     }
     
-    return result;
+    return result as MonitorList<T>;
   }
 
   /**
@@ -488,19 +532,7 @@ export class UptimeKumaClient {
     maintenance?: boolean;
     tags?: string;
     status?: string;
-  }): Array<{
-    id: number;
-    name: string;
-    pathName: string;
-    active: boolean;
-    maintenance: boolean;
-    status?: number;
-    msg?: string;
-    uptime?: { [periodKey: string]: number };
-    avgPing?: number | null;
-    type: string;
-    tags?: Array<{ tag_id: number; monitor_id: number; value: string | null; name: string; color: string }>;
-  }> {
+  }): MonitorSummary[] {
     const summaries = [];
     
     // Parse keywords into an array
@@ -518,7 +550,7 @@ export class UptimeKumaClient {
     for (const [monitorID, monitor] of Object.entries(this.monitorListCache)) {
       // Filter by keywords if provided using fuzzy matching
       if (keywordArray.length > 0) {
-        const pathName = monitor.pathName;
+        const pathName = monitor.pathName || '';
         // All keywords must match with a reasonable score
         const matchesAllKeywords = keywordArray.every(keyword => {
           const result = fuzzysort.single(keyword, pathName);
@@ -613,39 +645,4 @@ export class UptimeKumaClient {
   getSocket(): Socket | null {
     return this.socket;
   }
-}
-
-/**
- * Utility function to filter a monitor object to only include defined fields
- * 
- * @param monitor - The monitor object with all fields
- * @returns The monitor object with only defined fields
- */
-export function filterMonitorFields(monitor: MonitorWithAdditionalFields): MonitorBase {
-  const filtered: MonitorBase = {
-    id: monitor.id,
-    name: monitor.name,
-    type: monitor.type,
-    interval: monitor.interval,
-    retryInterval: monitor.retryInterval,
-    resendInterval: monitor.resendInterval,
-    maxretries: monitor.maxretries,
-    active: monitor.active,
-    pathName: monitor.pathName,
-    maintenance: monitor.maintenance,
-  };
-
-  // Add optional fields if they exist
-  if (monitor.url !== undefined) filtered.url = monitor.url;
-  if (monitor.method !== undefined) filtered.method = monitor.method;
-  if (monitor.hostname !== undefined) filtered.hostname = monitor.hostname;
-  if (monitor.port !== undefined) filtered.port = monitor.port;
-  if (monitor.tags !== undefined) filtered.tags = monitor.tags;
-  if (monitor.notificationIDList !== undefined) filtered.notificationIDList = monitor.notificationIDList;
-  if (monitor.accepted_statuscodes_json !== undefined) filtered.accepted_statuscodes_json = monitor.accepted_statuscodes_json;
-  if (monitor.conditions !== undefined) filtered.conditions = monitor.conditions;
-  if (monitor.uptime !== undefined) filtered.uptime = monitor.uptime;
-  if (monitor.avgPing !== undefined) filtered.avgPing = monitor.avgPing;
-
-  return filtered;
 }

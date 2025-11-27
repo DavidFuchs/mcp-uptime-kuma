@@ -9,7 +9,7 @@ import rateLimit from 'express-rate-limit';
 import { randomUUID } from 'node:crypto';
 import NodeCache from 'node-cache';
 import { createServer } from './server.js';
-import type { UptimeKumaConfig } from './types.js';
+import type { UptimeKumaConfig } from './types/index.js';
 
 /**
  * Main entry point for @davidfuchs/mcp-uptime-kuma
