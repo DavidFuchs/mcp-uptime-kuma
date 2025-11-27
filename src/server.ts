@@ -1,9 +1,9 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
+import { McpError, ErrorCode, SetLevelRequestSchema, LoggingLevelSchema, type LoggingLevel } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import { UptimeKumaClient, filterMonitorFields } from './uptime-kuma-client.js';
-import { HeartbeatSchema, MonitorBaseSchema, MonitorSummarySchema, SettingsSchema } from './types.js';
-import type { UptimeKumaConfig } from './types.js';
+import { UptimeKumaClient } from './uptime-kuma-client.js';
+import { HeartbeatSchema, MonitorBaseSchema, MonitorSummarySchema, SettingsSchema } from './types/index.js';
+import type { UptimeKumaConfig } from './types/index.js';
 import { VERSION } from './version.js';
 
 /**
@@ -11,6 +11,9 @@ import { VERSION } from './version.js';
  * Note: Authentication must be done separately after connecting the transport
  */
 export async function createServer(config: UptimeKumaConfig): Promise<{ server: McpServer; client: UptimeKumaClient; authenticateClient: () => Promise<void> }> {
+  // Track current logging level (default: info)
+  let currentLogLevel: LoggingLevel = 'info';
+
   const server = new McpServer(
     {
       name: 'mcp-uptime-kuma',
@@ -30,8 +33,24 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     }
   );
 
-  // Initialize Uptime Kuma client (but don't authenticate yet)
-  const client = new UptimeKumaClient(config.url, server);
+  // Handle logging level changes via the underlying server
+  server.server.setRequestHandler(SetLevelRequestSchema, async (request) => {
+    const level = request.params?.level as LoggingLevel | undefined;
+    if (level && LoggingLevelSchema.safeParse(level).success) {
+      currentLogLevel = level;
+      return {};
+    }
+    throw new McpError(ErrorCode.InvalidParams, `Invalid log level: ${level}`);
+  });
+
+  // Initialize Uptime Kuma client with a function to check if a log level should be sent
+  // LoggingLevelSchema enum values are already in order: debug < info < notice < ... < emergency
+  const logLevels = LoggingLevelSchema.options;
+  const shouldLog = (level: LoggingLevel): boolean => {
+    return logLevels.indexOf(level) >= logLevels.indexOf(currentLogLevel);
+  };
+  
+  const client = new UptimeKumaClient(config.url, server, shouldLog);
   let isAuthenticated = false;
   
   // Function to authenticate the client (to be called after transport is connected)
@@ -67,16 +86,16 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     'getMonitor',
     {
       title: 'Get Monitor',
-      description: 'Retrieves configuration details for a specific monitor by ID (URL, check interval, notification settings, etc.). Use this when you need to examine or modify settings for a specific monitor. For current status, use getMonitorSummary instead. By default returns only core fields; set includeAdditionalFields to true to return all fields.',
+      description: 'Retrieves configuration details for a specific monitor by ID (URL, check interval, notification settings, etc.). Use this when you need to examine or modify settings for a specific monitor. For current status, use getMonitorSummary instead. By default returns only common fields plus runtime data (uptime, avgPing); set includeTypeSpecificFields to true to include type-specific fields (e.g., url for HTTP, hostname/port for TCP).',
       inputSchema: { 
-        monitorID: z.number().int().positive().describe('The ID of the monitor to retrieve'),
-        includeAdditionalFields: z.boolean().optional().describe('Include all additional fields from Uptime Kuma (default: false)')
+        monitorID: z.number().int().nonnegative().describe('The ID of the monitor to retrieve'),
+        includeTypeSpecificFields: z.boolean().optional().describe('Include type-specific fields (url, hostname, port, etc.) in addition to common fields. Default: false. When false, only returns MonitorBase fields plus uptime/avgPing.')
       },
       outputSchema: { 
-        monitor: MonitorBaseSchema.passthrough().describe('Monitor object (may include additional fields beyond base schema when includeAdditionalFields is true)')
+        monitor: MonitorBaseSchema.passthrough().describe('Monitor object with common fields plus uptime/avgPing. May include type-specific fields when includeTypeSpecificFields is true.')
       },
     },
-    async ({ monitorID, includeAdditionalFields }) => {
+    async ({ monitorID, includeTypeSpecificFields }) => {
       if (!isAuthenticated) {
         throw new McpError(
           ErrorCode.InternalError,
@@ -85,13 +104,15 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       }
 
       try {
-        const monitor = client.getMonitor(monitorID);
+        const monitor = includeTypeSpecificFields 
+          ? client.getMonitor(monitorID, true)
+          : client.getMonitor(monitorID, false);
         
         if (!monitor) {
           throw new Error(`Monitor with ID ${monitorID} not found`);
         }
         
-        const result = (includeAdditionalFields ?? false) ? monitor : filterMonitorFields(monitor);
+        const result = monitor;
         
         return {
           content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
@@ -112,21 +133,21 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     'listMonitors',
     {
       title: 'List Monitors',
-      description: 'Retrieves configuration details for all monitors (URLs, check intervals, notification settings, etc.). Use this when you need to examine or modify monitor settings. For status checks ("how is everything doing?", "what\'s down?"), use getMonitorSummary instead. By default returns only core fields; set includeAdditionalFields to true to return all fields. Supports filtering by keywords, type, active/maintenance status, and tags.',
+      description: 'Retrieves configuration details for all monitors (URLs, check intervals, notification settings, etc.). Use this when you need to examine or modify monitor settings. For status checks ("how is everything doing?", "what\'s down?"), use getMonitorSummary instead. By default returns only common fields plus runtime data (uptime, avgPing); set includeTypeSpecificFields to true to include type-specific fields (e.g., url for HTTP, hostname/port for TCP). Supports filtering by keywords, type, active/maintenance status, and tags.',
       inputSchema: {
-        includeAdditionalFields: z.boolean().optional().describe('Include all additional fields from Uptime Kuma (default: false)'),
+        includeTypeSpecificFields: z.boolean().optional().describe('Include type-specific fields (url, hostname, port, etc.) in addition to common fields. Default: false. When false, only returns MonitorBase fields plus uptime/avgPing.'),
         keywords: z.string().optional().describe('Space-separated keywords to filter monitors by pathName (case-insensitive fuzzy match). All keywords must match for a monitor to be included.'),
-        type: z.string().optional().describe('Filter by monitor type(s). Comma-separated for multiple types. Examples: "http", "http,ping,dns", "port,docker".'),
+        type: z.string().optional().describe('Filter by monitor type(s). Comma-separated for multiple types. Use listMonitorTypes tool to see all available types.'),
         active: z.boolean().optional().describe('Filter by active status. true=only active monitors, false=only inactive monitors.'),
         maintenance: z.boolean().optional().describe('Filter by maintenance status. true=only monitors in maintenance, false=only monitors not in maintenance.'),
         tags: z.string().optional().describe('Filter by tag name and optional value. Comma-separated for multiple tags. Format: "tagName" or "tagName=value". Monitor must have all specified tags. Case-insensitive. Examples: "production", "env=staging", "production,region=us-east"')
       },
       outputSchema: { 
-        monitors: z.array(MonitorBaseSchema.passthrough()).describe('Array of monitor objects (may include additional fields beyond base schema when includeAdditionalFields is true)'),
+        monitors: z.array(MonitorBaseSchema.passthrough()).describe('Array of monitor objects with common fields plus uptime/avgPing. May include type-specific fields when includeTypeSpecificFields is true.'),
         count: z.number()
       },
     },
-    async ({ includeAdditionalFields, keywords, type, active, maintenance, tags }) => {
+    async ({ includeTypeSpecificFields, keywords, type, active, maintenance, tags }) => {
       if (!isAuthenticated) {
         throw new McpError(
           ErrorCode.InternalError,
@@ -135,10 +156,10 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       }
 
       try {
-        const monitorList = client.getMonitorList({ keywords, type, active, maintenance, tags });
-        const monitors = Object.values(monitorList).map(monitor => 
-          (includeAdditionalFields ?? false) ? monitor : filterMonitorFields(monitor)
-        );
+        const monitorList = includeTypeSpecificFields
+          ? client.getMonitorList({ keywords, type, active, maintenance, tags, includeTypeSpecificFields: true })
+          : client.getMonitorList({ keywords, type, active, maintenance, tags, includeTypeSpecificFields: false });
+        const monitors = Object.values(monitorList);
         
         return {
           content: [{ 
@@ -160,6 +181,61 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     }
   );
 
+  // Register listMonitorTypes tool
+  server.registerTool(
+    'listMonitorTypes',
+    {
+      title: 'List Monitor Types',
+      description: 'Returns a list of all available monitor types supported by Uptime Kuma. Use this to discover valid values for type filters in other tools.',
+      inputSchema: {},
+      outputSchema: {
+        types: z.array(z.object({
+          type: z.string().describe('The monitor type identifier'),
+          description: z.string().describe('Description of what this monitor type does')
+        })).describe('Array of available monitor types')
+      },
+    },
+    async () => {
+      const monitorTypes = [
+        { type: 'http', description: 'HTTP/HTTPS monitoring with status code and response time checks' },
+        { type: 'keyword', description: 'HTTP monitoring that searches for a specific keyword in the response' },
+        { type: 'json-query', description: 'HTTP monitoring that validates JSON response using JSONPath queries' },
+        { type: 'port', description: 'TCP port connectivity check' },
+        { type: 'ping', description: 'ICMP ping check' },
+        { type: 'dns', description: 'DNS resolution check for A, AAAA, CNAME, MX, NS, PTR, SOA, SRV, TXT, or CAA records' },
+        { type: 'docker', description: 'Docker container status check' },
+        { type: 'mqtt', description: 'MQTT broker connectivity and topic monitoring' },
+        { type: 'mongodb', description: 'MongoDB database connectivity check' },
+        { type: 'redis', description: 'Redis database connectivity check' },
+        { type: 'sqlserver', description: 'SQL Server database connectivity check' },
+        { type: 'postgres', description: 'PostgreSQL database connectivity check' },
+        { type: 'mysql', description: 'MySQL/MariaDB database connectivity check' },
+        { type: 'grpc-keyword', description: 'gRPC service health check with keyword validation' },
+        { type: 'kafka-producer', description: 'Kafka producer connectivity and message publishing check' },
+        { type: 'radius', description: 'RADIUS server authentication check' },
+        { type: 'rabbitmq', description: 'RabbitMQ server connectivity check' },
+        { type: 'smtp', description: 'SMTP server connectivity check' },
+        { type: 'snmp', description: 'SNMP device monitoring with OID queries' },
+        { type: 'real-browser', description: 'Real browser-based monitoring using Chrome/Chromium' },
+        { type: 'gamedig', description: 'Game server status check using GameDig protocol' },
+        { type: 'push', description: 'Push-based monitoring (monitor receives heartbeats from external sources)' },
+        { type: 'group', description: 'Group/folder for organizing monitors (not an actual check)' },
+        { type: 'tailscale-ping', description: 'Tailscale network ping check' },
+        { type: 'manual', description: 'Manual status monitor (status set manually, not automatically checked)' }
+      ];
+      
+      return {
+        content: [{ 
+          type: 'text', 
+          text: JSON.stringify(monitorTypes, null, 2) 
+        }],
+        structuredContent: { 
+          types: monitorTypes 
+        },
+      };
+    }
+  );
+
   // Register getMonitorSummary tool
   server.registerTool(
     'getMonitorSummary',
@@ -168,7 +244,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       description: 'START HERE for status overview questions. Retrieves current status for all monitors showing UP/DOWN/PENDING/MAINTENANCE states with the most recent heartbeat message. Use this when asked "how is everything doing?", "what\'s down?", "what\'s up?", or for any general status overview. Returns essential information (ID, name, pathName, active state, maintenance state, status, message, type, tags). Supports filtering by keywords, type, active/maintenance status, tags, and current status.',
       inputSchema: {
         keywords: z.string().optional().describe('Space-separated keywords to filter monitors by pathName (case-insensitive fuzzy match). All keywords must match for a monitor to be included.'),
-        type: z.string().optional().describe('Filter by monitor type(s). Comma-separated for multiple types. Examples: "http", "http,ping,dns", "port,docker".'),
+        type: z.string().optional().describe('Filter by monitor type(s). Comma-separated for multiple types. Use listMonitorTypes tool to see all available types.'),
         active: z.boolean().optional().describe('Filter by active status. true=only active monitors, false=only inactive monitors.'),
         maintenance: z.boolean().optional().describe('Filter by maintenance status. true=only monitors in maintenance, false=only monitors not in maintenance.'),
         tags: z.string().optional().describe('Filter by tag name and optional value. Comma-separated for multiple tags. Format: "tagName" or "tagName=value". Monitor must have all specified tags. Case-insensitive. Examples: "production", "env=staging", "production,region=us-east"'),
@@ -217,7 +293,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       title: 'Get Heartbeats',
       description: 'Retrieves historical heartbeat data for a specific monitor (response times, status changes over time). Use this for analyzing patterns or history for one monitor. By default returns only the most recent heartbeat; set maxHeartbeats (up to 100) for historical analysis. Keep maxHeartbeats ≤10 unless user requests more.',
       inputSchema: {
-        monitorID: z.number().int().positive().describe('The ID of the monitor to get heartbeats for'),
+        monitorID: z.number().int().nonnegative().describe('The ID of the monitor to get heartbeats for'),
         maxHeartbeats: z.number().int().positive().max(100).optional().describe('If set, returns the most recent X heartbeats (up to 100). If unset, returns only the most recent heartbeat (default: 1)')
       },
       outputSchema: { 
@@ -360,7 +436,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       title: 'Pause Monitor',
       description: 'Pauses a monitor, stopping it from performing checks. The monitor will remain in the system but will not send notifications or collect data until resumed.',
       inputSchema: {
-        monitorID: z.number().int().positive().describe('The ID of the monitor to pause')
+        monitorID: z.number().int().nonnegative().describe('The ID of the monitor to pause')
       },
       outputSchema: {
         ok: z.boolean(),
@@ -403,9 +479,9 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     'resumeMonitor',
     {
       title: 'Resume Monitor',
-      description: 'Resumes a paused monitor, restarting its checks and notifications.',
+      description: 'Resumes a paused monitor, restarting all checks. Use this to re-enable monitoring after pausing.',
       inputSchema: {
-        monitorID: z.number().int().positive().describe('The ID of the monitor to resume')
+        monitorID: z.number().int().nonnegative().describe('The ID of the monitor to resume')
       },
       outputSchema: {
         ok: z.boolean(),

@@ -1,5 +1,11 @@
 #!/usr/bin/env node
-import 'dotenv/config';
+
+// Load .env file only if not in test mode (when MCP_TEST_MODE is set)
+// This allows tests to pass environment variables directly without .env file interference
+if (!process.env.MCP_TEST_MODE) {
+  await import('dotenv/config');
+}
+
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
@@ -9,7 +15,7 @@ import rateLimit from 'express-rate-limit';
 import { randomUUID } from 'node:crypto';
 import NodeCache from 'node-cache';
 import { createServer } from './server.js';
-import type { UptimeKumaConfig } from './types.js';
+import type { UptimeKumaConfig } from './types/index.js';
 
 /**
  * Main entry point for @davidfuchs/mcp-uptime-kuma
@@ -121,7 +127,8 @@ async function runHttp(config: UptimeKumaConfig) {
     // otherwise the StreamableHTTPServerTransport object will be broken!
   });
 
-  let authenticated = false;
+  // Track authentication status at server level (not per-session)
+  let isServerAuthenticated = false;
 
   // Handle POST requests for client-to-server communication
   app.post('/mcp', async (req, res) => {
@@ -138,9 +145,11 @@ async function runHttp(config: UptimeKumaConfig) {
 
       if (!transport && isInitializeRequest(req.body)) {
         // Create a new transport only for new initialization request
+        let capturedSessionId: string | undefined;
         transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
           onsessioninitialized: (sessionId) => {
+            capturedSessionId = sessionId;
             // Store the transport by session ID
             transportCache.set(sessionId, transport!);
           },
@@ -148,17 +157,13 @@ async function runHttp(config: UptimeKumaConfig) {
 
         // Clean up transport when closed
         transport.onclose = () => {
-          if (sessionId) transportCache.del(sessionId);
+          if (capturedSessionId) {
+            transportCache.del(capturedSessionId);
+          }
         };
         
         // Connect the transport to the MCP server
         await server.connect(transport);
-        
-        // Authenticate on first connection
-        if (!authenticated) {
-          await authenticateClient();
-          authenticated = true;
-        }
       } else if (!transport) {
         // Invalid request - no valid session ID and not an initialization request
         res.status(400).json({
@@ -172,7 +177,7 @@ async function runHttp(config: UptimeKumaConfig) {
         return;
       }
 
-      // Handle the request
+      // Handle the request (authentication happens later in GET handler when SSE stream is ready)
       await transport.handleRequest(req, res, req.body);
     } catch (error) {
       console.error('Error handling MCP request:', error);
@@ -210,7 +215,36 @@ async function runHttp(config: UptimeKumaConfig) {
   };
 
   // Handle GET requests for server-to-client notifications via SSE
-  app.get('/mcp', handleSessionRequest);
+  app.get('/mcp', async (req, res) => {
+    const sessionId = req.headers['mcp-session-id'] as string | undefined;
+
+    let transport: StreamableHTTPServerTransport | undefined;
+    
+    // Check if the session ID exists in the transport cache; if so reuse the transport
+    if (sessionId) {
+      transport = transportCache.get(sessionId);
+    }
+
+    if (!sessionId || !transport) {
+      res.status(400).send('Invalid or missing session ID');
+      return;
+    }
+    
+    // Authenticate once for the entire server after the first SSE stream is established
+    // This ensures the client can receive authentication log messages
+    if (!isServerAuthenticated) {
+      isServerAuthenticated = true; // Set immediately to prevent race conditions
+      try {
+        await authenticateClient();
+      } catch (error) {
+        console.error('Authentication error:', error);
+        // Continue anyway - the error will be logged via sendLoggingMessage
+      }
+    }
+    
+    // Handle the request
+    await transport.handleRequest(req, res);
+  });
 
   // Handle DELETE requests for session termination
   app.delete('/mcp', handleSessionRequest);

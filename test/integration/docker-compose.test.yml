@@ -1,0 +1,19 @@
+services:
+  uptime-kuma-test:
+    image: louislam/uptime-kuma:2
+    container_name: uptime-kuma-test
+    ports:
+      - "3001:3001"
+    volumes:
+      - uptime-kuma-test-data:/app/data
+    environment:
+      - UPTIME_KUMA_PORT=3001
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3001 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  uptime-kuma-test-data:
