@@ -8,12 +8,9 @@ if (!process.env.MCP_TEST_MODE) {
 
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import express from 'express';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
-import { randomUUID } from 'node:crypto';
-import NodeCache from 'node-cache';
 import { createServer } from './server.js';
 import type { UptimeKumaConfig } from './types/index.js';
 
@@ -89,7 +86,7 @@ async function runStdio(config: UptimeKumaConfig) {
   }
 }
 
-// Run with the streamable HTTP transport
+// Run with the streamable HTTP transport (stateless mode - no session management)
 async function runHttp(config: UptimeKumaConfig) {
   const app = express();
   app.use(express.json());
@@ -97,90 +94,68 @@ async function runHttp(config: UptimeKumaConfig) {
   // CORS configuration for MCP client compatibility
   app.use(
     cors({
-      origin: process.env.ALLOWED_ORIGIN || '*', // Configure via environment variable
+      origin: process.env.ALLOWED_ORIGIN || '*',
       exposedHeaders: ['mcp-session-id'],
       allowedHeaders: ['Content-Type', 'mcp-session-id', 'mcp-protocol-version'],
-      // MUST include 'mcp-protocol-version' otherwise preflight check will error out
     })
   );
 
-  // Rate limiting configuration
-  const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // Limit each IP to 100 requests per windowMs
-    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-    legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-    message: 'Too many requests from this IP, please try again later.',
-  });
-
-  // Apply rate limiter to all routes
-  app.use(limiter);
+  // Rate limiting: 100 requests per 15 minutes per IP
+  app.use(
+    rateLimit({
+      windowMs: 15 * 60 * 1000,
+      max: 100,
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: 'Too many requests from this IP, please try again later.',
+    })
+  );
 
   // Create the MCP server once (reused across requests)
   const { server, authenticateClient } = await createServer(config);
   
-  // Store transports by session ID
-  const transportCache = new NodeCache({
-    stdTTL: 3600, // 1-hour expiry
-    checkperiod: 0,
-    useClones: false, // MUST include this to store references instead of cloning objects
-    // otherwise the StreamableHTTPServerTransport object will be broken!
-  });
+  // Track authentication state - authenticate on first request when transport is connected
+  let isAuthenticated = false;
 
-  // Track authentication status at server level (not per-session)
-  let isServerAuthenticated = false;
-
-  // Handle POST requests for client-to-server communication
+  // POST: Handle all MCP requests (stateless mode)
   app.post('/mcp', async (req, res) => {
     try {
-      // Check for existing session ID
-      const sessionId = req.headers['mcp-session-id'] as string | undefined;
+      // Create a new transport for each request to prevent request ID collisions
+      // Different clients may use the same JSON-RPC request IDs, which would cause
+      // responses to be routed to the wrong HTTP connections if transport state is shared
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined, // Disable session management
+        enableJsonResponse: true, // Return JSON responses instead of SSE
+      });
 
-      let transport: StreamableHTTPServerTransport | undefined;
+      res.on('close', () => {
+        transport.close();
+      });
+
+      await server.connect(transport);
       
-      // Check if the session ID exists in the transport cache; if so reuse the transport
-      if (sessionId) {
-        transport = transportCache.get(sessionId);
+      // Authenticate on first request (when transport is connected so logging works)
+      if (!isAuthenticated) {
+        isAuthenticated = true;
+        try {
+          await authenticateClient();
+        } catch (error) {
+          console.error('[MCP] Failed to authenticate with Uptime Kuma:', error);
+          res.status(500).json({
+            jsonrpc: '2.0',
+            error: {
+              code: -32603,
+              message: 'Authentication failed',
+            },
+            id: null,
+          });
+          return;
+        }
       }
-
-      if (!transport && isInitializeRequest(req.body)) {
-        // Create a new transport only for new initialization request
-        let capturedSessionId: string | undefined;
-        transport = new StreamableHTTPServerTransport({
-          sessionIdGenerator: () => randomUUID(),
-          onsessioninitialized: (sessionId) => {
-            capturedSessionId = sessionId;
-            // Store the transport by session ID
-            transportCache.set(sessionId, transport!);
-          },
-        });
-
-        // Clean up transport when closed
-        transport.onclose = () => {
-          if (capturedSessionId) {
-            transportCache.del(capturedSessionId);
-          }
-        };
-        
-        // Connect the transport to the MCP server
-        await server.connect(transport);
-      } else if (!transport) {
-        // Invalid request - no valid session ID and not an initialization request
-        res.status(400).json({
-          jsonrpc: '2.0',
-          error: {
-            code: -32000,
-            message: 'Bad Request: No valid session ID provided',
-          },
-          id: null,
-        });
-        return;
-      }
-
-      // Handle the request (authentication happens later in GET handler when SSE stream is ready)
+      
       await transport.handleRequest(req, res, req.body);
     } catch (error) {
-      console.error('Error handling MCP request:', error);
+      console.error('[MCP] Error handling request:', error);
       if (!res.headersSent) {
         res.status(500).json({
           jsonrpc: '2.0',
@@ -194,60 +169,10 @@ async function runHttp(config: UptimeKumaConfig) {
     }
   });
 
-  // Reusable handler for GET and DELETE requests
-  const handleSessionRequest = async (req: express.Request, res: express.Response) => {
-    const sessionId = req.headers['mcp-session-id'] as string | undefined;
-
-    let transport: StreamableHTTPServerTransport | undefined;
-    
-    // Check if the session ID exists in the transport cache; if so reuse the transport
-    if (sessionId) {
-      transport = transportCache.get(sessionId);
-    }
-
-    if (!sessionId || !transport) {
-      res.status(400).send('Invalid or missing session ID');
-      return;
-    }
-    
-    // Handle the request
-    await transport.handleRequest(req, res);
-  };
-
-  // Handle GET requests for server-to-client notifications via SSE
-  app.get('/mcp', async (req, res) => {
-    const sessionId = req.headers['mcp-session-id'] as string | undefined;
-
-    let transport: StreamableHTTPServerTransport | undefined;
-    
-    // Check if the session ID exists in the transport cache; if so reuse the transport
-    if (sessionId) {
-      transport = transportCache.get(sessionId);
-    }
-
-    if (!sessionId || !transport) {
-      res.status(400).send('Invalid or missing session ID');
-      return;
-    }
-    
-    // Authenticate once for the entire server after the first SSE stream is established
-    // This ensures the client can receive authentication log messages
-    if (!isServerAuthenticated) {
-      isServerAuthenticated = true; // Set immediately to prevent race conditions
-      try {
-        await authenticateClient();
-      } catch (error) {
-        console.error('Authentication error:', error);
-        // Continue anyway - the error will be logged via sendLoggingMessage
-      }
-    }
-    
-    // Handle the request
-    await transport.handleRequest(req, res);
+  // GET: Session management not supported - return HTTP 405
+  app.get('/mcp', (req, res) => {
+    res.status(405).end();
   });
-
-  // Handle DELETE requests for session termination
-  app.delete('/mcp', handleSessionRequest);
 
   // Health check endpoint
   app.get('/health', (req, res) => {
@@ -256,13 +181,31 @@ async function runHttp(config: UptimeKumaConfig) {
 
   const port = parseInt(process.env.PORT || '3000');
   
-  app.listen(port, () => {
+  const httpServer = app.listen(port, () => {
     console.log(`mcp-uptime-kuma server running on http://localhost:${port}/mcp`);
     console.log(`Health check available at http://localhost:${port}/health`);
   }).on('error', (error) => {
     process.stderr.write(`Server error: ${error}\n`);
     process.exit(1);
   });
+
+  // Graceful shutdown
+  const shutdown = () => {
+    console.log('\n[MCP] Shutting down gracefully...');
+    httpServer.close(() => {
+      console.log('[MCP] Server closed');
+      process.exit(0);
+    });
+    
+    // Force exit after 10 seconds
+    setTimeout(() => {
+      console.error('[MCP] Forced shutdown after timeout');
+      process.exit(1);
+    }, 10000);
+  };
+
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
 }
 
 // Main entry point
