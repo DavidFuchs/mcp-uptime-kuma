@@ -200,16 +200,16 @@ Token-based authentication using a JWT token from Uptime Kuma. This method uses 
 This package includes a handy command-line utility to retrieve a JWT token directly from your Uptime Kuma instance:
 
 ```bash
-npx @davidfuchs/mcp-uptime-kuma-get-jwt <url> <username> <password> [2fa-token]
+npx -p @davidfuchs/mcp-uptime-kuma mcp-uptime-kuma-get-jwt <url> <username> <password> [2fa-token]
 ```
 
 **Examples:**
 ```bash
 # Without 2FA
-npx @davidfuchs/mcp-uptime-kuma-get-jwt http://localhost:3001 admin mypassword
+npx -p @davidfuchs/mcp-uptime-kuma mcp-uptime-kuma-get-jwt http://localhost:3001 admin mypassword
 
 # With 2FA
-npx @davidfuchs/mcp-uptime-kuma-get-jwt http://localhost:3001 admin mypassword 123456
+npx -p @davidfuchs/mcp-uptime-kuma mcp-uptime-kuma-get-jwt http://localhost:3001 admin mypassword 123456
 ```
 
 **Method 2: Using Docker**
