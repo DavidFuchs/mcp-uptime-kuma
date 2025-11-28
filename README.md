@@ -193,12 +193,53 @@ Token-based authentication using a JWT token from Uptime Kuma. This method uses 
   - `UPTIME_KUMA_URL`: The URL of your Uptime Kuma instance
   - `UPTIME_KUMA_JWT_TOKEN`: Your JWT token (see instructions below for how to obtain it)
 
-##### How to Find Your JWT Token:
+##### How to Obtain Your JWT Token:
+
+**Method 1: Using the JWT Helper Utility (Recommended)**
+
+This package includes a handy command-line utility to retrieve a JWT token directly from your Uptime Kuma instance:
+
+```bash
+npx @davidfuchs/mcp-uptime-kuma-get-jwt <url> <username> <password> [2fa-token]
+```
+
+**Examples:**
+```bash
+# Without 2FA
+npx @davidfuchs/mcp-uptime-kuma-get-jwt http://localhost:3001 admin mypassword
+
+# With 2FA
+npx @davidfuchs/mcp-uptime-kuma-get-jwt http://localhost:3001 admin mypassword 123456
+```
+
+**Method 2: Using Docker**
+
+You can also use the Docker image to retrieve the JWT token:
+
+```bash
+docker run --rm --entrypoint node davidfuchs/mcp-uptime-kuma:latest \
+  dist/get-jwt.js <url> <username> <password> [2fa-token]
+```
+
+**Examples:**
+```bash
+# Without 2FA
+docker run --rm --entrypoint node davidfuchs/mcp-uptime-kuma:latest \
+  dist/get-jwt.js http://host.docker.internal:3001 admin mypassword
+
+# With 2FA
+docker run --rm --entrypoint node davidfuchs/mcp-uptime-kuma:latest \
+  dist/get-jwt.js http://host.docker.internal:3001 admin mypassword 123456
+```
+
+> **Note:** If Docker and your Uptime Kuma instance are on the same machine, use `http://host.docker.internal:3001` instead of `http://localhost:3001` to access the host machine from within the container.
+
+**Method 3: Extract from Browser**
 
 1. Log into your Uptime Kuma instance in your web browser
 2. Open your browser's Developer Tools (F12 or right-click → Inspect)
 3. Navigate to the **Storage** tab (Firefox) or **Application** tab (Chrome/Edge)
-4. Under **Local Storage** or **Session Storage**, find your Uptime Kuma domain
+4. Under **Local Storage** find your Uptime Kuma domain
 5. Look for a key named `token` - the value is your JWT token (it should start with 'ey...')
 6. Copy the token value and use it as `UPTIME_KUMA_JWT_TOKEN`
 
