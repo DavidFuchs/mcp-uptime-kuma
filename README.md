@@ -217,19 +217,16 @@ npx @davidfuchs/mcp-uptime-kuma-get-jwt http://localhost:3001 admin mypassword 1
 You can also use the Docker image to retrieve the JWT token:
 
 ```bash
-docker run --rm --entrypoint node davidfuchs/mcp-uptime-kuma:latest \
-  dist/get-jwt.js <url> <username> <password> [2fa-token]
+docker run --rm davidfuchs/mcp-uptime-kuma:latest get-jwt <url> <username> <password> [2fa-token]
 ```
 
 **Examples:**
 ```bash
 # Without 2FA
-docker run --rm --entrypoint node davidfuchs/mcp-uptime-kuma:latest \
-  dist/get-jwt.js http://host.docker.internal:3001 admin mypassword
+docker run --rm davidfuchs/mcp-uptime-kuma:latest get-jwt http://host.docker.internal:3001 admin mypassword
 
 # With 2FA
-docker run --rm --entrypoint node davidfuchs/mcp-uptime-kuma:latest \
-  dist/get-jwt.js http://host.docker.internal:3001 admin mypassword 123456
+docker run --rm davidfuchs/mcp-uptime-kuma:latest get-jwt http://host.docker.internal:3001 admin mypassword 123456
 ```
 
 > **Note:** If Docker and your Uptime Kuma instance are on the same machine, use `http://host.docker.internal:3001` instead of `http://localhost:3001` to access the host machine from within the container.
