@@ -54,7 +54,7 @@ export const MonitorBaseSchema = z.object({
     'keyword',
     'json-query',
     'ping',
-    'tcp',
+    'port',
     'dns',
     'docker',
     'mqtt',
@@ -92,7 +92,7 @@ export const MonitorBaseSchema = z.object({
   accepted_statuscodes: z.array(z.string()).default(['200-299']).describe('Accepted status codes (must be strings)'),
 
   // Notifications
-  notificationIDList: z.record(z.number(), z.boolean()).optional().describe('Notification ID to enabled map'),
+  notificationIDList: z.record(z.string(), z.boolean()).optional().describe('Notification ID to enabled map'),
 
   // Tags (read-only, use TagsManager for modification)
   tags: z.array(MonitorTagSchema).optional().describe('Associated tags'),

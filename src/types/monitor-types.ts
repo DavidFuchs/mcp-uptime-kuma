@@ -334,7 +334,7 @@ export interface MonitorRawData {
   timeout?: number;
   upsideDown?: boolean;
   accepted_statuscodes?: string[];
-  notificationIDList?: { [key: number]: boolean };
+  notificationIDList?: { [key: string]: boolean };
   tags?: Array<{
     tag_id?: number;
     monitor_id?: number;
