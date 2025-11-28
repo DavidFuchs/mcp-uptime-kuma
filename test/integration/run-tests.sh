@@ -37,9 +37,6 @@ EOF
     exit 1
 fi
 
-# Load environment variables
-source .env.test
-
 # Function to check if Uptime Kuma is ready
 wait_for_uptime_kuma() {
     echo "⏳ Waiting for Uptime Kuma to be ready..."
@@ -97,13 +94,7 @@ echo ""
 echo "🧪 Running integration tests..."
 echo ""
 
-# Export environment variables for the test
-export UPTIME_KUMA_URL
-export UPTIME_KUMA_USERNAME
-export UPTIME_KUMA_PASSWORD
-export UPTIME_KUMA_JWT_TOKEN
-
-# Run the tests
+# Run the tests (environment loaded from .env.test by the test file itself)
 cd ../..
 npx tsx test/integration/integration.test.ts
 

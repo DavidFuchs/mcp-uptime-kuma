@@ -3,9 +3,13 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { config as dotenvConfig } from 'dotenv';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+// Load .env.test file from the integration test directory
+dotenvConfig({ path: join(__dirname, '.env.test') });
 
 interface TestConfig {
   url: string;
@@ -87,8 +91,7 @@ export class MCPIntegrationTest {
       await this.client.listTools();
       console.log('✅ Server authenticated and ready');
     } catch (error) {
-      console.error('❌ Failed to connect:', error);
-      throw error;
+      throw new Error('Failed to connect to MCP server. Check credentials and server availability.');
     }
   }
 
@@ -164,6 +167,10 @@ export class MCPIntegrationTest {
       throw new Error('No text content in response');
     }
 
+    if (result.isError) {
+      throw new Error(`MCP error: ${textContent.text}`);
+    }
+
     const summaries = JSON.parse(textContent.text);
     console.log(`Found ${summaries.length} monitors`);
 
@@ -201,6 +208,10 @@ export class MCPIntegrationTest {
       throw new Error('No text content in response');
     }
 
+    if (result.isError) {
+      throw new Error(`MCP error: ${textContent.text}`);
+    }
+
     const monitors = JSON.parse(textContent.text);
     console.log(`Found ${monitors.length} monitors`);
 
@@ -233,6 +244,10 @@ export class MCPIntegrationTest {
       throw new Error('No text content in list response');
     }
 
+    if (listResult.isError) {
+      throw new Error(`MCP error: ${textContent.text}`);
+    }
+
     const monitors = JSON.parse(textContent.text);
     
     if (monitors.length === 0) {
@@ -255,6 +270,10 @@ export class MCPIntegrationTest {
     const monitorContent = result.content.find((c: any) => c.type === 'text');
     if (!monitorContent || monitorContent.type !== 'text') {
       throw new Error('No text content in response');
+    }
+
+    if (result.isError) {
+      throw new Error(`MCP error: ${monitorContent.text}`);
     }
 
     const monitor = JSON.parse(monitorContent.text);
@@ -284,6 +303,10 @@ export class MCPIntegrationTest {
       throw new Error('No text content in list response');
     }
 
+    if (listResult.isError) {
+      throw new Error(`MCP error: ${textContent.text}`);
+    }
+
     const monitors = JSON.parse(textContent.text);
     
     if (monitors.length === 0) {
@@ -309,6 +332,10 @@ export class MCPIntegrationTest {
     const heartbeatContent = result.content.find((c: any) => c.type === 'text');
     if (!heartbeatContent || heartbeatContent.type !== 'text') {
       throw new Error('No text content in response');
+    }
+
+    if (result.isError) {
+      throw new Error(`MCP error: ${heartbeatContent.text}`);
     }
 
     const heartbeats = JSON.parse(heartbeatContent.text);
@@ -343,6 +370,10 @@ export class MCPIntegrationTest {
     const textContent = result.content.find((c: any) => c.type === 'text');
     if (!textContent || textContent.type !== 'text') {
       throw new Error('No text content in response');
+    }
+
+    if (result.isError) {
+      throw new Error(`MCP error: ${textContent.text}`);
     }
 
     let settings;
@@ -382,6 +413,10 @@ export class MCPIntegrationTest {
     const textContent = result.content.find((c: any) => c.type === 'text');
     if (!textContent || textContent.type !== 'text') {
       throw new Error('No text content in response');
+    }
+
+    if (result.isError) {
+      throw new Error(`MCP error: ${textContent.text}`);
     }
 
     const heartbeatData = JSON.parse(textContent.text);
@@ -445,11 +480,6 @@ async function main() {
     jwtToken: process.env.UPTIME_KUMA_JWT_TOKEN,
   };
 
-  if (!config.username && !config.jwtToken) {
-    console.error('❌ Error: UPTIME_KUMA_USERNAME or UPTIME_KUMA_JWT_TOKEN must be set');
-    process.exit(1);
-  }
-
   if (config.username && !config.password) {
     console.error('❌ Error: UPTIME_KUMA_PASSWORD must be set when using username authentication');
     process.exit(1);
@@ -471,6 +501,6 @@ async function main() {
 }
 
 // Run if executed directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url.endsWith('integration.test.ts') || import.meta.url === `file://${process.argv[1]}`) {
   main();
 }

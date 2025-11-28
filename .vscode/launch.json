@@ -1,7 +1,6 @@
 {
     "version": "0.2.0",
     "configurations": [
-        
         {
             "type": "node",
             "request": "launch",
@@ -14,6 +13,27 @@
             "outFiles": [
                 "${workspaceFolder}/dist/**/*.js"
             ]
+        },
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "Debug Integration Tests",
+            "skipFiles": [
+                "<node_internals>/**"
+            ],
+            "runtimeArgs": [
+                "--import",
+                "tsx"
+            ],
+            "program": "${workspaceFolder}/test/integration/integration.test.ts",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "UPTIME_KUMA_URL": "${env:UPTIME_KUMA_URL}",
+                "UPTIME_KUMA_USERNAME": "${env:UPTIME_KUMA_USERNAME}",
+                "UPTIME_KUMA_PASSWORD": "${env:UPTIME_KUMA_PASSWORD}"
+            },
+            "console": "integratedTerminal",
+            "internalConsoleOptions": "neverOpen"
         }
     ]
 }
