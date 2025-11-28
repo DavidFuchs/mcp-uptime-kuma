@@ -5,10 +5,10 @@ services:
     container_name: mcp-uptime-kuma
     environment:
       - UPTIME_KUMA_URL=${UPTIME_KUMA_URL} # Required
-      - UPTIME_KUMA_USERNAME=${UPTIME_KUMA_USERNAME} # Optional, if using username/password authentication
-      - UPTIME_KUMA_PASSWORD=${UPTIME_KUMA_PASSWORD} # Optional, if using username/password authentication
-      - UPTIME_KUMA_JWT_TOKEN=${UPTIME_KUMA_JWT_TOKEN} # Optional, if using JWT authentication
-      - PORT=3000 # Internal port. This is optional, defaults to 3000
+#      - UPTIME_KUMA_USERNAME=${UPTIME_KUMA_USERNAME} # Optional, if using username/password authentication
+#      - UPTIME_KUMA_PASSWORD=${UPTIME_KUMA_PASSWORD} # Optional, if using username/password authentication
+#      - UPTIME_KUMA_JWT_TOKEN=${UPTIME_KUMA_JWT_TOKEN} # Optional, if using JWT authentication
+#      - PORT=3000 # Internal port. This is optional, defaults to 3000
     ports:
       - "3000:3000"
     # Override default CMD to use streamable HTTP transport instead of stdio

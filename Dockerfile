@@ -1,3 +1,4 @@
+# check=skip=SecretsUsedInArgOrEnv
 # Build stage
 FROM node:18-alpine AS builder
 
@@ -6,10 +7,10 @@ ARG VERSION=dev
 
 # Metadata labels
 LABEL org.opencontainers.image.title="mcp-uptime-kuma"
-LABEL org.opencontainers.image.description="A Model Context Protocol server for Uptime Kuma v2 supporting stdio and streamable HTTP transports"
+LABEL org.opencontainers.image.description="A Model Context Protocol server for Uptime Kuma v2."
 LABEL org.opencontainers.image.version="${VERSION}"
 LABEL org.opencontainers.image.authors="David Fuchs <david@davidfuchs.ca>"
-LABEL org.opencontainers.image.url="https://github.com/DavidFuchs/mcp-uptime-kuma"
+LABEL org.opencontainers.image.url="https://hub.docker.com/r/davidfuchs/mcp-uptime-kuma"
 LABEL org.opencontainers.image.source="https://github.com/DavidFuchs/mcp-uptime-kuma"
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.documentation="https://github.com/DavidFuchs/mcp-uptime-kuma#readme"
@@ -43,7 +44,11 @@ RUN npm ci --only=production
 # Copy built files from builder stage
 COPY --from=builder /app/dist ./dist
 
-# Set environment variables (these should be overridden at runtime)
+# Copy entrypoint script
+COPY docker-entrypoint.sh ./
+RUN chmod +x docker-entrypoint.sh
+
+# Set environment variables (documentation and runtime override)
 ENV UPTIME_KUMA_URL=""
 ENV UPTIME_KUMA_USERNAME=""
 ENV UPTIME_KUMA_PASSWORD=""
@@ -56,5 +61,5 @@ ENV PORT=3000
 EXPOSE 3000
 
 # Run the application (default to stdio transport)
-ENTRYPOINT ["node", "dist/index.js"]
+ENTRYPOINT ["./docker-entrypoint.sh"]
 CMD ["-t", "stdio"]

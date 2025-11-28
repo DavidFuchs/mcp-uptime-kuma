@@ -6,7 +6,8 @@
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "mcp-uptime-kuma": "dist/index.js"
+    "mcp-uptime-kuma": "dist/index.js",
+    "mcp-uptime-kuma-get-jwt": "dist/get-jwt.js"
   },
   "files": [
     "dist",
@@ -23,7 +24,8 @@
     "dev:http": "tsx src/index.ts -t streamable-http",
     "watch": "tsc --watch",
     "inspector": "npx @modelcontextprotocol/inspector tsx src/index.ts",
-    "test:integration": "cd test/integration && ./run-tests.sh"
+    "test:integration": "cd test/integration && ./run-tests.sh",
+    "test:integration:direct": "tsx test/integration/integration.test.ts"
   },
   "keywords": [
     "mcp",
@@ -60,6 +62,7 @@
   "devDependencies": {
     "@types/express": "^5.0.0",
     "@types/node": "^22.10.2",
+    "@types/node-cache": "^4.1.3",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   },
