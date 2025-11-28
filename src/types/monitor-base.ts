@@ -9,9 +9,9 @@ export const MonitorSummarySchema = z.object({
   id: z.number().describe('Monitor ID'),
   name: z.string().describe('Monitor name'),
   type: z.string().describe('Monitor type'),
-  active: z.boolean().describe('Active/enabled'),
+  active: z.coerce.boolean().describe('Active/enabled'),
   pathName: z.string().describe('Full hierarchical path'),
-  maintenance: z.boolean().describe('In maintenance mode'),
+  maintenance: z.coerce.boolean().describe('In maintenance mode'),
   tags: z.array(MonitorTagSchema).optional().describe('Associated tags'),
   uptime: z.record(z.string(), z.number()).optional().describe('Uptime % by period (24h/720h/1y)'),
   avgPing: z.number().nullable().optional().describe('24h average ping (ms)'),
@@ -76,7 +76,7 @@ export const MonitorBaseSchema = z.object({
     'tailscale-ping',
     'manual',
   ]).describe('Monitor type'),
-  active: z.boolean().optional().default(true).describe('Start monitoring immediately'),
+  active: z.coerce.boolean().optional().default(true).describe('Start monitoring immediately'),
   parent: z.number().nullable().optional().describe('Parent group ID (null for root)'),
   weight: z.number().nullable().optional().describe('Display order weight'),
 
@@ -88,7 +88,7 @@ export const MonitorBaseSchema = z.object({
 
   // Status Handling
   maxretries: z.number().default(0).describe('Max retries before marking as down'),
-  upsideDown: z.boolean().default(false).describe('Invert status (down = up, up = down)'),
+  upsideDown: z.coerce.boolean().default(false).describe('Invert status (down = up, up = down)'),
   accepted_statuscodes: z.array(z.string()).default(['200-299']).describe('Accepted status codes (must be strings)'),
 
   // Notifications
@@ -102,12 +102,12 @@ export const MonitorBaseSchema = z.object({
 
   // Read-only fields (set by system)
   user_id: z.number().optional().describe('Owner user ID'),
-  maintenance: z.boolean().optional().describe('In maintenance mode'),
+  maintenance: z.coerce.boolean().optional().describe('In maintenance mode'),
   path: z.array(z.string()).optional().describe('Hierarchical path array'),
   pathName: z.string().optional().describe('Full hierarchical path'),
   childrenIDs: z.array(z.number()).optional().describe('Child monitor IDs (for groups)'),
-  forceInactive: z.boolean().optional().describe('Force inactive state'),
-  includeSensitiveData: z.boolean().optional().describe('Whether sensitive data is included'),
+  forceInactive: z.coerce.boolean().optional().describe('Force inactive state'),
+  includeSensitiveData: z.coerce.boolean().optional().describe('Whether sensitive data is included'),
 });
 
 /**
