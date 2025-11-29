@@ -44,6 +44,8 @@ Add this to your MCP client configuration:
 
 ### Using Docker (streamable HTTP transport)
 
+**Option 1: Docker Run**
+
 ```bash
 docker run -d \
   --name mcp-uptime-kuma \
@@ -55,7 +57,15 @@ docker run -d \
   -t streamable-http
 ```
 
-Then configure your MCP client:
+**Option 2: Docker Compose**
+
+A [docker-compose.yml](docker-compose.yml) file is provided in the repository. Download it, configure your environment variables, and run:
+
+```bash
+docker compose up -d
+```
+
+Then configure your MCP client to connect to the endpoint:
 
 ```json
 {
@@ -141,9 +151,7 @@ docker run --rm davidfuchs/mcp-uptime-kuma:latest get-jwt http://host.docker.int
 
 **From browser:** Open Developer Tools → Storage/Application → Local Storage → find `token` key.
 
-## Configuration Examples
-
-### LibreChat (librechat.yaml)
+## LibreChat Configuration
 
 **stdio transport:**
 ```yaml
@@ -165,14 +173,6 @@ mcpServers:
     type: streamable-http
     url: "http://mcp-uptime-kuma:3000/mcp"
     serverInstructions: true
-```
-
-### Docker Compose
-
-A [docker-compose.yml](docker-compose.yml) file is provided in the repository. Download it, configure your environment variables, and run:
-
-```bash
-docker compose up -d
 ```
 
 ## Contributing
