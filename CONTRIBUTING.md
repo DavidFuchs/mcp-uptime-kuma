@@ -94,10 +94,23 @@ Connect to: `http://localhost:3000/mcp`
 
 ### Integration Tests
 
-Run the full integration test suite:
+Run the full integration test suite (recommended):
 
 ```bash
 npm run test:integration
+```
+
+This uses the `run-tests.sh` script which automatically spins up an Uptime Kuma instance via Docker, runs the tests, and cleans up afterwards.
+
+**Running tests against your own instance:**
+
+If you already have an Uptime Kuma instance running, you can run the tests directly:
+
+```bash
+export UPTIME_KUMA_URL=http://localhost:3001
+export UPTIME_KUMA_USERNAME=admin
+export UPTIME_KUMA_PASSWORD=your_password
+npm run test:integration:direct
 ```
 
 See [test/TESTING.md](test/TESTING.md) for detailed testing documentation.
