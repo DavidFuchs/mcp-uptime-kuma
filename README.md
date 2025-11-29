@@ -184,3 +184,4 @@ For development setup, building, testing, and project structure, see [CONTRIBUTI
 - [Uptime Kuma](https://github.com/louislam/uptime-kuma)
 - [Model Context Protocol Documentation](https://modelcontextprotocol.io/)
 - [MCP TypeScript SDK](https://www.npmjs.com/package/@modelcontextprotocol/sdk)
+- [MCP Specification](https://spec.modelcontextprotocol.io/)
