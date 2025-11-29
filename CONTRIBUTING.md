@@ -79,18 +79,7 @@ You can test the server using the MCP Inspector:
 npm run inspector
 ```
 
-### HTTP Transport Testing
-
-Start the HTTP server:
-```bash
-npm run dev:http
-```
-
-Then use the MCP Inspector:
-```bash
-npx @modelcontextprotocol/inspector
-```
-Connect to: `http://localhost:3000/mcp`
+For HTTP transport testing, start the HTTP server first (`npm run dev:http`), then run `npm run inspector` and connect to `http://localhost:3000/mcp`.
 
 ### Integration Tests
 
