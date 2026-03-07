@@ -55,6 +55,7 @@ export class UptimeKumaClient {
   private avgPingCache: { [monitorID: string]: number | null } = {};
   private server?: { sendLoggingMessage: (params: { level: LoggingLevel; data: unknown }) => Promise<void> };
   private shouldLog: (level: LoggingLevel) => boolean;
+  private loginCredentials: { username: string | undefined; password: string | undefined; token?: string; jwtToken?: string } | null = null;
 
   constructor(
     url: string, 
@@ -88,19 +89,69 @@ export class UptimeKumaClient {
       this.socket = io(this.url, {
         reconnection: true,
         reconnectionDelay: 1000,
-        reconnectionAttempts: 5,
+        reconnectionAttempts: Infinity,
       });
 
+      let initialConnect = true;
+
       this.socket.on('connect', () => {
-        this.safeLog('info', 'Successfully connected to Uptime Kuma server');
-        resolve();
+        if (initialConnect) {
+          initialConnect = false;
+          this.safeLog('info', 'Successfully connected to Uptime Kuma server');
+          resolve();
+        } else {
+          this.safeLog('info', 'Reconnected to Uptime Kuma server, re-authenticating...');
+          this.reauthenticate();
+        }
       });
 
       this.socket.on('connect_error', (error: Error) => {
         this.safeLog('error', `Connection error: ${error.message}`);
-        reject(new Error(`Connection failed: ${error.message}`));
+        if (initialConnect) {
+          reject(new Error(`Connection failed: ${error.message}`));
+        }
       });
     });
+  }
+
+  /**
+   * Re-authenticate after a reconnection to refresh all cached data.
+   * When the server restarts or the connection drops, Socket.IO reconnects
+   * the transport but the server no longer considers the client authenticated.
+   * Without re-emitting login, the server won't send monitorList or heartbeat
+   * events, leaving the cache permanently stale.
+   */
+  private reauthenticate(): void {
+    if (!this.socket || !this.loginCredentials) return;
+
+    // Clear stale caches so they are fully replaced by fresh data from the server
+    this.monitorListCache = {};
+    this.heartbeatListCache = {};
+    this.uptimeCache = {};
+    this.avgPingCache = {};
+
+    const { username, password, token, jwtToken } = this.loginCredentials;
+
+    if (jwtToken) {
+      this.socket.emit('loginByToken', jwtToken, (response: LoginResponse) => {
+        if (response.ok) {
+          this.safeLog('info', 'Re-authenticated after reconnection (JWT)');
+        } else {
+          this.safeLog('error', `Re-authentication failed: ${response.msg || 'unknown error'}`);
+        }
+      });
+    } else if (username) {
+      this.socket.emit('login', { username, password, token }, (response: LoginResponse) => {
+        if (response.ok) {
+          this.safeLog('info', 'Re-authenticated after reconnection');
+        } else {
+          this.safeLog('error', `Re-authentication failed: ${response.msg || 'unknown error'}`);
+        }
+      });
+    } else {
+      this.socket.emit('login');
+      this.safeLog('info', 'Re-authenticated after reconnection (anonymous)');
+    }
   }
 
   /**
@@ -141,6 +192,9 @@ export class UptimeKumaClient {
         reject(new Error('Not connected to server'));
         return;
       }
+
+      // Store credentials for re-authentication on reconnect
+      this.loginCredentials = { username, password, token, jwtToken };
 
       // Set up listeners for monitor list and heartbeat updates before login
       this.setupMonitorListListeners();
