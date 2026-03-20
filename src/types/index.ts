@@ -28,3 +28,12 @@ export * from './monitor-base.js';
 
 // Monitor Type Schemas (all specific monitor types, Monitor, MonitorCreate, MonitorUpdate, MonitorBaseWithExtendedData, MonitorWithExtendedData, MonitorRawData)
 export * from './monitor-types.js';
+
+// Notification schemas
+export * from './notification.js';
+
+// Maintenance window schemas
+export * from './maintenance.js';
+
+// Status page schemas
+export * from './status-page.js';

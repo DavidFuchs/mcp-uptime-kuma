@@ -16,6 +16,9 @@ import type {
   HeartbeatList,
   GetSettingsResponse,
   Settings,
+  Notification,
+  Maintenance,
+  StatusPage,
 } from './types/index.js';
 
 /**
@@ -53,6 +56,10 @@ export class UptimeKumaClient {
   private heartbeatListCache: HeartbeatList<true> = {};
   private uptimeCache: { [monitorID: string]: { [periodKey: string]: number } } = {};
   private avgPingCache: { [monitorID: string]: number | null } = {};
+  private notificationListCache: { [id: string]: Notification } = {};
+  private tagListCache: Array<{ id: number; name: string; color: string }> = [];
+  private maintenanceListCache: { [id: string]: Maintenance } = {};
+  private statusPageListCache: { [slug: string]: StatusPage } = {};
   private server?: { sendLoggingMessage: (params: { level: LoggingLevel; data: unknown }) => Promise<void> };
   private shouldLog: (level: LoggingLevel) => boolean;
 
@@ -114,16 +121,24 @@ export class UptimeKumaClient {
       this.socket.off('deleteMonitorFromList');
       this.socket.off('heartbeatList');
       this.socket.off('heartbeat');
-      
+      this.socket.off('notificationList');
+      this.socket.off('tagList');
+      this.socket.off('maintenanceList');
+      this.socket.off('statusPageList');
+
       this.socket.disconnect();
       this.socket = null;
     }
-    
+
     // Clear the caches
     this.monitorListCache = {};
     this.heartbeatListCache = {};
     this.uptimeCache = {};
     this.avgPingCache = {};
+    this.notificationListCache = {};
+    this.tagListCache = [];
+    this.maintenanceListCache = {};
+    this.statusPageListCache = {};
   }
 
   /**
@@ -147,6 +162,10 @@ export class UptimeKumaClient {
       this.setupHeartbeatListeners();
       this.setupUptimeListeners();
       this.setupAvgPingListeners();
+      this.setupNotificationListListeners();
+      this.setupTagListListeners();
+      this.setupMaintenanceListListeners();
+      this.setupStatusPageListListeners();
 
       // If JWT token is provided, use token-based authentication
       if (jwtToken) {
@@ -645,6 +664,275 @@ export class UptimeKumaClient {
     
     return summaries;
   }
+
+  // ─── New listener setup methods ────────────────────────────────────────────
+
+  private setupNotificationListListeners(): void {
+    if (!this.socket) return;
+    this.socket.on('notificationList', (notificationList: { [id: string]: any }) => {
+      this.safeLog('debug', `Received notificationList with ${Object.keys(notificationList).length} notifications`);
+      this.notificationListCache = notificationList as { [id: string]: Notification };
+    });
+  }
+
+  private setupTagListListeners(): void {
+    if (!this.socket) return;
+    this.socket.on('tagList', (tagList: Array<{ id: number; name: string; color: string }>) => {
+      this.safeLog('debug', `Received tagList with ${tagList.length} tags`);
+      this.tagListCache = tagList;
+    });
+  }
+
+  private setupMaintenanceListListeners(): void {
+    if (!this.socket) return;
+    this.socket.on('maintenanceList', (maintenanceList: { [id: string]: any }) => {
+      this.safeLog('debug', `Received maintenanceList with ${Object.keys(maintenanceList).length} windows`);
+      this.maintenanceListCache = maintenanceList as { [id: string]: Maintenance };
+    });
+  }
+
+  private setupStatusPageListListeners(): void {
+    if (!this.socket) return;
+    this.socket.on('statusPageList', (statusPageList: { [slug: string]: any }) => {
+      this.safeLog('debug', `Received statusPageList with ${Object.keys(statusPageList).length} status pages`);
+      this.statusPageListCache = statusPageList as { [slug: string]: StatusPage };
+    });
+  }
+
+  // ─── Monitor write operations ───────────────────────────────────────────────
+
+  /**
+   * Create a new monitor
+   *
+   * @param monitorData - Monitor configuration (type-specific fields should be included)
+   * @returns Promise resolving to the API response with the new monitorID
+   */
+  createMonitor(monitorData: Record<string, unknown>): Promise<ApiResponse & { monitorID?: number }> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      this.socket.emit('add', monitorData, (response: ApiResponse & { monitorID?: number }) => {
+        if (response.ok) {
+          this.safeLog('info', `Successfully created monitor (ID: ${response.monitorID})`);
+          resolve(response);
+        } else {
+          reject(new Error(response.msg || 'Failed to create monitor'));
+        }
+      });
+    });
+  }
+
+  /**
+   * Update an existing monitor
+   *
+   * @param monitorData - Monitor configuration including the id field
+   * @returns Promise resolving to the API response
+   */
+  updateMonitor(monitorData: Record<string, unknown>): Promise<ApiResponse & { monitorID?: number }> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      this.socket.emit('editMonitor', monitorData, (response: ApiResponse & { monitorID?: number }) => {
+        if (response.ok) {
+          this.safeLog('info', `Successfully updated monitor (ID: ${monitorData['id']})`);
+          resolve(response);
+        } else {
+          reject(new Error(response.msg || 'Failed to update monitor'));
+        }
+      });
+    });
+  }
+
+  /**
+   * Delete a monitor
+   *
+   * @param monitorID - The ID of the monitor to delete
+   * @returns Promise resolving to the API response
+   */
+  deleteMonitor(monitorID: number): Promise<ApiResponse> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      this.socket.emit('deleteMonitor', monitorID, (response: ApiResponse) => {
+        if (response.ok) {
+          this.safeLog('info', `Successfully deleted monitor ${monitorID}`);
+          resolve(response);
+        } else {
+          reject(new Error(response.msg || 'Failed to delete monitor'));
+        }
+      });
+    });
+  }
+
+  // ─── Notification operations ────────────────────────────────────────────────
+
+  /**
+   * Get the cached notification list
+   */
+  getNotificationList(): Notification[] {
+    return Object.values(this.notificationListCache);
+  }
+
+  /**
+   * Add or update a notification channel
+   *
+   * @param notification - Notification configuration
+   * @param notificationID - If provided, updates existing; otherwise creates new
+   * @returns Promise resolving to the API response with the notification id
+   */
+  addNotification(notification: Record<string, unknown>, notificationID?: number): Promise<ApiResponse & { id?: number }> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      const id = notificationID ?? null;
+      this.socket.emit('addNotification', notification, id, (response: ApiResponse & { id?: number }) => {
+        if (response.ok) {
+          this.safeLog('info', `Successfully saved notification (ID: ${response.id})`);
+          resolve(response);
+        } else {
+          reject(new Error(response.msg || 'Failed to save notification'));
+        }
+      });
+    });
+  }
+
+  /**
+   * Delete a notification channel
+   *
+   * @param notificationID - The ID of the notification to delete
+   * @returns Promise resolving to the API response
+   */
+  deleteNotification(notificationID: number): Promise<ApiResponse> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      this.socket.emit('deleteNotification', notificationID, (response: ApiResponse) => {
+        if (response.ok) {
+          this.safeLog('info', `Successfully deleted notification ${notificationID}`);
+          resolve(response);
+        } else {
+          reject(new Error(response.msg || 'Failed to delete notification'));
+        }
+      });
+    });
+  }
+
+  // ─── Tag operations ─────────────────────────────────────────────────────────
+
+  /**
+   * Get the cached tag list
+   */
+  getTagList(): Array<{ id: number; name: string; color: string }> {
+    return this.tagListCache;
+  }
+
+  /**
+   * Create a new tag
+   *
+   * @param name - Tag name
+   * @param color - Tag color (hex string, e.g. '#ff0000')
+   * @returns Promise resolving to the created tag object
+   */
+  addTag(name: string, color: string): Promise<ApiResponse & { tag?: { id: number; name: string; color: string } }> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      this.socket.emit('addTag', { name, color }, (response: ApiResponse & { tag?: { id: number; name: string; color: string } }) => {
+        if (response.ok) {
+          this.safeLog('info', `Successfully created tag "${name}" (ID: ${response.tag?.id})`);
+          resolve(response);
+        } else {
+          reject(new Error(response.msg || 'Failed to create tag'));
+        }
+      });
+    });
+  }
+
+  /**
+   * Delete a tag
+   *
+   * @param tagID - The ID of the tag to delete
+   * @returns Promise resolving to the API response
+   */
+  deleteTag(tagID: number): Promise<ApiResponse> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      this.socket.emit('deleteTag', tagID, (response: ApiResponse) => {
+        if (response.ok) {
+          this.safeLog('info', `Successfully deleted tag ${tagID}`);
+          resolve(response);
+        } else {
+          reject(new Error(response.msg || 'Failed to delete tag'));
+        }
+      });
+    });
+  }
+
+  // ─── Maintenance operations ─────────────────────────────────────────────────
+
+  /**
+   * Get the cached maintenance window list
+   */
+  getMaintenanceList(): Maintenance[] {
+    return Object.values(this.maintenanceListCache);
+  }
+
+  /**
+   * Create a new maintenance window
+   *
+   * @param maintenanceData - Maintenance window configuration
+   * @returns Promise resolving to the API response with the maintenance ID
+   */
+  createMaintenance(maintenanceData: Record<string, unknown>): Promise<ApiResponse & { maintenanceID?: number }> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      this.socket.emit('addMaintenance', maintenanceData, (response: ApiResponse & { maintenanceID?: number }) => {
+        if (response.ok) {
+          this.safeLog('info', `Successfully created maintenance window (ID: ${response.maintenanceID})`);
+          resolve(response);
+        } else {
+          reject(new Error(response.msg || 'Failed to create maintenance window'));
+        }
+      });
+    });
+  }
+
+  // ─── Status page operations ─────────────────────────────────────────────────
+
+  /**
+   * Get the cached status page list
+   */
+  getStatusPageList(): StatusPage[] {
+    return Object.values(this.statusPageListCache);
+  }
+
+  // ─── Socket accessor ─────────────────────────────────────────────────────────
 
   /**
    * Get the socket instance (for advanced usage)
