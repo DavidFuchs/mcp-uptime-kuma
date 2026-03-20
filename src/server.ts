@@ -100,7 +100,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       title: 'Get Monitor',
       description: 'Retrieves configuration details for a specific monitor by ID (URL, check interval, notification settings, etc.). Use this when you need to examine or modify settings for a specific monitor. For current status, use getMonitorSummary instead. By default returns only common fields plus runtime data (uptime, avgPing); set includeTypeSpecificFields to true to include type-specific fields (e.g., url for HTTP, hostname/port for TCP).',
       inputSchema: { 
-        monitorID: z.number().int().nonnegative().describe('The ID of the monitor to retrieve'),
+        monitorID: z.coerce.number().int().nonnegative().describe('The ID of the monitor to retrieve'),
         includeTypeSpecificFields: z.boolean().optional().describe('Include type-specific fields (url, hostname, port, etc.) in addition to common fields. Default: false. When false, only returns MonitorBase fields plus uptime/avgPing.')
       },
       outputSchema: { 
@@ -305,8 +305,8 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       title: 'Get Heartbeats',
       description: 'Retrieves historical heartbeat data for a specific monitor (response times, status changes over time). Use this for analyzing patterns or history for one monitor. By default returns only the most recent heartbeat; set maxHeartbeats (up to 100) for historical analysis. Keep maxHeartbeats ≤10 unless user requests more.',
       inputSchema: {
-        monitorID: z.number().int().nonnegative().describe('The ID of the monitor to get heartbeats for'),
-        maxHeartbeats: z.number().int().positive().max(100).optional().describe('If set, returns the most recent X heartbeats (up to 100). If unset, returns only the most recent heartbeat (default: 1)')
+        monitorID: z.coerce.number().int().nonnegative().describe('The ID of the monitor to get heartbeats for'),
+        maxHeartbeats: z.coerce.number().int().positive().max(100).optional().describe('If set, returns the most recent X heartbeats (up to 100). If unset, returns only the most recent heartbeat (default: 1)')
       },
       outputSchema: { 
         monitorID: z.number(),
@@ -394,7 +394,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       title: 'List Heartbeats',
       description: 'Retrieves historical heartbeat data for ALL monitors (response times, status changes over time). Use this for analyzing patterns across multiple monitors or correlating events. By default returns only the most recent heartbeat per monitor; set maxHeartbeats (up to 100) for historical analysis. Keep maxHeartbeats ≤5 unless user requests more.',
       inputSchema: {
-        maxHeartbeats: z.number().int().positive().max(100).optional().describe('If set, returns the most recent X heartbeats per monitor (up to 100). If unset, returns only the most recent heartbeat per monitor (default: 1)')
+        maxHeartbeats: z.coerce.number().int().positive().max(100).optional().describe('If set, returns the most recent X heartbeats per monitor (up to 100). If unset, returns only the most recent heartbeat per monitor (default: 1)')
       },
       outputSchema: { 
         heartbeats: z.record(z.string(), z.array(HeartbeatSchema)).describe('Map of monitor IDs to their heartbeat arrays'),
@@ -448,7 +448,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       title: 'Pause Monitor',
       description: 'Pauses a monitor, stopping it from performing checks. The monitor will remain in the system but will not send notifications or collect data until resumed.',
       inputSchema: {
-        monitorID: z.number().int().nonnegative().describe('The ID of the monitor to pause')
+        monitorID: z.coerce.number().int().nonnegative().describe('The ID of the monitor to pause')
       },
       outputSchema: {
         ok: z.boolean(),
@@ -493,7 +493,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       title: 'Resume Monitor',
       description: 'Resumes a paused monitor, restarting all checks. Use this to re-enable monitoring after pausing.',
       inputSchema: {
-        monitorID: z.number().int().nonnegative().describe('The ID of the monitor to resume')
+        monitorID: z.coerce.number().int().nonnegative().describe('The ID of the monitor to resume')
       },
       outputSchema: {
         ok: z.boolean(),
@@ -543,10 +543,10 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         type: z.string().describe('Monitor type (e.g. http, port, ping, dns, push, keyword). Use listMonitorTypes for all options.'),
         url: z.string().optional().describe('URL to monitor (required for http/keyword/json-query types)'),
         hostname: z.string().optional().describe('Hostname to monitor (required for port/ping/dns types)'),
-        port: z.number().optional().describe('Port number (required for port/tcp types)'),
-        interval: z.number().optional().describe('Check interval in seconds (default: 60)'),
-        retryInterval: z.number().optional().describe('Retry interval in seconds when monitor is down (default: 60)'),
-        maxretries: z.number().optional().describe('Max retries before marking as down (default: 0)'),
+        port: z.coerce.number().optional().describe('Port number (required for port/tcp types)'),
+        interval: z.coerce.number().optional().describe('Check interval in seconds (default: 60)'),
+        retryInterval: z.coerce.number().optional().describe('Retry interval in seconds when monitor is down (default: 60)'),
+        maxretries: z.coerce.number().optional().describe('Max retries before marking as down (default: 0)'),
         notificationIDList: z.record(z.string(), z.boolean()).optional().describe('Map of notification IDs to enable (e.g. {"1": true, "3": true})'),
         tags: z.array(z.object({
           name: z.string(),
@@ -560,9 +560,9 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         headers: z.string().optional().describe('HTTP headers as JSON string'),
         accepted_statuscodes: z.array(z.string()).optional().describe('Accepted HTTP status codes (e.g. ["200-299"])'),
         ignoreTls: z.boolean().optional().describe('Ignore TLS/SSL errors'),
-        maxredirects: z.number().optional().describe('Max HTTP redirects (default: 10)'),
+        maxredirects: z.coerce.number().optional().describe('Max HTTP redirects (default: 10)'),
         upsideDown: z.boolean().optional().describe('Invert status — treat up as down'),
-        parent: z.number().nullable().optional().describe('Parent group monitor ID'),
+        parent: z.coerce.number().nullable().optional().describe('Parent group monitor ID'),
       },
       outputSchema: {
         ok: z.boolean(),
@@ -576,7 +576,13 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       }
 
       try {
-        const response = await client.createMonitor(input as Record<string, unknown>);
+        const monitorData = {
+          notificationIDList: {},
+          accepted_statuscodes: ['200-299'],
+          conditions: [],
+          ...input,
+        };
+        const response = await client.createMonitor(monitorData as Record<string, unknown>);
         return {
           content: [{ type: 'text', text: response.msg || `Monitor created with ID ${response.monitorID}` }],
           structuredContent: { ok: response.ok, monitorID: response.monitorID, msg: response.msg },
@@ -594,14 +600,14 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       title: 'Update Monitor',
       description: 'Updates an existing monitor configuration. You must include the monitorID. Only the fields you provide will be changed (the server merges your changes with the existing config). Use getMonitor first to get the current config.',
       inputSchema: {
-        monitorID: z.number().int().nonnegative().describe('The ID of the monitor to update'),
+        monitorID: z.coerce.number().int().nonnegative().describe('The ID of the monitor to update'),
         name: z.string().optional().describe('Display name'),
         url: z.string().optional().describe('URL to monitor'),
         hostname: z.string().optional().describe('Hostname'),
-        port: z.number().optional().describe('Port number'),
-        interval: z.number().optional().describe('Check interval in seconds'),
-        retryInterval: z.number().optional().describe('Retry interval in seconds'),
-        maxretries: z.number().optional().describe('Max retries before marking as down'),
+        port: z.coerce.number().optional().describe('Port number'),
+        interval: z.coerce.number().optional().describe('Check interval in seconds'),
+        retryInterval: z.coerce.number().optional().describe('Retry interval in seconds'),
+        maxretries: z.coerce.number().optional().describe('Max retries before marking as down'),
         notificationIDList: z.record(z.string(), z.boolean()).optional().describe('Notification ID map'),
         tags: z.array(z.object({
           name: z.string(),
@@ -615,7 +621,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         headers: z.string().optional().describe('HTTP headers as JSON string'),
         accepted_statuscodes: z.array(z.string()).optional().describe('Accepted HTTP status codes'),
         ignoreTls: z.boolean().optional().describe('Ignore TLS/SSL errors'),
-        maxredirects: z.number().optional().describe('Max HTTP redirects'),
+        maxredirects: z.coerce.number().optional().describe('Max HTTP redirects'),
         upsideDown: z.boolean().optional().describe('Invert status'),
         active: z.boolean().optional().describe('Whether the monitor is active'),
       },
@@ -654,7 +660,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       title: 'Delete Monitor',
       description: 'Permanently deletes a monitor and all its heartbeat history. This action cannot be undone.',
       inputSchema: {
-        monitorID: z.number().int().nonnegative().describe('The ID of the monitor to delete'),
+        monitorID: z.coerce.number().int().nonnegative().describe('The ID of the monitor to delete'),
       },
       outputSchema: {
         ok: z.boolean(),
@@ -753,7 +759,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       title: 'Update Notification',
       description: 'Updates an existing notification channel. Use listNotifications to find the notification ID.',
       inputSchema: {
-        notificationID: z.number().int().nonnegative().describe('The ID of the notification to update'),
+        notificationID: z.coerce.number().int().nonnegative().describe('The ID of the notification to update'),
         name: z.string().optional().describe('Human-readable name'),
         type: z.string().optional().describe('Notification type'),
         isDefault: z.boolean().optional().describe('Enable by default for new monitors'),
@@ -795,7 +801,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       title: 'Delete Notification',
       description: 'Permanently deletes a notification channel. Monitors that used this channel will no longer send alerts through it.',
       inputSchema: {
-        notificationID: z.number().int().nonnegative().describe('The ID of the notification to delete'),
+        notificationID: z.coerce.number().int().nonnegative().describe('The ID of the notification to delete'),
       },
       outputSchema: {
         ok: z.boolean(),
@@ -894,7 +900,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       title: 'Delete Tag',
       description: 'Permanently deletes a tag. It will be removed from all monitors that use it. Use listTags to find the tag ID.',
       inputSchema: {
-        tagID: z.number().int().nonnegative().describe('The ID of the tag to delete'),
+        tagID: z.coerce.number().int().nonnegative().describe('The ID of the tag to delete'),
       },
       outputSchema: {
         ok: z.boolean(),
@@ -963,13 +969,13 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         active: z.boolean().optional().describe('Whether the window is active (default: true)'),
         timezone: z.string().optional().describe('Timezone (e.g. "America/New_York", "UTC"). Defaults to server timezone.'),
         dateRange: z.array(z.string()).optional().describe('Date range as [startISO, endISO] (required for single strategy)'),
-        timeRange: z.array(z.object({ hours: z.number(), minutes: z.number() })).optional()
+        timeRange: z.array(z.object({ hours: z.coerce.number(), minutes: z.coerce.number() })).optional()
           .describe('Start and end time within the day as [{hours, minutes}, {hours, minutes}]'),
-        weekdays: z.array(z.number().int().min(0).max(6)).optional()
+        weekdays: z.array(z.coerce.number().int().min(0).max(6)).optional()
           .describe('Days of week (0=Sunday … 6=Saturday) for recurring-weekday strategy'),
-        daysOfMonth: z.array(z.number().int().min(1).max(31)).optional()
+        daysOfMonth: z.array(z.coerce.number().int().min(1).max(31)).optional()
           .describe('Days of month (1-31) for recurring-day-of-month strategy'),
-        intervalDay: z.number().int().positive().optional()
+        intervalDay: z.coerce.number().int().positive().optional()
           .describe('Interval in days for recurring-interval strategy'),
       },
       outputSchema: {
