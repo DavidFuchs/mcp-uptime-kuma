@@ -1,8 +1,8 @@
 {
-  "name": "@davidfuchs/mcp-uptime-kuma",
-  "version": "0.0.0-dev",
-  "mcpName": "io.github.DavidFuchs/mcp-uptime-kuma",
-  "description": "A Model Context Protocol (MCP) server for Uptime Kuma version 2, supporting both stdio and streamable HTTP transports.",
+  "name": "@studio-corsair/mcp-uptime-kuma",
+  "version": "1.0.0",
+  "mcpName": "io.github.studio-corsair/mcp-uptime-kuma",
+  "description": "A Model Context Protocol (MCP) server for Uptime Kuma version 2, supporting both stdio and streamable HTTP transports. Fork of @davidfuchs/mcp-uptime-kuma with additional write operations.",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -38,14 +38,14 @@
     "kuma",
     "uptime kuma"
   ],
-  "author": "David Fuchs <david@davidfuchs.ca>",
+  "author": "Studio Corsair",
   "license": "MIT",
   "publishConfig": {
     "access": "public"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/DavidFuchs/mcp-uptime-kuma.git"
+    "url": "git+https://github.com/studio-corsair/mcp-uptime-kuma.git"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.22.0",

@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { McpError, ErrorCode, SetLevelRequestSchema, LoggingLevelSchema, type LoggingLevel } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { UptimeKumaClient } from './uptime-kuma-client.js';
-import { HeartbeatSchema, MonitorBaseSchema, MonitorSummarySchema, SettingsSchema } from './types/index.js';
+import { HeartbeatSchema, MonitorBaseSchema, MonitorSummarySchema, SettingsSchema, NotificationSchema, MaintenanceSchema, StatusPageSchema } from './types/index.js';
 import type { UptimeKumaConfig } from './types/index.js';
 import { VERSION } from './version.js';
 
@@ -21,11 +21,23 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     },
     {
       instructions: `
-        This MCP server provides access to Uptime Kuma monitoring data for system status and uptime/downtime information.
+        This MCP server provides access to Uptime Kuma monitoring data and management operations.
 
-        START with 'getMonitorSummary' for status overview questions ("how is everything?", "what's down?").
-        Use 'getHeartbeats' or 'listHeartbeats' for historical data (limit to 5-10 heartbeats unless user requests more).
-        Use 'listMonitors' only when you need configuration details (URLs, intervals, notification settings).
+        READ operations:
+        - START with 'getMonitorSummary' for status overview ("how is everything?", "what's down?").
+        - Use 'getHeartbeats' or 'listHeartbeats' for historical data (limit to 5-10 heartbeats unless user requests more).
+        - Use 'listMonitors' when you need configuration details (URLs, intervals, notification settings).
+        - Use 'listNotifications' to see notification channels.
+        - Use 'listTags' to see available tags.
+        - Use 'getMaintenanceWindows' to see scheduled maintenance.
+        - Use 'listStatusPages' to see status page configurations.
+
+        WRITE operations:
+        - Use 'createMonitor' / 'updateMonitor' / 'deleteMonitor' to manage monitors.
+        - Use 'addNotification' / 'updateNotification' / 'deleteNotification' to manage notification channels.
+        - Use 'addTag' / 'deleteTag' to manage tags.
+        - Use 'createMaintenance' to schedule a maintenance window.
+        - Use 'pauseMonitor' / 'resumeMonitor' to temporarily stop/start checks.
       `,
       capabilities: {
         logging: {}
@@ -88,7 +100,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       title: 'Get Monitor',
       description: 'Retrieves configuration details for a specific monitor by ID (URL, check interval, notification settings, etc.). Use this when you need to examine or modify settings for a specific monitor. For current status, use getMonitorSummary instead. By default returns only common fields plus runtime data (uptime, avgPing); set includeTypeSpecificFields to true to include type-specific fields (e.g., url for HTTP, hostname/port for TCP).',
       inputSchema: { 
-        monitorID: z.number().int().nonnegative().describe('The ID of the monitor to retrieve'),
+        monitorID: z.coerce.number().int().nonnegative().describe('The ID of the monitor to retrieve'),
         includeTypeSpecificFields: z.boolean().optional().describe('Include type-specific fields (url, hostname, port, etc.) in addition to common fields. Default: false. When false, only returns MonitorBase fields plus uptime/avgPing.')
       },
       outputSchema: { 
@@ -293,8 +305,8 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       title: 'Get Heartbeats',
       description: 'Retrieves historical heartbeat data for a specific monitor (response times, status changes over time). Use this for analyzing patterns or history for one monitor. By default returns only the most recent heartbeat; set maxHeartbeats (up to 100) for historical analysis. Keep maxHeartbeats ≤10 unless user requests more.',
       inputSchema: {
-        monitorID: z.number().int().nonnegative().describe('The ID of the monitor to get heartbeats for'),
-        maxHeartbeats: z.number().int().positive().max(100).optional().describe('If set, returns the most recent X heartbeats (up to 100). If unset, returns only the most recent heartbeat (default: 1)')
+        monitorID: z.coerce.number().int().nonnegative().describe('The ID of the monitor to get heartbeats for'),
+        maxHeartbeats: z.coerce.number().int().positive().max(100).optional().describe('If set, returns the most recent X heartbeats (up to 100). If unset, returns only the most recent heartbeat (default: 1)')
       },
       outputSchema: { 
         monitorID: z.number(),
@@ -382,7 +394,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       title: 'List Heartbeats',
       description: 'Retrieves historical heartbeat data for ALL monitors (response times, status changes over time). Use this for analyzing patterns across multiple monitors or correlating events. By default returns only the most recent heartbeat per monitor; set maxHeartbeats (up to 100) for historical analysis. Keep maxHeartbeats ≤5 unless user requests more.',
       inputSchema: {
-        maxHeartbeats: z.number().int().positive().max(100).optional().describe('If set, returns the most recent X heartbeats per monitor (up to 100). If unset, returns only the most recent heartbeat per monitor (default: 1)')
+        maxHeartbeats: z.coerce.number().int().positive().max(100).optional().describe('If set, returns the most recent X heartbeats per monitor (up to 100). If unset, returns only the most recent heartbeat per monitor (default: 1)')
       },
       outputSchema: { 
         heartbeats: z.record(z.string(), z.array(HeartbeatSchema)).describe('Map of monitor IDs to their heartbeat arrays'),
@@ -436,7 +448,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       title: 'Pause Monitor',
       description: 'Pauses a monitor, stopping it from performing checks. The monitor will remain in the system but will not send notifications or collect data until resumed.',
       inputSchema: {
-        monitorID: z.number().int().nonnegative().describe('The ID of the monitor to pause')
+        monitorID: z.coerce.number().int().nonnegative().describe('The ID of the monitor to pause')
       },
       outputSchema: {
         ok: z.boolean(),
@@ -481,7 +493,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       title: 'Resume Monitor',
       description: 'Resumes a paused monitor, restarting all checks. Use this to re-enable monitoring after pausing.',
       inputSchema: {
-        monitorID: z.number().int().nonnegative().describe('The ID of the monitor to resume')
+        monitorID: z.coerce.number().int().nonnegative().describe('The ID of the monitor to resume')
       },
       outputSchema: {
         ok: z.boolean(),
@@ -515,6 +527,508 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
           ErrorCode.InternalError,
           `Failed to resume monitor: ${errorMessage}`
         );
+      }
+    }
+  );
+
+  // ─── Monitor write tools ──────────────────────────────────────────────────
+
+  server.registerTool(
+    'createMonitor',
+    {
+      title: 'Create Monitor',
+      description: 'Creates a new monitor in Uptime Kuma. Requires at minimum a name and type. Use listMonitorTypes to see supported types. For HTTP monitors include url; for TCP/port monitors include hostname and port.',
+      inputSchema: {
+        name: z.string().describe('Display name for the monitor'),
+        type: z.string().describe('Monitor type (e.g. http, port, ping, dns, push, keyword). Use listMonitorTypes for all options.'),
+        url: z.string().optional().describe('URL to monitor (required for http/keyword/json-query types)'),
+        hostname: z.string().optional().describe('Hostname to monitor (required for port/ping/dns types)'),
+        port: z.coerce.number().optional().describe('Port number (required for port/tcp types)'),
+        interval: z.coerce.number().optional().describe('Check interval in seconds (default: 60)'),
+        retryInterval: z.coerce.number().optional().describe('Retry interval in seconds when monitor is down (default: 60)'),
+        maxretries: z.coerce.number().optional().describe('Max retries before marking as down (default: 0)'),
+        notificationIDList: z.record(z.string(), z.boolean()).optional().describe('Map of notification IDs to enable (e.g. {"1": true, "3": true})'),
+        tags: z.array(z.object({
+          name: z.string(),
+          value: z.string().optional(),
+          color: z.string().optional(),
+        })).optional().describe('Tags to assign to the monitor'),
+        keyword: z.string().optional().describe('Keyword to search for (keyword monitor type)'),
+        invertKeyword: z.boolean().optional().describe('Invert keyword match'),
+        method: z.string().optional().describe('HTTP method (GET, POST, etc.) for http type'),
+        body: z.string().optional().describe('HTTP request body'),
+        headers: z.string().optional().describe('HTTP headers as JSON string'),
+        accepted_statuscodes: z.array(z.string()).optional().describe('Accepted HTTP status codes (e.g. ["200-299"])'),
+        ignoreTls: z.boolean().optional().describe('Ignore TLS/SSL errors'),
+        maxredirects: z.coerce.number().optional().describe('Max HTTP redirects (default: 10)'),
+        upsideDown: z.boolean().optional().describe('Invert status — treat up as down'),
+        parent: z.coerce.number().nullable().optional().describe('Parent group monitor ID'),
+      },
+      outputSchema: {
+        ok: z.boolean(),
+        monitorID: z.number().optional(),
+        msg: z.string().optional(),
+      },
+    },
+    async (input) => {
+      if (!isAuthenticated) {
+        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
+      }
+
+      try {
+        const monitorData = {
+          notificationIDList: {},
+          accepted_statuscodes: ['200-299'],
+          conditions: [],
+          ...input,
+        };
+        const response = await client.createMonitor(monitorData as Record<string, unknown>);
+        return {
+          content: [{ type: 'text', text: response.msg || `Monitor created with ID ${response.monitorID}` }],
+          structuredContent: { ok: response.ok, monitorID: response.monitorID, msg: response.msg },
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new McpError(ErrorCode.InternalError, `Failed to create monitor: ${errorMessage}`);
+      }
+    }
+  );
+
+  server.registerTool(
+    'updateMonitor',
+    {
+      title: 'Update Monitor',
+      description: 'Updates an existing monitor configuration. You must include the monitorID. Only the fields you provide will be changed (the server merges your changes with the existing config). Use getMonitor first to get the current config.',
+      inputSchema: {
+        monitorID: z.coerce.number().int().nonnegative().describe('The ID of the monitor to update'),
+        name: z.string().optional().describe('Display name'),
+        url: z.string().optional().describe('URL to monitor'),
+        hostname: z.string().optional().describe('Hostname'),
+        port: z.coerce.number().optional().describe('Port number'),
+        interval: z.coerce.number().optional().describe('Check interval in seconds'),
+        retryInterval: z.coerce.number().optional().describe('Retry interval in seconds'),
+        maxretries: z.coerce.number().optional().describe('Max retries before marking as down'),
+        notificationIDList: z.record(z.string(), z.boolean()).optional().describe('Notification ID map'),
+        tags: z.array(z.object({
+          name: z.string(),
+          value: z.string().optional(),
+          color: z.string().optional(),
+        })).optional().describe('Tags to assign'),
+        keyword: z.string().optional().describe('Keyword to search for'),
+        invertKeyword: z.boolean().optional().describe('Invert keyword match'),
+        method: z.string().optional().describe('HTTP method'),
+        body: z.string().optional().describe('HTTP request body'),
+        headers: z.string().optional().describe('HTTP headers as JSON string'),
+        accepted_statuscodes: z.array(z.string()).optional().describe('Accepted HTTP status codes'),
+        ignoreTls: z.boolean().optional().describe('Ignore TLS/SSL errors'),
+        maxredirects: z.coerce.number().optional().describe('Max HTTP redirects'),
+        upsideDown: z.boolean().optional().describe('Invert status'),
+        active: z.boolean().optional().describe('Whether the monitor is active'),
+      },
+      outputSchema: {
+        ok: z.boolean(),
+        monitorID: z.number().optional(),
+        msg: z.string().optional(),
+      },
+    },
+    async ({ monitorID, ...rest }) => {
+      if (!isAuthenticated) {
+        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
+      }
+
+      try {
+        const existing = client.getMonitor(monitorID, true);
+        if (!existing) {
+          throw new Error(`Monitor ${monitorID} not found`);
+        }
+        const merged = { ...existing, ...rest, id: monitorID };
+        const response = await client.updateMonitor(merged as unknown as Record<string, unknown>);
+        return {
+          content: [{ type: 'text', text: response.msg || `Monitor ${monitorID} updated successfully` }],
+          structuredContent: { ok: response.ok, monitorID: response.monitorID, msg: response.msg },
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new McpError(ErrorCode.InternalError, `Failed to update monitor: ${errorMessage}`);
+      }
+    }
+  );
+
+  server.registerTool(
+    'deleteMonitor',
+    {
+      title: 'Delete Monitor',
+      description: 'Permanently deletes a monitor and all its heartbeat history. This action cannot be undone.',
+      inputSchema: {
+        monitorID: z.coerce.number().int().nonnegative().describe('The ID of the monitor to delete'),
+      },
+      outputSchema: {
+        ok: z.boolean(),
+        msg: z.string().optional(),
+      },
+    },
+    async ({ monitorID }) => {
+      if (!isAuthenticated) {
+        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
+      }
+
+      try {
+        const response = await client.deleteMonitor(monitorID);
+        return {
+          content: [{ type: 'text', text: response.msg || `Monitor ${monitorID} deleted successfully` }],
+          structuredContent: { ok: response.ok, msg: response.msg },
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new McpError(ErrorCode.InternalError, `Failed to delete monitor: ${errorMessage}`);
+      }
+    }
+  );
+
+  // ─── Notification tools ───────────────────────────────────────────────────
+
+  server.registerTool(
+    'listNotifications',
+    {
+      title: 'List Notifications',
+      description: 'Returns all configured notification channels (Slack, ntfy, Discord, email, webhooks, etc.).',
+      inputSchema: {},
+      outputSchema: {
+        notifications: z.array(NotificationSchema).describe('Array of notification channel configurations'),
+        count: z.number(),
+      },
+    },
+    async () => {
+      if (!isAuthenticated) {
+        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
+      }
+
+      try {
+        const notifications = client.getNotificationList();
+        return {
+          content: [{ type: 'text', text: JSON.stringify(notifications, null, 2) }],
+          structuredContent: { notifications, count: notifications.length },
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new McpError(ErrorCode.InternalError, `Failed to list notifications: ${errorMessage}`);
+      }
+    }
+  );
+
+  server.registerTool(
+    'addNotification',
+    {
+      title: 'Add Notification',
+      description: 'Creates a new notification channel. The configuration fields depend on the notification type (e.g., for slack: webhookURL; for ntfy: ntfyTopic, ntfyServerUrl; for discord: discordWebhookUrl).',
+      inputSchema: {
+        name: z.string().describe('Human-readable name for this notification channel'),
+        type: z.string().describe('Notification type (e.g. slack, ntfy, discord, telegram, webhook, smtp)'),
+        isDefault: z.boolean().optional().describe('Enable by default for new monitors'),
+        applyExisting: z.boolean().optional().describe('Apply this notification to all existing monitors now'),
+        config: z.record(z.string(), z.unknown()).describe('Type-specific configuration fields (e.g. webhookURL for slack, ntfyTopic for ntfy)'),
+      },
+      outputSchema: {
+        ok: z.boolean(),
+        id: z.number().optional(),
+        msg: z.string().optional(),
+      },
+    },
+    async ({ name, type, isDefault, applyExisting, config }) => {
+      if (!isAuthenticated) {
+        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
+      }
+
+      try {
+        const notification = { name, type, isDefault, applyExisting, ...config };
+        const response = await client.addNotification(notification as Record<string, unknown>);
+        return {
+          content: [{ type: 'text', text: response.msg || `Notification created with ID ${response.id}` }],
+          structuredContent: { ok: response.ok, id: response.id, msg: response.msg },
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new McpError(ErrorCode.InternalError, `Failed to add notification: ${errorMessage}`);
+      }
+    }
+  );
+
+  server.registerTool(
+    'updateNotification',
+    {
+      title: 'Update Notification',
+      description: 'Updates an existing notification channel. Use listNotifications to find the notification ID.',
+      inputSchema: {
+        notificationID: z.coerce.number().int().nonnegative().describe('The ID of the notification to update'),
+        name: z.string().optional().describe('Human-readable name'),
+        type: z.string().optional().describe('Notification type'),
+        isDefault: z.boolean().optional().describe('Enable by default for new monitors'),
+        applyExisting: z.boolean().optional().describe('Apply to all existing monitors now'),
+        config: z.record(z.string(), z.unknown()).optional().describe('Type-specific configuration fields to update'),
+      },
+      outputSchema: {
+        ok: z.boolean(),
+        id: z.number().optional(),
+        msg: z.string().optional(),
+      },
+    },
+    async ({ notificationID, name, type, isDefault, applyExisting, config }) => {
+      if (!isAuthenticated) {
+        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
+      }
+
+      try {
+        const notification: Record<string, unknown> = { ...config };
+        if (name !== undefined) notification['name'] = name;
+        if (type !== undefined) notification['type'] = type;
+        if (isDefault !== undefined) notification['isDefault'] = isDefault;
+        if (applyExisting !== undefined) notification['applyExisting'] = applyExisting;
+        const response = await client.addNotification(notification, notificationID);
+        return {
+          content: [{ type: 'text', text: response.msg || `Notification ${notificationID} updated` }],
+          structuredContent: { ok: response.ok, id: response.id, msg: response.msg },
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new McpError(ErrorCode.InternalError, `Failed to update notification: ${errorMessage}`);
+      }
+    }
+  );
+
+  server.registerTool(
+    'deleteNotification',
+    {
+      title: 'Delete Notification',
+      description: 'Permanently deletes a notification channel. Monitors that used this channel will no longer send alerts through it.',
+      inputSchema: {
+        notificationID: z.coerce.number().int().nonnegative().describe('The ID of the notification to delete'),
+      },
+      outputSchema: {
+        ok: z.boolean(),
+        msg: z.string().optional(),
+      },
+    },
+    async ({ notificationID }) => {
+      if (!isAuthenticated) {
+        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
+      }
+
+      try {
+        const response = await client.deleteNotification(notificationID);
+        return {
+          content: [{ type: 'text', text: response.msg || `Notification ${notificationID} deleted` }],
+          structuredContent: { ok: response.ok, msg: response.msg },
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new McpError(ErrorCode.InternalError, `Failed to delete notification: ${errorMessage}`);
+      }
+    }
+  );
+
+  // ─── Tag tools ───────────────────────────────────────────────────────────
+
+  server.registerTool(
+    'listTags',
+    {
+      title: 'List Tags',
+      description: 'Returns all tags defined in Uptime Kuma (name, color, and ID).',
+      inputSchema: {},
+      outputSchema: {
+        tags: z.array(z.object({
+          id: z.number(),
+          name: z.string(),
+          color: z.string(),
+        })).describe('Array of tags'),
+        count: z.number(),
+      },
+    },
+    async () => {
+      if (!isAuthenticated) {
+        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
+      }
+
+      try {
+        const tags = client.getTagList();
+        return {
+          content: [{ type: 'text', text: JSON.stringify(tags, null, 2) }],
+          structuredContent: { tags, count: tags.length },
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new McpError(ErrorCode.InternalError, `Failed to list tags: ${errorMessage}`);
+      }
+    }
+  );
+
+  server.registerTool(
+    'addTag',
+    {
+      title: 'Add Tag',
+      description: 'Creates a new tag that can be assigned to monitors.',
+      inputSchema: {
+        name: z.string().describe('Tag name'),
+        color: z.string().describe('Tag color as a hex string (e.g. "#ff0000") or CSS color name'),
+      },
+      outputSchema: {
+        ok: z.boolean(),
+        tag: z.object({ id: z.number(), name: z.string(), color: z.string() }).optional(),
+        msg: z.string().optional(),
+      },
+    },
+    async ({ name, color }) => {
+      if (!isAuthenticated) {
+        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
+      }
+
+      try {
+        const response = await client.addTag(name, color);
+        return {
+          content: [{ type: 'text', text: `Tag "${name}" created with ID ${response.tag?.id}` }],
+          structuredContent: { ok: response.ok, tag: response.tag, msg: response.msg },
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new McpError(ErrorCode.InternalError, `Failed to add tag: ${errorMessage}`);
+      }
+    }
+  );
+
+  server.registerTool(
+    'deleteTag',
+    {
+      title: 'Delete Tag',
+      description: 'Permanently deletes a tag. It will be removed from all monitors that use it. Use listTags to find the tag ID.',
+      inputSchema: {
+        tagID: z.coerce.number().int().nonnegative().describe('The ID of the tag to delete'),
+      },
+      outputSchema: {
+        ok: z.boolean(),
+        msg: z.string().optional(),
+      },
+    },
+    async ({ tagID }) => {
+      if (!isAuthenticated) {
+        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
+      }
+
+      try {
+        const response = await client.deleteTag(tagID);
+        return {
+          content: [{ type: 'text', text: response.msg || `Tag ${tagID} deleted` }],
+          structuredContent: { ok: response.ok, msg: response.msg },
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new McpError(ErrorCode.InternalError, `Failed to delete tag: ${errorMessage}`);
+      }
+    }
+  );
+
+  // ─── Maintenance tools ────────────────────────────────────────────────────
+
+  server.registerTool(
+    'getMaintenanceWindows',
+    {
+      title: 'Get Maintenance Windows',
+      description: 'Returns all scheduled maintenance windows defined in Uptime Kuma.',
+      inputSchema: {},
+      outputSchema: {
+        maintenanceWindows: z.array(MaintenanceSchema).describe('Array of maintenance windows'),
+        count: z.number(),
+      },
+    },
+    async () => {
+      if (!isAuthenticated) {
+        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
+      }
+
+      try {
+        const maintenanceWindows = client.getMaintenanceList();
+        return {
+          content: [{ type: 'text', text: JSON.stringify(maintenanceWindows, null, 2) }],
+          structuredContent: { maintenanceWindows, count: maintenanceWindows.length },
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new McpError(ErrorCode.InternalError, `Failed to get maintenance windows: ${errorMessage}`);
+      }
+    }
+  );
+
+  server.registerTool(
+    'createMaintenance',
+    {
+      title: 'Create Maintenance',
+      description: 'Schedules a new maintenance window. During maintenance, affected monitors are suppressed and show MAINTENANCE status instead of DOWN.',
+      inputSchema: {
+        title: z.string().describe('Title of the maintenance window'),
+        description: z.string().optional().describe('Description or reason for the maintenance'),
+        strategy: z.enum(['single', 'recurring-interval', 'recurring-weekday', 'recurring-day-of-month', 'manual'])
+          .describe('Scheduling strategy: single=one-time, recurring-interval=every N days, recurring-weekday=specific weekdays, recurring-day-of-month=specific dates, manual=manually activated'),
+        active: z.boolean().optional().describe('Whether the window is active (default: true)'),
+        timezone: z.string().optional().describe('Timezone (e.g. "America/New_York", "UTC"). Defaults to server timezone.'),
+        dateRange: z.array(z.string()).optional().describe('Date range as [startISO, endISO] (required for single strategy)'),
+        timeRange: z.array(z.object({ hours: z.coerce.number(), minutes: z.coerce.number() })).optional()
+          .describe('Start and end time within the day as [{hours, minutes}, {hours, minutes}]'),
+        weekdays: z.array(z.coerce.number().int().min(0).max(6)).optional()
+          .describe('Days of week (0=Sunday … 6=Saturday) for recurring-weekday strategy'),
+        daysOfMonth: z.array(z.coerce.number().int().min(1).max(31)).optional()
+          .describe('Days of month (1-31) for recurring-day-of-month strategy'),
+        intervalDay: z.coerce.number().int().positive().optional()
+          .describe('Interval in days for recurring-interval strategy'),
+      },
+      outputSchema: {
+        ok: z.boolean(),
+        maintenanceID: z.number().optional(),
+        msg: z.string().optional(),
+      },
+    },
+    async (input) => {
+      if (!isAuthenticated) {
+        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
+      }
+
+      try {
+        const response = await client.createMaintenance(input as Record<string, unknown>);
+        return {
+          content: [{ type: 'text', text: response.msg || `Maintenance window created with ID ${response.maintenanceID}` }],
+          structuredContent: { ok: response.ok, maintenanceID: response.maintenanceID, msg: response.msg },
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new McpError(ErrorCode.InternalError, `Failed to create maintenance window: ${errorMessage}`);
+      }
+    }
+  );
+
+  // ─── Status page tools ────────────────────────────────────────────────────
+
+  server.registerTool(
+    'listStatusPages',
+    {
+      title: 'List Status Pages',
+      description: 'Returns all configured status pages with their slug, title, visibility, and custom domain settings.',
+      inputSchema: {},
+      outputSchema: {
+        statusPages: z.array(StatusPageSchema).describe('Array of status page configurations'),
+        count: z.number(),
+      },
+    },
+    async () => {
+      if (!isAuthenticated) {
+        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
+      }
+
+      try {
+        const statusPages = client.getStatusPageList();
+        return {
+          content: [{ type: 'text', text: JSON.stringify(statusPages, null, 2) }],
+          structuredContent: { statusPages, count: statusPages.length },
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new McpError(ErrorCode.InternalError, `Failed to list status pages: ${errorMessage}`);
       }
     }
   );
