@@ -86,16 +86,56 @@ See [Authentication Methods](#authentication-methods) for JWT token and anonymou
 
 ## Available Tools
 
+### Monitors
+
 | Tool | Purpose |
 |------|---------|
 | `getMonitorSummary` | Get a quick overview of all monitors with their current status. Supports filtering. |
 | `listMonitors` | Get the full list of all monitors with configurations. Supports filtering. |
 | `listMonitorTypes` | Get all available monitor types supported by Uptime Kuma. |
 | `getMonitor` | Get detailed configuration for a specific monitor by ID. |
+| `createMonitor` | Create a new monitor (requires name and type at minimum). |
+| `updateMonitor` | Update an existing monitor's configuration. |
+| `deleteMonitor` | Permanently delete a monitor and all its heartbeat history. |
 | `pauseMonitor` | Pause a monitor to stop performing checks. |
 | `resumeMonitor` | Resume a paused monitor to restart checks. |
+
+### Heartbeats
+
+| Tool | Purpose |
+|------|---------|
 | `listHeartbeats` | Get status check history for all monitors. |
 | `getHeartbeats` | Get status check history for a specific monitor. |
+
+### Notifications
+
+| Tool | Purpose |
+|------|---------|
+| `listNotifications` | List all configured notification channels (Slack, Discord, email, webhooks, etc.). |
+| `addNotification` | Create a new notification channel. |
+| `updateNotification` | Update an existing notification channel. |
+| `deleteNotification` | Permanently delete a notification channel. |
+
+### Tags
+
+| Tool | Purpose |
+|------|---------|
+| `listTags` | List all tags defined in Uptime Kuma. |
+| `addTag` | Create a new tag that can be assigned to monitors. |
+| `deleteTag` | Permanently delete a tag (removes it from all monitors). |
+
+### Maintenance
+
+| Tool | Purpose |
+|------|---------|
+| `getMaintenanceWindows` | List all scheduled maintenance windows. |
+| `createMaintenance` | Schedule a new maintenance window. |
+
+### Status Pages & Settings
+
+| Tool | Purpose |
+|------|---------|
+| `listStatusPages` | List all configured status pages. |
 | `getSettings` | Get Uptime Kuma server settings. |
 
 ### Filtering
@@ -167,12 +207,19 @@ mcpServers:
 ```
 
 **streamable HTTP transport:**
+
+Update the allowed domains to whatever domain you're using in the URL (e.g., `localhost` or `host.docker.internal` for Docker setups):
+
 ```yaml
 mcpServers:
   uptime-kuma:
     type: streamable-http
     url: "http://mcp-uptime-kuma:3000/mcp"
     serverInstructions: true
+
+mcpSettings:
+  allowedDomains:
+    - 'mcp-uptime-kuma'
 ```
 
 ## Contributing
