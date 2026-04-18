@@ -987,26 +987,43 @@ export class UptimeKumaClient {
   }
 
   /**
-   * Get full details of a single status page (includes publicGroupList with monitors)
+   * Get full details of a single status page, including publicGroupList with monitors
+   * and any active incidents. Uses the public HTTP API (`/api/status-page/{slug}`),
+   * which returns the same data the status page UI renders — richer than the
+   * socket `getStatusPage` event, which only returns config.
    *
    * @param slug - The status page slug
-   * @returns Promise resolving to the status page config
+   * @returns Promise resolving to the status page config, groups, and incidents
    */
-  getStatusPage(slug: string): Promise<ApiResponse & { config?: StatusPage; publicGroupList?: unknown[] }> {
-    return new Promise((resolve, reject) => {
-      if (!this.socket || !this.socket.connected) {
-        reject(new Error('Not connected to server'));
-        return;
+  async getStatusPage(slug: string): Promise<ApiResponse & {
+    config?: StatusPage;
+    publicGroupList?: unknown[];
+    incidents?: unknown[];
+  }> {
+    try {
+      const baseUrl = this.url.replace(/\/$/, '');
+      const res = await fetch(`${baseUrl}/api/status-page/${encodeURIComponent(slug)}`);
+      if (res.status === 404) {
+        return { ok: false, msg: `Status page ${slug} not found` };
       }
-
-      this.socket.emit('getStatusPage', slug, (response: ApiResponse & { config?: StatusPage; publicGroupList?: unknown[] }) => {
-        if (response.ok) {
-          resolve(response);
-        } else {
-          reject(new Error(response.msg || `Failed to get status page ${slug}`));
-        }
-      });
-    });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status} ${res.statusText}`);
+      }
+      const data = await res.json() as {
+        config: StatusPage;
+        publicGroupList: unknown[];
+        incidents?: unknown[];
+      };
+      return {
+        ok: true,
+        config: data.config,
+        publicGroupList: data.publicGroupList,
+        incidents: data.incidents ?? [],
+      };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      throw new Error(`Failed to get status page ${slug}: ${msg}`);
+    }
   }
 
   /**

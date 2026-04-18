@@ -1038,7 +1038,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     'getStatusPage',
     {
       title: 'Get Status Page',
-      description: 'Returns the full configuration of a single status page by slug, including the ordered list of groups and the monitors inside each group.',
+      description: 'Returns the full configuration of a status page by slug, including the ordered list of groups, the monitors inside each group, and active incidents. Only works for published status pages (fetches the public `/api/status-page/{slug}` endpoint).',
       inputSchema: {
         slug: z.string().describe('The status page slug (the URL-safe identifier)'),
       },
@@ -1046,6 +1046,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         ok: z.boolean(),
         config: StatusPageSchema.optional(),
         publicGroupList: z.array(z.record(z.string(), z.unknown())).optional().describe('Ordered groups with their monitorList'),
+        incidents: z.array(z.record(z.string(), z.unknown())).optional().describe('Active incidents on the status page'),
         msg: z.string().optional(),
       },
     },
@@ -1062,6 +1063,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
             ok: response.ok,
             config: response.config,
             publicGroupList: response.publicGroupList as Array<Record<string, unknown>> | undefined,
+            incidents: response.incidents as Array<Record<string, unknown>> | undefined,
             msg: response.msg,
           },
         };
