@@ -986,6 +986,113 @@ export class UptimeKumaClient {
     return Object.values(this.statusPageListCache);
   }
 
+  /**
+   * Get full details of a single status page (includes publicGroupList with monitors)
+   *
+   * @param slug - The status page slug
+   * @returns Promise resolving to the status page config
+   */
+  getStatusPage(slug: string): Promise<ApiResponse & { config?: StatusPage; publicGroupList?: unknown[] }> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      this.socket.emit('getStatusPage', slug, (response: ApiResponse & { config?: StatusPage; publicGroupList?: unknown[] }) => {
+        if (response.ok) {
+          resolve(response);
+        } else {
+          reject(new Error(response.msg || `Failed to get status page ${slug}`));
+        }
+      });
+    });
+  }
+
+  /**
+   * Create a new (empty) status page with the given title and slug
+   *
+   * Note: This creates a blank status page. Use updateStatusPage afterwards to
+   * set description, theme, groups, monitors, etc.
+   *
+   * @param title - Display title of the status page
+   * @param slug - URL slug (lowercase letters, digits, and dashes only)
+   * @returns Promise resolving to the API response
+   */
+  createStatusPage(title: string, slug: string): Promise<ApiResponse> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      this.socket.emit('addStatusPage', title, slug, (response: ApiResponse) => {
+        if (response.ok) {
+          this.safeLog('info', `Successfully created status page ${slug}`);
+          resolve(response);
+        } else {
+          reject(new Error(response.msg || `Failed to create status page ${slug}`));
+        }
+      });
+    });
+  }
+
+  /**
+   * Update an existing status page's config and group/monitor list
+   *
+   * @param slug - The status page slug (immutable identifier)
+   * @param config - Status page configuration (title, description, theme, published, etc.)
+   * @param publicGroupList - Ordered groups, each with a name, weight, and monitorList `[{id}]`
+   * @param imgDataUrl - Optional icon as data URL (pass empty string to keep existing)
+   * @returns Promise resolving to the API response
+   */
+  updateStatusPage(
+    slug: string,
+    config: Record<string, unknown>,
+    publicGroupList: Array<Record<string, unknown>> = [],
+    imgDataUrl: string = ''
+  ): Promise<ApiResponse> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      this.socket.emit('saveStatusPage', slug, config, imgDataUrl, publicGroupList, (response: ApiResponse) => {
+        if (response.ok) {
+          this.safeLog('info', `Successfully updated status page ${slug}`);
+          resolve(response);
+        } else {
+          reject(new Error(response.msg || `Failed to update status page ${slug}`));
+        }
+      });
+    });
+  }
+
+  /**
+   * Delete a status page
+   *
+   * @param slug - The status page slug
+   * @returns Promise resolving to the API response
+   */
+  deleteStatusPage(slug: string): Promise<ApiResponse> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      this.socket.emit('deleteStatusPage', slug, (response: ApiResponse) => {
+        if (response.ok) {
+          this.safeLog('info', `Successfully deleted status page ${slug}`);
+          resolve(response);
+        } else {
+          reject(new Error(response.msg || `Failed to delete status page ${slug}`));
+        }
+      });
+    });
+  }
+
   // ─── Socket accessor ─────────────────────────────────────────────────────────
 
   /**
