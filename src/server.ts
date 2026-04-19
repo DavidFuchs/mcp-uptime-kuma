@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { McpError, ErrorCode, SetLevelRequestSchema, LoggingLevelSchema, type LoggingLevel } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { UptimeKumaClient } from './uptime-kuma-client.js';
-import { HeartbeatSchema, MonitorBaseSchema, MonitorSummarySchema, SettingsSchema, NotificationSchema, MaintenanceSchema, StatusPageSchema } from './types/index.js';
+import { HeartbeatSchema, MonitorBaseSchema, MonitorSummarySchema, SettingsSchema, NotificationSchema, MaintenanceSchema, StatusPageSchema, DockerHostSchema } from './types/index.js';
 import type { UptimeKumaConfig } from './types/index.js';
 import { VERSION } from './version.js';
 
@@ -31,12 +31,15 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         - Use 'listTags' to see available tags.
         - Use 'getMaintenanceWindows' to see scheduled maintenance.
         - Use 'listStatusPages' to see status page configurations.
+        - Use 'listDockerHosts' to see configured docker daemons (used by docker container monitors).
 
         WRITE operations:
         - Use 'createMonitor' / 'updateMonitor' / 'deleteMonitor' to manage monitors.
         - Use 'addNotification' / 'updateNotification' / 'deleteNotification' to manage notification channels.
         - Use 'addTag' / 'deleteTag' to manage tags.
         - Use 'createMaintenance' to schedule a maintenance window.
+        - Use 'addDockerHost' / 'updateDockerHost' / 'deleteDockerHost' to manage docker daemon connections.
+        - Use 'testDockerHost' to verify a docker daemon is reachable before saving.
         - Use 'pauseMonitor' / 'resumeMonitor' to temporarily stop/start checks.
       `,
       capabilities: {
@@ -822,6 +825,184 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         throw new McpError(ErrorCode.InternalError, `Failed to delete notification: ${errorMessage}`);
+      }
+    }
+  );
+
+  // ─── Docker host tools ───────────────────────────────────────────────────
+
+  server.registerTool(
+    'listDockerHosts',
+    {
+      title: 'List Docker Hosts',
+      description: 'Returns all docker daemon connections configured in Uptime Kuma. These are referenced by docker container monitors via docker_host.',
+      inputSchema: {},
+      outputSchema: {
+        dockerHosts: z.array(DockerHostSchema).describe('Array of docker host configurations'),
+        count: z.number(),
+      },
+    },
+    async () => {
+      if (!isAuthenticated) {
+        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
+      }
+
+      try {
+        const dockerHosts = client.getDockerHostList();
+        return {
+          content: [{ type: 'text', text: JSON.stringify(dockerHosts, null, 2) }],
+          structuredContent: { dockerHosts, count: dockerHosts.length },
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new McpError(ErrorCode.InternalError, `Failed to list docker hosts: ${errorMessage}`);
+      }
+    }
+  );
+
+  server.registerTool(
+    'addDockerHost',
+    {
+      title: 'Add Docker Host',
+      description: 'Creates a new docker daemon connection. For a unix socket use dockerType="socket" and dockerDaemon="/var/run/docker.sock". For a TCP proxy (e.g. tecnativa/docker-socket-proxy) use dockerType="tcp" and dockerDaemon="http://host:2375". Consider calling testDockerHost first to verify reachability.',
+      inputSchema: {
+        name: z.string().describe('Human-readable name for this docker host'),
+        dockerType: z.enum(['socket', 'tcp']).describe('"socket" for a unix socket path, "tcp" for an HTTP/HTTPS URL'),
+        dockerDaemon: z.string().describe('Unix socket path (e.g. /var/run/docker.sock) when dockerType=socket, or TCP URL (e.g. http://docker-proxy:2375) when dockerType=tcp'),
+      },
+      outputSchema: {
+        ok: z.boolean(),
+        id: z.number().optional(),
+        msg: z.string().optional(),
+      },
+    },
+    async ({ name, dockerType, dockerDaemon }) => {
+      if (!isAuthenticated) {
+        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
+      }
+
+      try {
+        const response = await client.addDockerHost({ name, dockerType, dockerDaemon });
+        return {
+          content: [{ type: 'text', text: response.msg || `Docker host created with ID ${response.id}` }],
+          structuredContent: { ok: response.ok, id: response.id, msg: response.msg },
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new McpError(ErrorCode.InternalError, `Failed to add docker host: ${errorMessage}`);
+      }
+    }
+  );
+
+  server.registerTool(
+    'updateDockerHost',
+    {
+      title: 'Update Docker Host',
+      description: 'Updates an existing docker daemon connection. Use listDockerHosts to find the docker host ID. Only the fields you pass are changed — the others are preserved.',
+      inputSchema: {
+        dockerHostID: z.coerce.number().int().nonnegative().describe('The ID of the docker host to update'),
+        name: z.string().optional().describe('New human-readable name'),
+        dockerType: z.enum(['socket', 'tcp']).optional().describe('New connection type'),
+        dockerDaemon: z.string().optional().describe('New socket path or TCP URL'),
+      },
+      outputSchema: {
+        ok: z.boolean(),
+        id: z.number().optional(),
+        msg: z.string().optional(),
+      },
+    },
+    async ({ dockerHostID, name, dockerType, dockerDaemon }) => {
+      if (!isAuthenticated) {
+        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
+      }
+
+      try {
+        // Merge new values onto the current record so callers can omit unchanged fields.
+        // Uptime Kuma's addDockerHost handler overwrites every column it receives, so we
+        // need to send the full set to avoid clobbering existing values with undefined.
+        const existing = client.getDockerHostList().find(h => h.id === dockerHostID);
+        if (!existing) {
+          throw new Error(`Docker host ${dockerHostID} not found — call listDockerHosts to see available IDs`);
+        }
+
+        const merged: Record<string, unknown> = {
+          name: name ?? existing.name,
+          dockerType: dockerType ?? existing.dockerType,
+          dockerDaemon: dockerDaemon ?? existing.dockerDaemon,
+        };
+
+        const response = await client.addDockerHost(merged, dockerHostID);
+        return {
+          content: [{ type: 'text', text: response.msg || `Docker host ${dockerHostID} updated` }],
+          structuredContent: { ok: response.ok, id: response.id, msg: response.msg },
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new McpError(ErrorCode.InternalError, `Failed to update docker host: ${errorMessage}`);
+      }
+    }
+  );
+
+  server.registerTool(
+    'deleteDockerHost',
+    {
+      title: 'Delete Docker Host',
+      description: 'Permanently deletes a docker daemon connection. Any monitors referencing it will have their docker_host cleared by Uptime Kuma (the monitors themselves are not deleted).',
+      inputSchema: {
+        dockerHostID: z.coerce.number().int().nonnegative().describe('The ID of the docker host to delete'),
+      },
+      outputSchema: {
+        ok: z.boolean(),
+        msg: z.string().optional(),
+      },
+    },
+    async ({ dockerHostID }) => {
+      if (!isAuthenticated) {
+        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
+      }
+
+      try {
+        const response = await client.deleteDockerHost(dockerHostID);
+        return {
+          content: [{ type: 'text', text: response.msg || `Docker host ${dockerHostID} deleted` }],
+          structuredContent: { ok: response.ok, msg: response.msg },
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new McpError(ErrorCode.InternalError, `Failed to delete docker host: ${errorMessage}`);
+      }
+    }
+  );
+
+  server.registerTool(
+    'testDockerHost',
+    {
+      title: 'Test Docker Host',
+      description: 'Tests connectivity to a docker daemon without persisting it. On success the message includes the number of containers. Use this before addDockerHost to avoid saving a broken configuration.',
+      inputSchema: {
+        name: z.string().describe('Display name (used only in the test request)'),
+        dockerType: z.enum(['socket', 'tcp']).describe('"socket" for a unix socket path, "tcp" for an HTTP/HTTPS URL'),
+        dockerDaemon: z.string().describe('Unix socket path or TCP URL to probe'),
+      },
+      outputSchema: {
+        ok: z.boolean(),
+        msg: z.string().optional(),
+      },
+    },
+    async ({ name, dockerType, dockerDaemon }) => {
+      if (!isAuthenticated) {
+        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
+      }
+
+      try {
+        const response = await client.testDockerHost({ name, dockerType, dockerDaemon });
+        return {
+          content: [{ type: 'text', text: response.msg || (response.ok ? 'Docker host reachable' : 'Docker host unreachable') }],
+          structuredContent: { ok: response.ok, msg: response.msg },
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new McpError(ErrorCode.InternalError, `Failed to test docker host: ${errorMessage}`);
       }
     }
   );

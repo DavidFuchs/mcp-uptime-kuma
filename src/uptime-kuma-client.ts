@@ -19,6 +19,7 @@ import type {
   Notification,
   Maintenance,
   StatusPage,
+  DockerHost,
 } from './types/index.js';
 
 /**
@@ -60,6 +61,7 @@ export class UptimeKumaClient {
   private tagListCache: Array<{ id: number; name: string; color: string }> = [];
   private maintenanceListCache: { [id: string]: Maintenance } = {};
   private statusPageListCache: { [slug: string]: StatusPage } = {};
+  private dockerHostListCache: DockerHost[] = [];
   private server?: { sendLoggingMessage: (params: { level: LoggingLevel; data: unknown }) => Promise<void> };
   private shouldLog: (level: LoggingLevel) => boolean;
   private loginCredentials: { username: string | undefined; password: string | undefined; token?: string; jwtToken?: string } | null = null;
@@ -176,6 +178,7 @@ export class UptimeKumaClient {
       this.socket.off('tagList');
       this.socket.off('maintenanceList');
       this.socket.off('statusPageList');
+      this.socket.off('dockerHostList');
 
       this.socket.disconnect();
       this.socket = null;
@@ -190,6 +193,7 @@ export class UptimeKumaClient {
     this.tagListCache = [];
     this.maintenanceListCache = {};
     this.statusPageListCache = {};
+    this.dockerHostListCache = [];
   }
 
   /**
@@ -220,6 +224,7 @@ export class UptimeKumaClient {
       this.setupTagListListeners();
       this.setupMaintenanceListListeners();
       this.setupStatusPageListListeners();
+      this.setupDockerHostListListeners();
 
       // If JWT token is provided, use token-based authentication
       if (jwtToken) {
@@ -753,6 +758,14 @@ export class UptimeKumaClient {
     });
   }
 
+  private setupDockerHostListListeners(): void {
+    if (!this.socket) return;
+    this.socket.on('dockerHostList', (dockerHostList: DockerHost[]) => {
+      this.safeLog('debug', `Received dockerHostList with ${dockerHostList.length} docker hosts`);
+      this.dockerHostListCache = dockerHostList;
+    });
+  }
+
   // ─── Monitor write operations ───────────────────────────────────────────────
 
   /**
@@ -882,6 +895,89 @@ export class UptimeKumaClient {
         } else {
           reject(new Error(response.msg || 'Failed to delete notification'));
         }
+      });
+    });
+  }
+
+  // ─── Docker host operations ─────────────────────────────────────────────────
+
+  /**
+   * Get the cached docker host list
+   */
+  getDockerHostList(): DockerHost[] {
+    return this.dockerHostListCache;
+  }
+
+  /**
+   * Add or update a docker host
+   *
+   * @param dockerHost - Docker host configuration (name, dockerType, dockerDaemon)
+   * @param dockerHostID - If provided, updates existing; otherwise creates new
+   * @returns Promise resolving to the API response with the docker host id
+   */
+  addDockerHost(dockerHost: Record<string, unknown>, dockerHostID?: number): Promise<ApiResponse & { id?: number }> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      const id = dockerHostID ?? null;
+      this.socket.emit('addDockerHost', dockerHost, id, (response: ApiResponse & { id?: number }) => {
+        if (response.ok) {
+          this.safeLog('info', `Successfully saved docker host (ID: ${response.id})`);
+          resolve(response);
+        } else {
+          reject(new Error(response.msg || 'Failed to save docker host'));
+        }
+      });
+    });
+  }
+
+  /**
+   * Delete a docker host. Any monitors referencing it will have their docker_host
+   * field cleared by Uptime Kuma.
+   *
+   * @param dockerHostID - The ID of the docker host to delete
+   * @returns Promise resolving to the API response
+   */
+  deleteDockerHost(dockerHostID: number): Promise<ApiResponse> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      this.socket.emit('deleteDockerHost', dockerHostID, (response: ApiResponse) => {
+        if (response.ok) {
+          this.safeLog('info', `Successfully deleted docker host ${dockerHostID}`);
+          resolve(response);
+        } else {
+          reject(new Error(response.msg || 'Failed to delete docker host'));
+        }
+      });
+    });
+  }
+
+  /**
+   * Test connectivity to a docker host without persisting it. Returns a friendly
+   * message containing the number of containers when reachable.
+   *
+   * @param dockerHost - Docker host configuration to test (name, dockerType, dockerDaemon)
+   * @returns Promise resolving to the API response
+   */
+  testDockerHost(dockerHost: Record<string, unknown>): Promise<ApiResponse> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      this.socket.emit('testDockerHost', dockerHost, (response: ApiResponse) => {
+        // Resolve either way so callers can inspect ok/msg without try/catch
+        // (matches the pattern used by UK's UI, which shows both success and
+        // failure messages from the same callback).
+        resolve(response);
       });
     });
   }
