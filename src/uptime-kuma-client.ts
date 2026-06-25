@@ -761,14 +761,21 @@ export class UptimeKumaClient {
    * @param monitorData - Monitor configuration (type-specific fields should be included)
    * @returns Promise resolving to the API response with the new monitorID
    */
-  createMonitor(monitorData: Record<string, unknown>): Promise<ApiResponse & { monitorID?: number }> {
-    return new Promise((resolve, reject) => {
+  async createMonitor(monitorData: Record<string, unknown>): Promise<ApiResponse & { monitorID?: number }> {
+    const tags = Array.isArray(monitorData['tags'])
+      ? monitorData['tags'] as Array<{ name: string; value?: string; color?: string }>
+      : [];
+
+    const sanitizedMonitorData = { ...monitorData };
+    delete sanitizedMonitorData['tags'];
+
+    const response = await new Promise<ApiResponse & { monitorID?: number }>((resolve, reject) => {
       if (!this.socket || !this.socket.connected) {
         reject(new Error('Not connected to server'));
         return;
       }
 
-      this.socket.emit('add', monitorData, (response: ApiResponse & { monitorID?: number }) => {
+      this.socket.emit('add', sanitizedMonitorData, (response: ApiResponse & { monitorID?: number }) => {
         if (response.ok) {
           this.safeLog('info', `Successfully created monitor (ID: ${response.monitorID})`);
           resolve(response);
@@ -777,6 +784,24 @@ export class UptimeKumaClient {
         }
       });
     });
+
+    if (!response.monitorID || tags.length === 0) {
+      return response;
+    }
+
+    try {
+      await this.assignTagsToMonitor(response.monitorID, tags);
+      return response;
+    } catch (error) {
+      try {
+        await this.deleteMonitor(response.monitorID);
+      } catch (cleanupError) {
+        const cleanupMessage = cleanupError instanceof Error ? cleanupError.message : 'Unknown cleanup error';
+        this.safeLog('error', `Failed to roll back monitor ${response.monitorID} after tag assignment error: ${cleanupMessage}`);
+      }
+
+      throw error;
+    }
   }
 
   /**
@@ -918,6 +943,87 @@ export class UptimeKumaClient {
         }
       });
     });
+  }
+
+  /**
+   * Fetch all defined tags from the server.
+   */
+  private fetchTagList(): Promise<Array<{ id: number; name: string; color: string }>> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      this.socket.emit('getTags', (response: ApiResponse & { tags?: Array<{ id: number; name: string; color: string }> }) => {
+        if (response.ok && response.tags) {
+          this.tagListCache = response.tags;
+          resolve(response.tags);
+        } else if (response.ok) {
+          this.tagListCache = [];
+          resolve([]);
+        } else {
+          reject(new Error(response.msg || 'Failed to fetch tags'));
+        }
+      });
+    });
+  }
+
+  /**
+   * Link an existing tag to a monitor with an optional value.
+   */
+  private addMonitorTag(tagID: number, monitorID: number, value?: string): Promise<ApiResponse> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      this.socket.emit('addMonitorTag', tagID, monitorID, value ?? '', (response: ApiResponse) => {
+        if (response.ok) {
+          this.safeLog('info', `Successfully linked tag ${tagID} to monitor ${monitorID}`);
+          resolve(response);
+        } else {
+          reject(new Error(response.msg || 'Failed to link tag to monitor'));
+        }
+      });
+    });
+  }
+
+  /**
+   * Resolve requested tags against the server tag list, creating missing tags as needed,
+   * then attach them to the newly created monitor via the dedicated monitor_tag relation.
+   */
+  private async assignTagsToMonitor(
+    monitorID: number,
+    tags: Array<{ name: string; value?: string; color?: string }>
+  ): Promise<void> {
+    const knownTags = await this.fetchTagList();
+
+    for (const requestedTag of tags) {
+      const normalizedName = requestedTag.name.trim().toLowerCase();
+      if (!normalizedName) {
+        throw new Error('Tag name cannot be empty');
+      }
+
+      let tag = knownTags.find((existingTag) => existingTag.name.trim().toLowerCase() === normalizedName);
+
+      if (!tag) {
+        if (!requestedTag.color) {
+          throw new Error(`Tag "${requestedTag.name}" does not exist and no color was provided to create it`);
+        }
+
+        const createdTag = await this.addTag(requestedTag.name, requestedTag.color);
+        if (!createdTag.tag) {
+          throw new Error(`Failed to create tag "${requestedTag.name}"`);
+        }
+
+        tag = createdTag.tag;
+        knownTags.push(createdTag.tag);
+      }
+
+      await this.addMonitorTag(tag.id, monitorID, requestedTag.value);
+    }
   }
 
   /**
