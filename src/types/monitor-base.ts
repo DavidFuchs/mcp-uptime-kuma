@@ -81,7 +81,7 @@ export const MonitorBaseSchema = z.object({
   weight: z.number().nullable().optional().describe('Display order weight'),
 
   // Timing
-  interval: z.number().min(20).max(86400).describe('Check interval in seconds (20-86400)'),
+  interval: z.number().min(20).describe('Check interval in seconds (min 20; Kuma allows >1 day, e.g. push/backup monitors)'),
   retryInterval: z.number().describe('Retry interval in seconds'),
   resendInterval: z.number().default(0).describe('Notification resend interval (0 = disabled)'),
   timeout: z.number().nullable().optional().describe('Request timeout in seconds'),
