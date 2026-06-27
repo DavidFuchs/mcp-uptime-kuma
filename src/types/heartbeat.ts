@@ -16,7 +16,7 @@ export const HeartbeatSchema = z.object({
   duration: z.number().optional().describe('Seconds since last check'),
   down_count: z.number().optional().describe('Consecutive down count'),
   retries: z.number().optional().describe('Retry attempts'),
-  end_time: z.string().optional().describe('Check end time'),
+  end_time: z.string().nullable().optional().describe('Check end time'),
   monitorID: z.number().optional().describe('Monitor ID (camelCase)'),
   localDateTime: z.string().optional().describe('Local formatted time'),
   timezone: z.string().optional().describe('Server timezone'),
