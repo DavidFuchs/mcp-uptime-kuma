@@ -10,17 +10,17 @@ describe('UptimeKumaClient - Tag Operations', () => {
   });
 
   describe('getTagList', () => {
-    it('returns empty array when no tags cached', () => {
-      expect(client.getTagList()).toEqual([]);
+    it('returns empty array when no tags cached', async () => {
+      expect(await client.getTagList()).toEqual([]);
     });
 
-    it('returns cached tags', () => {
+    it('returns cached tags', async () => {
       const tags = [
         { id: 1, name: 'env', color: '#ff0000' },
         { id: 2, name: 'region', color: '#00ff00' },
       ];
       injectTagListCache(client, tags);
-      expect(client.getTagList()).toEqual(tags);
+      expect(await client.getTagList()).toEqual(tags);
     });
   });
 
