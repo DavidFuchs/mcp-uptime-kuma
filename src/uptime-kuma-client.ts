@@ -769,51 +769,182 @@ export class UptimeKumaClient {
   // ─── Monitor write operations ───────────────────────────────────────────────
 
   /**
-   * Create a new monitor
+   * Create a new monitor. If `tags` are supplied, they are applied after
+   * creation using the separate `addMonitorTag` socket event — the `add`
+   * socket handler does not process tags.
    *
    * @param monitorData - Monitor configuration (type-specific fields should be included)
    * @returns Promise resolving to the API response with the new monitorID
    */
-  createMonitor(monitorData: Record<string, unknown>): Promise<ApiResponse & { monitorID?: number }> {
-    return new Promise((resolve, reject) => {
+  async createMonitor(monitorData: Record<string, unknown>): Promise<ApiResponse & { monitorID?: number }> {
+    const { tags, ...payload } = monitorData as { tags?: Array<Record<string, unknown>> };
+
+    const response = await new Promise<ApiResponse & { monitorID?: number }>((resolve, reject) => {
       if (!this.socket || !this.socket.connected) {
         reject(new Error('Not connected to server'));
         return;
       }
 
-      this.socket.emit('add', monitorData, (response: ApiResponse & { monitorID?: number }) => {
-        if (response.ok) {
-          this.safeLog('info', `Successfully created monitor (ID: ${response.monitorID})`);
-          resolve(response);
+      this.socket.emit('add', payload, (res: ApiResponse & { monitorID?: number }) => {
+        if (res.ok) {
+          this.safeLog('info', `Successfully created monitor (ID: ${res.monitorID})`);
+          resolve(res);
         } else {
-          reject(new Error(response.msg || 'Failed to create monitor'));
+          reject(new Error(res.msg || 'Failed to create monitor'));
+        }
+      });
+    });
+
+    if (tags && Array.isArray(tags) && response.monitorID != null) {
+      await this.reconcileMonitorTags(response.monitorID, tags);
+    }
+
+    return response;
+  }
+
+  /**
+   * Update an existing monitor. If `tags` are supplied, they are reconciled
+   * against the monitor's current tag set using `addMonitorTag` /
+   * `deleteMonitorTag` — the `editMonitor` socket handler does not process
+   * tags. Tags whose name is not yet in the catalog are auto-created via
+   * `addTag` before binding.
+   *
+   * @param monitorData - Monitor configuration including the id field
+   * @returns Promise resolving to the API response
+   */
+  async updateMonitor(monitorData: Record<string, unknown>): Promise<ApiResponse & { monitorID?: number }> {
+    const { tags, ...payload } = monitorData as { tags?: Array<Record<string, unknown>> };
+
+    const response = await new Promise<ApiResponse & { monitorID?: number }>((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      this.socket.emit('editMonitor', payload, (res: ApiResponse & { monitorID?: number }) => {
+        if (res.ok) {
+          this.safeLog('info', `Successfully updated monitor (ID: ${monitorData['id']})`);
+          resolve(res);
+        } else {
+          reject(new Error(res.msg || 'Failed to update monitor'));
+        }
+      });
+    });
+
+    if (tags && Array.isArray(tags) && monitorData['id'] != null) {
+      await this.reconcileMonitorTags(Number(monitorData['id']), tags);
+    }
+
+    return response;
+  }
+
+  /**
+   * Fetch the tag catalog synchronously from the server. Uptime Kuma does
+   * not push `tagList` events — it only responds to the `getTags` request —
+   * so relying on the push-populated cache returns stale (often empty) data.
+   * This method also refreshes `tagListCache` so subsequent cache reads work.
+   */
+  private fetchTagList(): Promise<Array<{ id: number; name: string; color: string }>> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+      this.socket.emit('getTags', (res: ApiResponse & { tags?: Array<{ id: number; name: string; color: string }> }) => {
+        if (res.ok && res.tags) {
+          this.tagListCache = res.tags;
+          resolve(res.tags);
+        } else {
+          reject(new Error(res.msg || 'Failed to fetch tag list'));
         }
       });
     });
   }
 
   /**
-   * Update an existing monitor
-   *
-   * @param monitorData - Monitor configuration including the id field
-   * @returns Promise resolving to the API response
+   * Bind a tag to a monitor (socket: `addMonitorTag`).
    */
-  updateMonitor(monitorData: Record<string, unknown>): Promise<ApiResponse & { monitorID?: number }> {
+  private addMonitorTag(tagID: number, monitorID: number, value: string): Promise<ApiResponse> {
     return new Promise((resolve, reject) => {
       if (!this.socket || !this.socket.connected) {
         reject(new Error('Not connected to server'));
         return;
       }
-
-      this.socket.emit('editMonitor', monitorData, (response: ApiResponse & { monitorID?: number }) => {
-        if (response.ok) {
-          this.safeLog('info', `Successfully updated monitor (ID: ${monitorData['id']})`);
-          resolve(response);
-        } else {
-          reject(new Error(response.msg || 'Failed to update monitor'));
-        }
+      this.socket.emit('addMonitorTag', tagID, monitorID, value, (res: ApiResponse) => {
+        if (res.ok) resolve(res);
+        else reject(new Error(res.msg || `Failed to add tag ${tagID} to monitor ${monitorID}`));
       });
     });
+  }
+
+  /**
+   * Unbind a tag from a monitor (socket: `deleteMonitorTag`).
+   */
+  private deleteMonitorTag(tagID: number, monitorID: number, value: string): Promise<ApiResponse> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+      this.socket.emit('deleteMonitorTag', tagID, monitorID, value, (res: ApiResponse) => {
+        if (res.ok) resolve(res);
+        else reject(new Error(res.msg || `Failed to remove tag ${tagID} from monitor ${monitorID}`));
+      });
+    });
+  }
+
+  /**
+   * Reconcile a monitor's tags against the desired list. Auto-creates any
+   * tag name that isn't yet in the catalog. Tag identity is `(name, value)`.
+   */
+  private async reconcileMonitorTags(
+    monitorID: number,
+    desiredTags: Array<Record<string, unknown>>
+  ): Promise<void> {
+    const currentMonitor = this.monitorListCache[String(monitorID)];
+    const currentTags = (currentMonitor?.tags ?? []) as Array<{
+      tag_id?: number;
+      name: string;
+      value?: string;
+      color?: string;
+    }>;
+
+    const key = (name: string, value: string | undefined) => `${name}\u0000${value ?? ''}`;
+    const currentKeys = new Set(currentTags.map((t) => key(t.name, t.value)));
+    const desiredKeys = new Set(
+      desiredTags.map((t) => key(String(t.name), t.value as string | undefined))
+    );
+
+    // Uptime Kuma never pushes `tagList` events, so the cache is unreliable
+    // — fetch the catalog synchronously via the `getTags` socket request.
+    const freshTags = await this.fetchTagList();
+    const nameToID = new Map<string, number>();
+    for (const t of freshTags) nameToID.set(t.name, t.id);
+
+    for (const desired of desiredTags) {
+      const name = String(desired.name);
+      const value = (desired.value as string | undefined) ?? '';
+      if (currentKeys.has(key(name, value))) continue;
+
+      let tagID = nameToID.get(name);
+      if (tagID == null) {
+        const color = (desired.color as string | undefined) ?? '#808080';
+        const created = await this.addTag(name, color);
+        tagID = created.tag?.id;
+        if (tagID != null) nameToID.set(name, tagID);
+      }
+      if (tagID == null) {
+        throw new Error(`Could not resolve tag ID for "${name}"`);
+      }
+      await this.addMonitorTag(tagID, monitorID, value);
+    }
+
+    for (const existing of currentTags) {
+      if (desiredKeys.has(key(existing.name, existing.value))) continue;
+      const tagID = existing.tag_id ?? nameToID.get(existing.name);
+      if (tagID == null) continue;
+      await this.deleteMonitorTag(tagID, monitorID, existing.value ?? '');
+    }
   }
 
   /**
@@ -1080,6 +1211,130 @@ export class UptimeKumaClient {
    */
   getStatusPageList(): StatusPage[] {
     return Object.values(this.statusPageListCache);
+  }
+
+  /**
+   * Get full details of a single status page, including publicGroupList with monitors
+   * and any active incidents. Uses the public HTTP API (`/api/status-page/{slug}`),
+   * which returns the same data the status page UI renders — richer than the
+   * socket `getStatusPage` event, which only returns config.
+   *
+   * @param slug - The status page slug
+   * @returns Promise resolving to the status page config, groups, and incidents
+   */
+  async getStatusPage(slug: string): Promise<ApiResponse & {
+    config?: StatusPage;
+    publicGroupList?: unknown[];
+    incidents?: unknown[];
+  }> {
+    try {
+      const baseUrl = this.url.replace(/\/$/, '');
+      const res = await fetch(`${baseUrl}/api/status-page/${encodeURIComponent(slug)}`);
+      if (res.status === 404) {
+        return { ok: false, msg: `Status page ${slug} not found` };
+      }
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status} ${res.statusText}`);
+      }
+      const data = await res.json() as {
+        config: StatusPage;
+        publicGroupList: unknown[];
+        incidents?: unknown[];
+      };
+      return {
+        ok: true,
+        config: data.config,
+        publicGroupList: data.publicGroupList,
+        incidents: data.incidents ?? [],
+      };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      throw new Error(`Failed to get status page ${slug}: ${msg}`);
+    }
+  }
+
+  /**
+   * Create a new (empty) status page with the given title and slug
+   *
+   * Note: This creates a blank status page. Use updateStatusPage afterwards to
+   * set description, theme, groups, monitors, etc.
+   *
+   * @param title - Display title of the status page
+   * @param slug - URL slug (lowercase letters, digits, and dashes only)
+   * @returns Promise resolving to the API response
+   */
+  createStatusPage(title: string, slug: string): Promise<ApiResponse> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      this.socket.emit('addStatusPage', title, slug, (response: ApiResponse) => {
+        if (response.ok) {
+          this.safeLog('info', `Successfully created status page ${slug}`);
+          resolve(response);
+        } else {
+          reject(new Error(response.msg || `Failed to create status page ${slug}`));
+        }
+      });
+    });
+  }
+
+  /**
+   * Update an existing status page's config and group/monitor list
+   *
+   * @param slug - The status page slug (immutable identifier)
+   * @param config - Status page configuration (title, description, theme, published, etc.)
+   * @param publicGroupList - Ordered groups, each with a name, weight, and monitorList `[{id}]`
+   * @param imgDataUrl - Optional icon as data URL (pass empty string to keep existing)
+   * @returns Promise resolving to the API response
+   */
+  updateStatusPage(
+    slug: string,
+    config: Record<string, unknown>,
+    publicGroupList: Array<Record<string, unknown>> = [],
+    imgDataUrl: string = ''
+  ): Promise<ApiResponse> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      this.socket.emit('saveStatusPage', slug, config, imgDataUrl, publicGroupList, (response: ApiResponse) => {
+        if (response.ok) {
+          this.safeLog('info', `Successfully updated status page ${slug}`);
+          resolve(response);
+        } else {
+          reject(new Error(response.msg || `Failed to update status page ${slug}`));
+        }
+      });
+    });
+  }
+
+  /**
+   * Delete a status page
+   *
+   * @param slug - The status page slug
+   * @returns Promise resolving to the API response
+   */
+  deleteStatusPage(slug: string): Promise<ApiResponse> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      this.socket.emit('deleteStatusPage', slug, (response: ApiResponse) => {
+        if (response.ok) {
+          this.safeLog('info', `Successfully deleted status page ${slug}`);
+          resolve(response);
+        } else {
+          reject(new Error(response.msg || `Failed to delete status page ${slug}`));
+        }
+      });
+    });
   }
 
   // ─── Socket accessor ─────────────────────────────────────────────────────────
