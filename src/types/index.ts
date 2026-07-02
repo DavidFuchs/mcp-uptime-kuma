@@ -37,3 +37,6 @@ export * from './maintenance.js';
 
 // Status page schemas
 export * from './status-page.js';
+
+// Docker host schemas
+export * from './docker-host.js';
