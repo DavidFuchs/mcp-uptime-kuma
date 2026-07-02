@@ -96,7 +96,7 @@ echo ""
 
 # Run the tests (environment loaded from .env.test by the test file itself)
 cd ../..
-npx tsx test/integration/integration.test.ts
+npx tsx test/integration/run-all.ts "$@"
 
 TEST_EXIT_CODE=$?
 
