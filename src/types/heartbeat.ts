@@ -20,7 +20,7 @@ export const HeartbeatSchema = z.object({
   monitorID: z.number().optional().describe('Monitor ID (camelCase)'),
   localDateTime: z.string().optional().describe('Local formatted time'),
   timezone: z.string().optional().describe('Server timezone'),
-});
+}).passthrough();
 
 /**
  * Heartbeat type inferred from the Zod schema

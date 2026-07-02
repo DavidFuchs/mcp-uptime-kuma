@@ -586,6 +586,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
           notificationIDList: {},
           accepted_statuscodes: ['200-299'],
           conditions: [],
+          retryInterval: 60,
           ...input,
         };
         const response = await client.createMonitor(monitorData as Record<string, unknown>);
@@ -652,6 +653,11 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         // Strip undefined values so existing config is preserved for omitted fields
         const defined = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined));
         const merged = { ...existing, ...defined, id: monitorID };
+        // Ensure retryInterval is valid — Kuma rejects values < 1 on edit even if
+        // it stored 0 during creation (pre-existing monitors or older defaults)
+        if (!merged.retryInterval || (merged as any).retryInterval < 1) {
+          (merged as any).retryInterval = (merged as any).interval || 60;
+        }
         const response = await client.updateMonitor(merged as unknown as Record<string, unknown>);
         return {
           content: [{ type: 'text', text: response.msg || `Monitor ${monitorID} updated successfully` }],
@@ -1151,7 +1157,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       description: 'Schedules a new maintenance window. During maintenance, affected monitors are suppressed and show MAINTENANCE status instead of DOWN.',
       inputSchema: {
         title: z.string().describe('Title of the maintenance window'),
-        description: z.string().optional().describe('Description or reason for the maintenance'),
+        description: z.string().default('').describe('Description or reason for the maintenance'),
         strategy: z.enum(['single', 'recurring-interval', 'recurring-weekday', 'recurring-day-of-month', 'manual'])
           .describe('Scheduling strategy: single=one-time, recurring-interval=every N days, recurring-weekday=specific weekdays, recurring-day-of-month=specific dates, manual=manually activated'),
         active: z.boolean().optional().describe('Whether the window is active (default: true)'),
