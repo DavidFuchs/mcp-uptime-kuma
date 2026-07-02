@@ -81,7 +81,7 @@ export const MonitorBaseSchema = z.object({
   weight: z.number().nullable().optional().describe('Display order weight'),
 
   // Timing
-  interval: z.number().min(20).max(86400).describe('Check interval in seconds (20-86400)'),
+  interval: z.number().min(20).max(2073600).describe('Check interval in seconds (20-2073600)'),
   retryInterval: z.number().describe('Retry interval in seconds'),
   resendInterval: z.number().default(0).describe('Notification resend interval (0 = disabled)'),
   timeout: z.number().nullable().optional().describe('Request timeout in seconds'),
