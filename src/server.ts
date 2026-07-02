@@ -567,6 +567,8 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         maxredirects: z.coerce.number().optional().describe('Max HTTP redirects (default: 10)'),
         upsideDown: z.boolean().optional().describe('Invert status — treat up as down'),
         parent: z.coerce.number().nullable().optional().describe('Parent group monitor ID'),
+        docker_container: z.string().optional().describe('Docker container name (required for docker type)'),
+        docker_host: z.coerce.number().optional().describe('Docker host ID (required for docker type). Use listDockerHosts to find available IDs.'),
       },
       outputSchema: {
         ok: z.boolean(),
@@ -628,6 +630,8 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         maxredirects: z.coerce.number().optional().describe('Max HTTP redirects'),
         upsideDown: z.boolean().optional().describe('Invert status'),
         active: z.boolean().optional().describe('Whether the monitor is active'),
+        docker_container: z.string().optional().describe('Docker container name (required for docker type)'),
+        docker_host: z.coerce.number().optional().describe('Docker host ID (required for docker type). Use listDockerHosts to find available IDs.'),
       },
       outputSchema: {
         ok: z.boolean(),
