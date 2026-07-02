@@ -649,7 +649,9 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         if (!existing) {
           throw new Error(`Monitor ${monitorID} not found`);
         }
-        const merged = { ...existing, ...rest, id: monitorID };
+        // Strip undefined values so existing config is preserved for omitted fields
+        const defined = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined));
+        const merged = { ...existing, ...defined, id: monitorID };
         const response = await client.updateMonitor(merged as unknown as Record<string, unknown>);
         return {
           content: [{ type: 'text', text: response.msg || `Monitor ${monitorID} updated successfully` }],
