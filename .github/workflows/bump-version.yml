@@ -6,22 +6,18 @@ on:
       - closed
     branches:
       - main
-      - feature/*
-  push:
-    branches:
-      - feature/*
 
 permissions:
   contents: write
 
 jobs:
   build:
-    if: github.event_name == 'push' || github.event.pull_request.merged == true
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v4
       with:
-        ref: ${{ github.event_name == 'push' && github.ref || github.event.pull_request.base.ref }}
+        ref: ${{ github.event.pull_request.base.ref }}
         fetch-depth: '0'
         fetch-tags: true
 
@@ -31,5 +27,4 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         TAG_PREFIX: v
         DEFAULT_BUMP: patch
-        PRERELEASE: true
         
