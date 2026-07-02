@@ -569,6 +569,8 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         parent: z.coerce.number().nullable().optional().describe('Parent group monitor ID'),
         docker_container: z.string().optional().describe('Docker container name (required for docker type)'),
         docker_host: z.coerce.number().optional().describe('Docker host ID (required for docker type). Use listDockerHosts to find available IDs.'),
+        dns_resolve_server: z.string().optional().describe('DNS server to use for resolution (required for dns type, default: 1.1.1.1)'),
+        dns_resolve_type: z.enum(['A', 'AAAA', 'CNAME', 'MX', 'NS', 'PTR', 'SOA', 'SRV', 'TXT', 'CAA']).optional().describe('DNS record type to query (required for dns type, default: A)'),
       },
       outputSchema: {
         ok: z.boolean(),
@@ -582,12 +584,16 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       }
 
       try {
-        const defaults = {
+        const defaults: Record<string, unknown> = {
           notificationIDList: {} as Record<string, boolean>,
           accepted_statuscodes: ['200-299'],
           conditions: [] as string[],
           retryInterval: 60,
         };
+        if (input.type === 'dns') {
+          defaults.dns_resolve_server = '1.1.1.1';
+          defaults.dns_resolve_type = 'A';
+        }
         const monitorData = {
           ...defaults,
           ...input,
@@ -636,6 +642,8 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         active: z.boolean().optional().describe('Whether the monitor is active'),
         docker_container: z.string().optional().describe('Docker container name (required for docker type)'),
         docker_host: z.coerce.number().optional().describe('Docker host ID (required for docker type). Use listDockerHosts to find available IDs.'),
+        dns_resolve_server: z.string().optional().describe('DNS server to use for resolution (for dns type)'),
+        dns_resolve_type: z.enum(['A', 'AAAA', 'CNAME', 'MX', 'NS', 'PTR', 'SOA', 'SRV', 'TXT', 'CAA']).optional().describe('DNS record type to query (for dns type)'),
       },
       outputSchema: {
         ok: z.boolean(),
