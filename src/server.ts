@@ -1054,7 +1054,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       }
 
       try {
-        const tags = client.getTagList();
+        const tags = await client.getTagList();
         return {
           content: [{ type: 'text', text: JSON.stringify(tags, null, 2) }],
           structuredContent: { tags, count: tags.length },

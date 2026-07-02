@@ -18,7 +18,7 @@ export const MaintenanceSchema = z.object({
   }).passthrough()).optional().describe('Time range within the day'),
   weekdays: z.array(z.number()).optional().describe('Days of week (0=Sunday, 6=Saturday)'),
   daysOfMonth: z.array(z.number()).optional().describe('Days of month (1-31)'),
-  intervalDay: z.number().optional().describe('Interval in days for recurring-interval strategy'),
+  intervalDay: z.number().nullable().optional().describe('Interval in days for recurring-interval strategy'),
 }).passthrough();
 
 export type Maintenance = z.infer<typeof MaintenanceSchema>;

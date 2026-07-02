@@ -7,6 +7,8 @@ import { TestFn, extractText, extractID } from './helpers.js';
  *
  * Issue coverage:
  * - #41: Tags cannot be attached to monitors (createMonitor errors, updateMonitor silently drops)
+ * - #45: listTags returns empty — tagList event parsed as Array instead of Object
+ * - #46: listTags returns empty — tagList event never emitted on login; needs active fetch
  */
 
 export const tagTests: Array<{ name: string; fn: TestFn }> = [
@@ -38,6 +40,46 @@ export const tagTests: Array<{ name: string; fn: TestFn }> = [
         // Delete
         await client.callTool({ name: 'deleteTag', arguments: { tagID } });
         console.log(`  ✓ deleteTag: cleaned up tag ID ${tagID}`);
+      }
+    },
+  },
+  {
+    name: '#45/#46: listTags returns non-empty array after addTag (active fetch, object parsing)',
+    fn: async ({ client }) => {
+      // Create a tag so we know at least one exists
+      const addResult = await client.callTool({
+        name: 'addTag',
+        arguments: { name: 'issue45-46-test', color: '#abcdef' },
+      }) as CallToolResult;
+      const tagID = extractID(addResult, 'addTag', 'tagID');
+
+      try {
+        // listTags must return a non-empty array containing the new tag.
+        // This validates both:
+        // - #45: tagList object is correctly parsed into an array
+        // - #46: tags are actively fetched (not relying on never-emitted push event)
+        const listResult = await client.callTool({ name: 'listTags', arguments: {} }) as CallToolResult;
+        const text = extractText(listResult, 'listTags');
+        const tags = JSON.parse(text);
+
+        if (!Array.isArray(tags)) {
+          throw new Error(`Expected array, got ${typeof tags}`);
+        }
+        if (tags.length === 0) {
+          throw new Error('listTags returned empty array — issue #45/#46 still present');
+        }
+
+        const found = tags.find((t: any) => t.id === tagID);
+        if (!found) {
+          throw new Error(`Tag ID ${tagID} not found in listTags result (${tags.length} tags returned)`);
+        }
+        if (found.name !== 'issue45-46-test' || found.color !== '#abcdef') {
+          throw new Error(`Tag data mismatch: ${JSON.stringify(found)}`);
+        }
+
+        console.log(`  ✓ #45/#46: listTags returned ${tags.length} tags, found tag ID ${tagID} with correct data`);
+      } finally {
+        await client.callTool({ name: 'deleteTag', arguments: { tagID } });
       }
     },
   },

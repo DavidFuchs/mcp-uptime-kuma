@@ -2,6 +2,15 @@
 
 set -e
 
+# Ensure containers are torn down on exit (success, failure, or interrupt)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cleanup() {
+    echo ""
+    echo "🧹 Cleaning up..."
+    docker-compose -f "$SCRIPT_DIR/docker-compose.test.yml" down --remove-orphans 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
 echo "🧪 MCP Uptime Kuma Integration Test Runner"
 echo "=========================================="
 echo ""
@@ -96,16 +105,12 @@ echo ""
 
 # Run the tests (environment loaded from .env.test by the test file itself)
 cd ../..
+set +e
 npx tsx test/integration/run-all.ts "$@"
-
 TEST_EXIT_CODE=$?
+set -e
 
 cd test/integration
-
-# Cleanup
-echo ""
-echo "🧹 Cleaning up..."
-docker-compose -f docker-compose.test.yml down
 
 if [ $TEST_EXIT_CODE -eq 0 ]; then
     echo -e "${GREEN}✅ All tests passed!${NC}"

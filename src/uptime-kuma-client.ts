@@ -736,9 +736,10 @@ export class UptimeKumaClient {
 
   private setupTagListListeners(): void {
     if (!this.socket) return;
-    this.socket.on('tagList', (tagList: Array<{ id: number; name: string; color: string }>) => {
-      this.safeLog('debug', `Received tagList with ${tagList.length} tags`);
-      this.tagListCache = tagList;
+    this.socket.on('tagList', (tagList: { [id: string]: { id: number; name: string; color: string } } | Array<{ id: number; name: string; color: string }>) => {
+      const tags = Array.isArray(tagList) ? tagList : Object.values(tagList);
+      this.safeLog('debug', `Received tagList with ${tags.length} tags`);
+      this.tagListCache = tags;
     });
   }
 
@@ -1116,10 +1117,16 @@ export class UptimeKumaClient {
   // ─── Tag operations ─────────────────────────────────────────────────────────
 
   /**
-   * Get the cached tag list
+   * Get the tag list. Actively fetches from the server since Uptime Kuma
+   * does not push `tagList` events on login (issue #46).
+   * Falls back to the cache if the socket is not connected.
    */
-  getTagList(): Array<{ id: number; name: string; color: string }> {
-    return this.tagListCache;
+  async getTagList(): Promise<Array<{ id: number; name: string; color: string }>> {
+    try {
+      return await this.fetchTagList();
+    } catch {
+      return this.tagListCache;
+    }
   }
 
   /**
