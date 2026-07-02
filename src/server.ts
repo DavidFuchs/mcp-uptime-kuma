@@ -582,11 +582,14 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       }
 
       try {
-        const monitorData = {
-          notificationIDList: {},
+        const defaults = {
+          notificationIDList: {} as Record<string, boolean>,
           accepted_statuscodes: ['200-299'],
-          conditions: [],
+          conditions: [] as string[],
           retryInterval: 60,
+        };
+        const monitorData = {
+          ...defaults,
           ...input,
         };
         const response = await client.createMonitor(monitorData as Record<string, unknown>);
