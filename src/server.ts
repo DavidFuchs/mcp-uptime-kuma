@@ -30,13 +30,14 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         - Use 'listNotifications' to see notification channels.
         - Use 'listTags' to see available tags.
         - Use 'getMaintenanceWindows' to see scheduled maintenance.
-        - Use 'listStatusPages' to see status page configurations.
+        - Use 'listStatusPages' to see status page configurations, or 'getStatusPage' for one page's full details (groups + monitors).
 
         WRITE operations:
         - Use 'createMonitor' / 'updateMonitor' / 'deleteMonitor' to manage monitors.
         - Use 'addNotification' / 'updateNotification' / 'deleteNotification' to manage notification channels.
         - Use 'addTag' / 'deleteTag' to manage tags.
         - Use 'createMaintenance' to schedule a maintenance window.
+        - Use 'createStatusPage' / 'updateStatusPage' / 'deleteStatusPage' to manage status pages. Creating returns an empty page — follow up with updateStatusPage to set groups and monitors.
         - Use 'pauseMonitor' / 'resumeMonitor' to temporarily stop/start checks.
       `,
       capabilities: {
@@ -1029,6 +1030,148 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         throw new McpError(ErrorCode.InternalError, `Failed to list status pages: ${errorMessage}`);
+      }
+    }
+  );
+
+  server.registerTool(
+    'getStatusPage',
+    {
+      title: 'Get Status Page',
+      description: 'Returns the full configuration of a status page by slug, including the ordered list of groups, the monitors inside each group, and active incidents. Only works for published status pages (fetches the public `/api/status-page/{slug}` endpoint).',
+      inputSchema: {
+        slug: z.string().describe('The status page slug (the URL-safe identifier)'),
+      },
+      outputSchema: {
+        ok: z.boolean(),
+        config: StatusPageSchema.optional(),
+        publicGroupList: z.array(z.record(z.string(), z.unknown())).optional().describe('Ordered groups with their monitorList'),
+        incidents: z.array(z.record(z.string(), z.unknown())).optional().describe('Active incidents on the status page'),
+        msg: z.string().optional(),
+      },
+    },
+    async ({ slug }) => {
+      if (!isAuthenticated) {
+        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
+      }
+
+      try {
+        const response = await client.getStatusPage(slug);
+        return {
+          content: [{ type: 'text', text: JSON.stringify(response, null, 2) }],
+          structuredContent: {
+            ok: response.ok,
+            config: response.config,
+            publicGroupList: response.publicGroupList as Array<Record<string, unknown>> | undefined,
+            incidents: response.incidents as Array<Record<string, unknown>> | undefined,
+            msg: response.msg,
+          },
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new McpError(ErrorCode.InternalError, `Failed to get status page: ${errorMessage}`);
+      }
+    }
+  );
+
+  server.registerTool(
+    'createStatusPage',
+    {
+      title: 'Create Status Page',
+      description: 'Creates a new (empty) status page with the given title and slug. After creating, call updateStatusPage to set the description, theme, groups, and monitors. Slug must be lowercase letters, digits, and dashes only.',
+      inputSchema: {
+        title: z.string().describe('Display title of the status page'),
+        slug: z.string().regex(/^[a-z0-9-]+$/).describe('URL slug (lowercase letters, digits, and dashes only)'),
+      },
+      outputSchema: {
+        ok: z.boolean(),
+        msg: z.string().optional(),
+      },
+    },
+    async ({ title, slug }) => {
+      if (!isAuthenticated) {
+        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
+      }
+
+      try {
+        const response = await client.createStatusPage(title, slug);
+        return {
+          content: [{ type: 'text', text: response.msg || `Status page ${slug} created` }],
+          structuredContent: { ok: response.ok, msg: response.msg },
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new McpError(ErrorCode.InternalError, `Failed to create status page: ${errorMessage}`);
+      }
+    }
+  );
+
+  server.registerTool(
+    'updateStatusPage',
+    {
+      title: 'Update Status Page',
+      description: 'Updates an existing status page. Pass the full config (title, description, theme, published, etc.) and the full publicGroupList — both are replaced wholesale. Each group has a name, weight, and monitorList of [{id}]. Use getStatusPage first to read current state before modifying.',
+      inputSchema: {
+        slug: z.string().describe('The status page slug (immutable identifier)'),
+        config: z.record(z.string(), z.unknown()).describe('Full status page config (title, description, theme, published, showTags, showPoweredBy, domainNameList, customCSS, footerText, icon, etc.)'),
+        publicGroupList: z.array(z.record(z.string(), z.unknown())).optional().describe('Ordered groups. Each: {name, weight, monitorList: [{id}]}. Defaults to empty list.'),
+        imgDataUrl: z.string().optional().describe('Icon as data URL. Omit or pass empty string to keep existing.'),
+      },
+      outputSchema: {
+        ok: z.boolean(),
+        msg: z.string().optional(),
+      },
+    },
+    async ({ slug, config, publicGroupList, imgDataUrl }) => {
+      if (!isAuthenticated) {
+        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
+      }
+
+      try {
+        const response = await client.updateStatusPage(
+          slug,
+          config,
+          publicGroupList ?? [],
+          imgDataUrl ?? ''
+        );
+        return {
+          content: [{ type: 'text', text: response.msg || `Status page ${slug} updated` }],
+          structuredContent: { ok: response.ok, msg: response.msg },
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new McpError(ErrorCode.InternalError, `Failed to update status page: ${errorMessage}`);
+      }
+    }
+  );
+
+  server.registerTool(
+    'deleteStatusPage',
+    {
+      title: 'Delete Status Page',
+      description: 'Permanently deletes a status page by slug. The status page URL will no longer be accessible.',
+      inputSchema: {
+        slug: z.string().describe('The status page slug to delete'),
+      },
+      outputSchema: {
+        ok: z.boolean(),
+        msg: z.string().optional(),
+      },
+    },
+    async ({ slug }) => {
+      if (!isAuthenticated) {
+        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
+      }
+
+      try {
+        const response = await client.deleteStatusPage(slug);
+        return {
+          content: [{ type: 'text', text: response.msg || `Status page ${slug} deleted` }],
+          structuredContent: { ok: response.ok, msg: response.msg },
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new McpError(ErrorCode.InternalError, `Failed to delete status page: ${errorMessage}`);
       }
     }
   );
