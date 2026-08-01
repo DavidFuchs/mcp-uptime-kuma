@@ -66,6 +66,13 @@ export class UptimeKumaClient {
   private shouldLog: (level: LoggingLevel) => boolean;
   private loginCredentials: { username: string | undefined; password: string | undefined; token?: string; jwtToken?: string } | null = null;
 
+  /**
+   * Invoked whenever the authenticated session is known to be gone — the socket dropped, or
+   * a re-auth on reconnect was refused. The server layer uses this to clear its
+   * `isAuthenticated` flag so the next tool call re-authenticates instead of failing.
+   */
+  public onAuthLost: ((reason: string) => void) | null = null;
+
   constructor(
     url: string, 
     server?: { sendLoggingMessage: (params: { level: LoggingLevel; data: unknown }) => Promise<void> },
@@ -88,6 +95,29 @@ export class UptimeKumaClient {
         // This handles the case where server is not yet connected to transport
       }
     }
+  }
+
+  /** Report loss of the authenticated session to the server layer. */
+  private notifyAuthLost(reason: string): void {
+    try {
+      if (this.onAuthLost) this.onAuthLost(reason);
+    } catch {
+      // never let a listener error break socket handling
+    }
+  }
+
+  /**
+   * Reuse a live socket instead of blindly opening another one.
+   *
+   * connect() unconditionally assigns a brand-new socket to this.socket, so a retrying
+   * caller orphans the previous one — which keeps its listeners and keeps reconnecting
+   * forever, leaking a socket per attempt. Callers that just want a usable connection
+   * should use this.
+   */
+  async ensureConnected(): Promise<void> {
+    if (this.socket && this.socket.connected) return;
+    if (this.socket) this.disconnect(); // tear the dead one down before replacing it
+    await this.connect();
   }
 
   /**
@@ -114,8 +144,19 @@ export class UptimeKumaClient {
         }
       });
 
+      // There was no 'disconnect' handler at all, so the server layer's isAuthenticated
+      // flag stayed true across a dropped socket. An Uptime Kuma restart — or any network
+      // blip — therefore left this client believing it was still authenticated while the
+      // server treated it as anonymous, and every subsequent call failed until the process
+      // was restarted. Surface the loss so the next call re-authenticates.
+      this.socket.on('disconnect', (reason: string) => {
+        this.safeLog('warning', `Disconnected from Uptime Kuma (${reason}); authentication invalidated`);
+        this.notifyAuthLost(`socket disconnected (${reason})`);
+      });
+
       this.socket.on('connect_error', (error: Error) => {
         this.safeLog('error', `Connection error: ${error.message}`);
+        this.notifyAuthLost(`connection error (${error.message})`);
         if (initialConnect) {
           reject(new Error(`Connection failed: ${error.message}`));
         }
@@ -146,7 +187,10 @@ export class UptimeKumaClient {
         if (response.ok) {
           this.safeLog('info', 'Re-authenticated after reconnection (JWT)');
         } else {
+          // A refused re-auth used to be logged and forgotten, leaving the server layer
+          // convinced it was still authenticated.
           this.safeLog('error', `Re-authentication failed: ${response.msg || 'unknown error'}`);
+          this.notifyAuthLost(`re-authentication refused (${response.msg || 'unknown error'})`);
         }
       });
     } else if (username) {
@@ -154,7 +198,10 @@ export class UptimeKumaClient {
         if (response.ok) {
           this.safeLog('info', 'Re-authenticated after reconnection');
         } else {
+          // A refused re-auth used to be logged and forgotten, leaving the server layer
+          // convinced it was still authenticated.
           this.safeLog('error', `Re-authentication failed: ${response.msg || 'unknown error'}`);
+          this.notifyAuthLost(`re-authentication refused (${response.msg || 'unknown error'})`);
         }
       });
     } else {
