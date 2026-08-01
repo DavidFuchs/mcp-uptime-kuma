@@ -68,32 +68,82 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
   
   const client = new UptimeKumaClient(config.url, server, shouldLog);
   let isAuthenticated = false;
-  
-  // Function to authenticate the client (to be called after transport is connected)
-  const authenticateClient = async () => {
-    try {
-      await client.connect();
-      await client.login(config.username, config.password, config.token, config.jwtToken);
+  let authInFlight: Promise<void> | null = null;
 
-      // Logging in anonymously gives no indication that authentication failed.
-      // So instead, we issue a getSettings call after login, to prove the connection is working.
-      await client.getSettings();
-      isAuthenticated = true;
-      
-      await server.sendLoggingMessage({
-        level: 'info',
-        data: 'Successfully authenticated with Uptime Kuma'
-      });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      await server.sendLoggingMessage({
-        level: 'error',
-        data: `Failed to authenticate with Uptime Kuma: ${errorMessage}`
-      });
-      throw new McpError(
-        ErrorCode.InternalError,
-        `Failed to authenticate with Uptime Kuma: ${errorMessage}`
-      );
+  // The client reports when the authenticated session is known to be gone (socket dropped,
+  // or a re-auth on reconnect was refused). Clearing the flag here is what lets the next
+  // tool call transparently re-authenticate, instead of the process staying wedged.
+  client.onAuthLost = (reason: string) => {
+    if (!isAuthenticated) return;
+    isAuthenticated = false;
+    process.stderr.write(`Uptime Kuma session invalidated: ${reason}. Will re-authenticate on next call.\n`);
+  };
+
+  // UPTIME_KUMA_JWT_TOKEN must be a real JWT — Uptime Kuma verifies it with jwt.verify()
+  // against its jwtSecret. Anything else (a password, an API key, a truncated paste) is
+  // rejected with the opaque message "authInvalidToken", which reads exactly like an
+  // expired credential and sends you looking for a token-lifetime problem that isn't there.
+  // Only the credential's SHAPE is ever reported — never its value.
+  const describeCredential = (): string | null => {
+    const t = config.jwtToken;
+    if (!t) return null;
+    const segments = String(t).split('.').length;
+    if (segments === 3) return null;
+    return `UPTIME_KUMA_JWT_TOKEN is not a JWT: it has ${segments} dot-separated segment(s), expected 3 `
+      + `(length ${String(t).length}). Uptime Kuma will always reject this with "authInvalidToken". `
+      + `Generate a real token with: mcp-uptime-kuma-get-jwt ${config.url} <username> <password>. `
+      + 'Note this variable may also be set in your shell environment as well as your MCP client '
+      + 'config — check both and make sure they agree.';
+  };
+
+  // Function to authenticate the client (to be called after transport is connected).
+  //
+  // Memoised on two axes. Returning early when already authenticated makes it safe to call
+  // from every tool handler; sharing one in-flight promise stops concurrent calls opening a
+  // second socket.io connection during the handshake.
+  const authenticateClient = async (): Promise<void> => {
+    if (isAuthenticated) return;
+    if (authInFlight) return authInFlight;
+
+    authInFlight = (async () => {
+      try {
+        // Reuse a live socket. connect() unconditionally assigns a new one, so every retry
+        // orphaned the previous socket — still holding listeners, still reconnecting.
+        await client.ensureConnected();
+        await client.login(config.username, config.password, config.token, config.jwtToken);
+
+        // Logging in anonymously gives no indication that authentication failed.
+        // So instead, we issue a getSettings call after login, to prove the connection is working.
+        await client.getSettings();
+        isAuthenticated = true;
+
+        await server.sendLoggingMessage({
+          level: 'info',
+          data: 'Successfully authenticated with Uptime Kuma'
+        });
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        const credentialProblem = describeCredential();
+        const detail = credentialProblem ? `${errorMessage}. ${credentialProblem}` : errorMessage;
+        await server.sendLoggingMessage({
+          level: 'error',
+          data: `Failed to authenticate with Uptime Kuma: ${detail}`
+        });
+        throw new McpError(
+          ErrorCode.InternalError,
+          `Failed to authenticate with Uptime Kuma: ${detail}`
+        );
+      }
+    })();
+
+    try {
+      return await authInFlight;
+    } finally {
+      // Always clear the in-flight promise once it settles. Clearing only on failure meant
+      // that after the first success it stayed set forever, so once a session could be
+      // invalidated, authenticateClient() would return that stale resolved promise and skip
+      // re-authenticating entirely.
+      authInFlight = null;
     }
   };
 
@@ -112,12 +162,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       },
     },
     async ({ monitorID, includeTypeSpecificFields }) => {
-      if (!isAuthenticated) {
-        throw new McpError(
-          ErrorCode.InternalError,
-          'Not authenticated with Uptime Kuma'
-        );
-      }
+      await authenticateClient();
 
       try {
         const monitor = includeTypeSpecificFields 
@@ -164,12 +209,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       },
     },
     async ({ includeTypeSpecificFields, keywords, type, active, maintenance, tags }) => {
-      if (!isAuthenticated) {
-        throw new McpError(
-          ErrorCode.InternalError,
-          'Not authenticated with Uptime Kuma'
-        );
-      }
+      await authenticateClient();
 
       try {
         const monitorList = includeTypeSpecificFields
@@ -272,12 +312,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       },
     },
     async ({ keywords, type, active, maintenance, tags, status }) => {
-      if (!isAuthenticated) {
-        throw new McpError(
-          ErrorCode.InternalError,
-          'Not authenticated with Uptime Kuma'
-        );
-      }
+      await authenticateClient();
 
       try {
         const summaries = client.getMonitorSummary({ keywords, type, active, maintenance, tags, status });
@@ -319,12 +354,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       },
     },
     async ({ monitorID, maxHeartbeats }) => {
-      if (!isAuthenticated) {
-        throw new McpError(
-          ErrorCode.InternalError,
-          'Not authenticated with Uptime Kuma'
-        );
-      }
+      await authenticateClient();
 
       try {
         const count = maxHeartbeats ?? 1;
@@ -363,12 +393,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       },
     },
     async () => {
-      if (!isAuthenticated) {
-        throw new McpError(
-          ErrorCode.InternalError,
-          'Not authenticated with Uptime Kuma'
-        );
-      }
+      await authenticateClient();
 
       try {
         const response = await client.getSettings();
@@ -407,12 +432,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       },
     },
     async ({ maxHeartbeats }) => {
-      if (!isAuthenticated) {
-        throw new McpError(
-          ErrorCode.InternalError,
-          'Not authenticated with Uptime Kuma'
-        );
-      }
+      await authenticateClient();
 
       try {
         const count = maxHeartbeats ?? 1;
@@ -460,12 +480,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       },
     },
     async ({ monitorID }) => {
-      if (!isAuthenticated) {
-        throw new McpError(
-          ErrorCode.InternalError,
-          'Not authenticated with Uptime Kuma'
-        );
-      }
+      await authenticateClient();
 
       try {
         const response = await client.pauseMonitor(monitorID);
@@ -505,12 +520,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       },
     },
     async ({ monitorID }) => {
-      if (!isAuthenticated) {
-        throw new McpError(
-          ErrorCode.InternalError,
-          'Not authenticated with Uptime Kuma'
-        );
-      }
+      await authenticateClient();
 
       try {
         const response = await client.resumeMonitor(monitorID);
@@ -579,9 +589,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       },
     },
     async (input) => {
-      if (!isAuthenticated) {
-        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
-      }
+      await authenticateClient();
 
       try {
         const defaults: Record<string, unknown> = {
@@ -652,9 +660,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       },
     },
     async ({ monitorID, ...rest }) => {
-      if (!isAuthenticated) {
-        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
-      }
+      await authenticateClient();
 
       try {
         const existing = client.getMonitor(monitorID, true);
@@ -695,9 +701,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       },
     },
     async ({ monitorID }) => {
-      if (!isAuthenticated) {
-        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
-      }
+      await authenticateClient();
 
       try {
         const response = await client.deleteMonitor(monitorID);
@@ -726,9 +730,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       },
     },
     async () => {
-      if (!isAuthenticated) {
-        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
-      }
+      await authenticateClient();
 
       try {
         const notifications = client.getNotificationList();
@@ -762,9 +764,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       },
     },
     async ({ name, type, isDefault, applyExisting, config }) => {
-      if (!isAuthenticated) {
-        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
-      }
+      await authenticateClient();
 
       try {
         const notification = { name, type, isDefault, applyExisting, ...config };
@@ -800,9 +800,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       },
     },
     async ({ notificationID, name, type, isDefault, applyExisting, config }) => {
-      if (!isAuthenticated) {
-        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
-      }
+      await authenticateClient();
 
       try {
         const notification: Record<string, unknown> = { ...config };
@@ -836,9 +834,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       },
     },
     async ({ notificationID }) => {
-      if (!isAuthenticated) {
-        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
-      }
+      await authenticateClient();
 
       try {
         const response = await client.deleteNotification(notificationID);
@@ -867,9 +863,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       },
     },
     async () => {
-      if (!isAuthenticated) {
-        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
-      }
+      await authenticateClient();
 
       try {
         const dockerHosts = client.getDockerHostList();
@@ -901,9 +895,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       },
     },
     async ({ name, dockerType, dockerDaemon }) => {
-      if (!isAuthenticated) {
-        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
-      }
+      await authenticateClient();
 
       try {
         const response = await client.addDockerHost({ name, dockerType, dockerDaemon });
@@ -936,9 +928,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       },
     },
     async ({ dockerHostID, name, dockerType, dockerDaemon }) => {
-      if (!isAuthenticated) {
-        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
-      }
+      await authenticateClient();
 
       try {
         // Merge new values onto the current record so callers can omit unchanged fields.
@@ -981,9 +971,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       },
     },
     async ({ dockerHostID }) => {
-      if (!isAuthenticated) {
-        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
-      }
+      await authenticateClient();
 
       try {
         const response = await client.deleteDockerHost(dockerHostID);
@@ -1014,9 +1002,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       },
     },
     async ({ name, dockerType, dockerDaemon }) => {
-      if (!isAuthenticated) {
-        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
-      }
+      await authenticateClient();
 
       try {
         const response = await client.testDockerHost({ name, dockerType, dockerDaemon });
@@ -1049,9 +1035,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       },
     },
     async () => {
-      if (!isAuthenticated) {
-        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
-      }
+      await authenticateClient();
 
       try {
         const tags = await client.getTagList();
@@ -1082,9 +1066,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       },
     },
     async ({ name, color }) => {
-      if (!isAuthenticated) {
-        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
-      }
+      await authenticateClient();
 
       try {
         const response = await client.addTag(name, color);
@@ -1113,9 +1095,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       },
     },
     async ({ tagID }) => {
-      if (!isAuthenticated) {
-        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
-      }
+      await authenticateClient();
 
       try {
         const response = await client.deleteTag(tagID);
@@ -1144,9 +1124,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       },
     },
     async () => {
-      if (!isAuthenticated) {
-        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
-      }
+      await authenticateClient();
 
       try {
         const maintenanceWindows = client.getMaintenanceList();
@@ -1190,9 +1168,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       },
     },
     async (input) => {
-      if (!isAuthenticated) {
-        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
-      }
+      await authenticateClient();
 
       try {
         const response = await client.createMaintenance(input as Record<string, unknown>);
@@ -1221,9 +1197,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       },
     },
     async () => {
-      if (!isAuthenticated) {
-        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
-      }
+      await authenticateClient();
 
       try {
         const statusPages = client.getStatusPageList();
@@ -1255,9 +1229,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       },
     },
     async ({ slug }) => {
-      if (!isAuthenticated) {
-        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
-      }
+      await authenticateClient();
 
       try {
         const response = await client.getStatusPage(slug);
@@ -1293,9 +1265,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       },
     },
     async ({ title, slug }) => {
-      if (!isAuthenticated) {
-        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
-      }
+      await authenticateClient();
 
       try {
         const response = await client.createStatusPage(title, slug);
@@ -1327,9 +1297,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       },
     },
     async ({ slug, config, publicGroupList, imgDataUrl }) => {
-      if (!isAuthenticated) {
-        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
-      }
+      await authenticateClient();
 
       try {
         const response = await client.updateStatusPage(
@@ -1363,9 +1331,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       },
     },
     async ({ slug }) => {
-      if (!isAuthenticated) {
-        throw new McpError(ErrorCode.InternalError, 'Not authenticated with Uptime Kuma');
-      }
+      await authenticateClient();
 
       try {
         const response = await client.deleteStatusPage(slug);

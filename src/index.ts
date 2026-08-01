@@ -32,6 +32,18 @@ function validateEnvironment(): UptimeKumaConfig {
     process.exit(1);
   }
 
+  // Fail loudly and early on a credential that cannot possibly work. Uptime Kuma rejects a
+  // non-JWT with the opaque message "authInvalidToken", which is indistinguishable from an
+  // expired credential — so say what is actually wrong. Reports the SHAPE only, never the value.
+  if (jwtToken && String(jwtToken).split('.').length !== 3) {
+    console.error(
+      'WARNING: UPTIME_KUMA_JWT_TOKEN is not a JWT '
+      + `(${String(jwtToken).split('.').length} dot-separated segment(s), length ${String(jwtToken).length}; expected 3). `
+      + 'Uptime Kuma will reject every request with "authInvalidToken". '
+      + `Regenerate with: mcp-uptime-kuma-get-jwt ${url} <username> <password>`
+    );
+  }
+
   return { url, username, password, token, jwtToken };
 }
 
@@ -77,9 +89,19 @@ async function runStdio(config: UptimeKumaConfig) {
     const transport = new StdioServerTransport();
     
     await server.connect(transport);
-    
-    // Now authenticate after transport is connected so we can log properly
-    await authenticateClient();
+
+    // Now authenticate after transport is connected so we can log properly.
+    //
+    // A startup auth failure must NOT kill the process. Uptime Kuma being briefly
+    // unreachable — a container restart, a host still booting, a stopped service — would
+    // otherwise exit here and the MCP client would report the server as permanently broken.
+    // Leave the server up and let each tool call authenticate lazily, so it recovers on its
+    // own once Uptime Kuma is back.
+    try {
+      await authenticateClient();
+    } catch (error) {
+      process.stderr.write(`Initial authentication failed, will retry on demand: ${error}\n`);
+    }
   } catch (error) {
     process.stderr.write(`Fatal error in stdio transport: ${error}\n`);
     process.exit(1);
