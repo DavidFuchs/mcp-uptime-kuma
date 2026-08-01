@@ -1,6 +1,6 @@
 # check=skip=SecretsUsedInArgOrEnv
 # Build stage
-FROM node:18-alpine AS builder
+FROM node:22-alpine AS builder
 
 # Accept version as build argument
 ARG VERSION=dev
@@ -24,7 +24,7 @@ RUN sed -i "s/0\.0\.0-dev/${VERSION}/" src/version.ts
 RUN npm run build
 
 # Production stage
-FROM node:18-alpine
+FROM node:22-alpine
 
 # Accept version as build argument (must be redeclared per stage)
 ARG VERSION=dev
