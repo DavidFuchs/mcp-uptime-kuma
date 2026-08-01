@@ -7,7 +7,7 @@ export const HeartbeatSchema = z.object({
   // Required fields
   status: z.number().describe('0=DOWN 1=UP 2=PENDING 3=MAINT'),
   time: z.string().describe('Timestamp'),
-  msg: z.string().describe('Status message'),
+  msg: z.union([z.string(), z.array(z.any()).transform(arr => arr.join(', '))]).describe('Status message'),
   important: z.union([z.boolean(), z.number()]).transform(val => Boolean(val)).describe('Status change flag'),
   // Optional fields
   id: z.number().optional().describe('Heartbeat ID'),

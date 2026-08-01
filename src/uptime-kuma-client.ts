@@ -1011,6 +1011,20 @@ export class UptimeKumaClient {
       if (tagID == null) continue;
       await this.deleteMonitorTag(tagID, monitorID, existing.value ?? '');
     }
+
+    // Update the local cache so subsequent reads reflect the new tags
+    // without waiting for the server to push a monitorList event.
+    if (this.monitorListCache[String(monitorID)]) {
+      const updatedTags = desiredTags.map((t) => {
+        const name = String(t.name);
+        const value = (t.value as string | undefined) ?? '';
+        const tagID = nameToID.get(name);
+        const color = (t.color as string | undefined) ??
+          freshTags.find((ft) => ft.name === name)?.color ?? '#808080';
+        return { tag_id: tagID, name, value, color };
+      });
+      (this.monitorListCache[String(monitorID)] as any).tags = updatedTags;
+    }
   }
 
   /**

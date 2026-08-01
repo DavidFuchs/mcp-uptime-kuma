@@ -1,19 +1,9 @@
 # check=skip=SecretsUsedInArgOrEnv
 # Build stage
-FROM node:18-alpine AS builder
+FROM node:22-alpine AS builder
 
 # Accept version as build argument
 ARG VERSION=dev
-
-# Metadata labels
-LABEL org.opencontainers.image.title="mcp-uptime-kuma"
-LABEL org.opencontainers.image.description="A Model Context Protocol server for Uptime Kuma v2."
-LABEL org.opencontainers.image.version="${VERSION}"
-LABEL org.opencontainers.image.authors="David Fuchs <david@davidfuchs.ca>"
-LABEL org.opencontainers.image.url="https://hub.docker.com/r/davidfuchs/mcp-uptime-kuma"
-LABEL org.opencontainers.image.source="https://github.com/DavidFuchs/mcp-uptime-kuma"
-LABEL org.opencontainers.image.licenses="MIT"
-LABEL org.opencontainers.image.documentation="https://github.com/DavidFuchs/mcp-uptime-kuma#readme"
 
 WORKDIR /app
 
@@ -27,11 +17,27 @@ RUN npm ci
 # Copy source code
 COPY src/ ./src/
 
+# Inject version into source before compiling
+RUN sed -i "s/0\.0\.0-dev/${VERSION}/" src/version.ts
+
 # Build TypeScript
 RUN npm run build
 
 # Production stage
-FROM node:18-alpine
+FROM node:22-alpine
+
+# Accept version as build argument (must be redeclared per stage)
+ARG VERSION=dev
+
+# Metadata labels
+LABEL org.opencontainers.image.title="mcp-uptime-kuma"
+LABEL org.opencontainers.image.description="A Model Context Protocol server for Uptime Kuma v2."
+LABEL org.opencontainers.image.version="${VERSION}"
+LABEL org.opencontainers.image.authors="David Fuchs <david@davidfuchs.ca>"
+LABEL org.opencontainers.image.url="https://hub.docker.com/r/davidfuchs/mcp-uptime-kuma"
+LABEL org.opencontainers.image.source="https://github.com/DavidFuchs/mcp-uptime-kuma"
+LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.documentation="https://github.com/DavidFuchs/mcp-uptime-kuma#readme"
 
 WORKDIR /app
 
