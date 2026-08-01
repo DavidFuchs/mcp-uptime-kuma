@@ -232,3 +232,19 @@ For development setup, building, testing, and project structure, see [CONTRIBUTI
 - [Model Context Protocol Documentation](https://modelcontextprotocol.io/)
 - [MCP TypeScript SDK](https://www.npmjs.com/package/@modelcontextprotocol/sdk)
 - [MCP Specification](https://spec.modelcontextprotocol.io/)
+
+## Security
+
+To report a vulnerability, please see [SECURITY.md](SECURITY.md).
+
+## Disclaimer
+
+This is a personal, free, open-source side project provided "as is" under the
+[MIT License](LICENSE), without warranty of any kind. You install and run it
+yourself, and it connects to an Uptime Kuma instance that you control. The
+author is not responsible for any damage, data loss, downtime, or other
+consequences arising from its use. Use at your own risk.
+
+## License
+
+Licensed under the [MIT License](LICENSE).
