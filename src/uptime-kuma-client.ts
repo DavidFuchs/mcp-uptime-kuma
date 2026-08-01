@@ -370,7 +370,11 @@ export class UptimeKumaClient {
       // The heartbeatList event sends data per monitor, not all at once
       // Format: (monitorID, array of heartbeats, important flag)
       this.safeLog('debug', `Received heartbeatList for monitor ${monitorID}: ${heartbeatList.length} heartbeats`);
-      this.heartbeatListCache[monitorID.toString()] = heartbeatList;
+      // Uptime Kuma emits heartbeatList in ascending (oldest-first) order, but the
+      // cache is consumed newest-first: live 'heartbeat' events are unshift()ed to the
+      // front and reads use slice(0, maxHeartbeats). Reverse on receipt so the cache
+      // is consistently newest-first; otherwise reads return the oldest ~100 beats.
+      this.heartbeatListCache[monitorID.toString()] = heartbeatList.slice().reverse();
     });
 
     // Listen for individual heartbeat updates (real-time)
