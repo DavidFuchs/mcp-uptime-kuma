@@ -49,6 +49,85 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     }
   );
 
+  // Reject unknown keys instead of silently stripping them.
+  //
+  // registerTool is normally handed a raw Zod *shape*, which the SDK turns into a plain
+  // z.object(shape). A plain object schema DROPS keys it doesn't know about rather than
+  // erroring, and the write handlers then merge what survived over the monitor's existing
+  // config — so a field this server doesn't declare is refilled with its old value and
+  // Uptime Kuma answers {"ok":true,"msg":"Saved."}. A partial write reported as a complete
+  // one. That is the shared mechanism behind #58, #60, #63 and #65; each was reported
+  // separately because there is nothing in the response to connect them.
+  //
+  // getZodSchemaObject / normalizeObjectSchema both accept an already-built Zod object and
+  // pass it through untouched, so upgrading every shape to .strict() here converts the whole
+  // class from silent data loss into a loud error that names the offending key. It also puts
+  // additionalProperties: false into the advertised JSON Schema, so callers are told up front
+  // rather than discovering it from a write that didn't happen.
+  //
+  // Done by wrapping the method once rather than editing ~31 schemas by hand: one seam, no
+  // chance of missing one, and it covers any tool added later.
+  const registerToolUnstrict = server.registerTool.bind(server);
+  (server as unknown as { registerTool: typeof server.registerTool }).registerTool = ((
+    name: string,
+    config: Record<string, unknown>,
+    cb: unknown
+  ) => {
+    const shape = config?.inputSchema as Record<string, unknown> | undefined;
+    // Only upgrade raw shapes; anything already a Zod schema is left alone.
+    if (shape && typeof shape === 'object' && !('_def' in shape) && !('_zod' in shape)) {
+      config = { ...config, inputSchema: strictInputSchema(name, shape as z.ZodRawShape) };
+    }
+    return (registerToolUnstrict as unknown as (n: string, c: unknown, f: unknown) => unknown)(name, config, cb);
+  }) as typeof server.registerTool;
+
+  /**
+   * Builds the strict schema, and makes an unknown key the FIRST thing the caller reads.
+   *
+   * Zod appends `unrecognized_keys` after the per-field issues, which leaves the second half
+   * of #65 intact: `getMonitor {monitorId: 1}` reports BOTH "unknown key monitorId" and
+   * "monitorID: expected number, received nan" — because z.coerce.number() coerces the
+   * now-missing monitorID to NaN — and the NaN line comes first. That line is the misleading
+   * one: it points at a field the caller never got wrong. Reordering turns a message that
+   * sends you hunting for a type bug into one that says "you misspelled this key".
+   */
+  function strictInputSchema(toolName: string, shape: z.ZodRawShape) {
+    const schema = z.object(shape).strict();
+    const accepted = Object.keys(shape);
+
+    const reorder = (result: z.SafeParseReturnType<unknown, unknown>) => {
+      if (result.success) return result;
+      const issues = result.error?.issues;
+      if (!Array.isArray(issues)) return result;
+      const unknown = issues.filter((i) => i.code === 'unrecognized_keys');
+      if (unknown.length === 0) return result;
+
+      const named = unknown.flatMap((i) => (i as z.ZodIssue & { keys?: string[] }).keys ?? []);
+      const lead = {
+        code: 'unrecognized_keys',
+        keys: named,
+        path: [],
+        message:
+          `Unknown field(s) for ${toolName}: ${named.map((k) => `'${k}'`).join(', ')}. ` +
+          'Field names are case-sensitive — check spelling and casing first (monitorID, not monitorId). ' +
+          `Accepted fields: ${accepted.join(', ')}. ` +
+          'Any other issue reported below may be a knock-on effect of this one: a required field ' +
+          'that looks absent is usually the misspelled key.',
+      } as unknown as z.ZodIssue;
+      const rest = issues.filter((i) => i.code !== 'unrecognized_keys');
+      return { success: false as const, error: new z.ZodError([lead, ...rest]) };
+    };
+
+    const safeParse = schema.safeParse.bind(schema);
+    const safeParseAsync = schema.safeParseAsync.bind(schema);
+    (schema as unknown as { safeParse: unknown }).safeParse = (data: unknown, params?: unknown) =>
+      reorder(safeParse(data, params as never));
+    (schema as unknown as { safeParseAsync: unknown }).safeParseAsync = async (data: unknown, params?: unknown) =>
+      reorder(await safeParseAsync(data, params as never));
+
+    return schema;
+  }
+
   // Handle logging level changes via the underlying server
   server.server.setRequestHandler(SetLevelRequestSchema, async (request) => {
     const level = request.params?.level as LoggingLevel | undefined;
