@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { McpError, ErrorCode, SetLevelRequestSchema, LoggingLevelSchema, type LoggingLevel } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
+import { randomBytes, randomInt } from 'node:crypto';
 import { UptimeKumaClient } from './uptime-kuma-client.js';
 import { HeartbeatSchema, MonitorBaseSchema, MonitorSummarySchema, SettingsSchema, NotificationSchema, MaintenanceSchema, StatusPageSchema, DockerHostSchema } from './types/index.js';
 import type { UptimeKumaConfig } from './types/index.js';
@@ -201,20 +202,23 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         type: z.string().optional().describe('Filter by monitor type(s). Comma-separated for multiple types. Use listMonitorTypes tool to see all available types.'),
         active: z.boolean().optional().describe('Filter by active status. true=only active monitors, false=only inactive monitors.'),
         maintenance: z.boolean().optional().describe('Filter by maintenance status. true=only monitors in maintenance, false=only monitors not in maintenance.'),
-        tags: z.string().optional().describe('Filter by tag name and optional value. Comma-separated for multiple tags. Format: "tagName" or "tagName=value". Monitor must have all specified tags. Case-insensitive. Examples: "production", "env=staging", "production,region=us-east"')
+        tags: z.string().optional().describe('Filter by tag name and optional value. Comma-separated for multiple tags. Format: "tagName" or "tagName=value". Monitor must have all specified tags. Case-insensitive. Examples: "production", "env=staging", "production,region=us-east"'),
+        // Issue #65: there was no way to list a group's members, so callers passing
+        // `parentId` got the entire monitor list back, which reads as a broken filter.
+        parentId: z.union([z.null(), z.coerce.number().int()]).optional().describe('Filter to the DIRECT children of this group monitor. Pass null for top-level monitors (those with no parent). Not recursive — use the group\'s own childrenIDs to walk deeper.')
       },
-      outputSchema: { 
+      outputSchema: {
         monitors: z.array(MonitorBaseSchema.passthrough()).describe('Array of monitor objects with common fields plus uptime/avgPing. May include type-specific fields when includeTypeSpecificFields is true.'),
         count: z.number()
       },
     },
-    async ({ includeTypeSpecificFields, keywords, type, active, maintenance, tags }) => {
+    async ({ includeTypeSpecificFields, keywords, type, active, maintenance, tags, parentId }) => {
       await authenticateClient();
 
       try {
         const monitorList = includeTypeSpecificFields
-          ? client.getMonitorList({ keywords, type, active, maintenance, tags, includeTypeSpecificFields: true })
-          : client.getMonitorList({ keywords, type, active, maintenance, tags, includeTypeSpecificFields: false });
+          ? client.getMonitorList({ keywords, type, active, maintenance, tags, parentId, includeTypeSpecificFields: true })
+          : client.getMonitorList({ keywords, type, active, maintenance, tags, parentId, includeTypeSpecificFields: false });
         const monitors = Object.values(monitorList);
         
         return {
@@ -547,14 +551,79 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
 
   // ─── Monitor write tools ──────────────────────────────────────────────────
 
+  // Uptime Kuma's editMonitor handler reads these fields under camelCase names on the wire
+  // (server/server.js: `bean.jsonPath = monitor.jsonPath`, `bean.pushToken = monitor.pushToken`,
+  // …) while the database columns are snake_case (json_path, push_token). The snake_case
+  // spellings are what the schema documentation, the database and issue #60 all use, so they
+  // are the ones callers reach for first. Accept both and normalise onto the name Kuma reads,
+  // rather than letting a reasonable guess silently do nothing.
+  const MONITOR_FIELD_ALIASES: Record<string, string> = {
+    json_path: 'jsonPath',
+    json_path_operator: 'jsonPathOperator',
+    expected_value: 'expectedValue',
+    push_token: 'pushToken',
+  };
+
+  const normaliseMonitorAliases = (fields: Record<string, unknown>): Record<string, unknown> => {
+    for (const [alias, canonical] of Object.entries(MONITOR_FIELD_ALIASES)) {
+      if (!(alias in fields)) continue;
+      if (canonical in fields && fields[canonical] !== fields[alias]) {
+        throw new Error(
+          `Conflicting values for ${canonical} (${JSON.stringify(fields[canonical])}) and its alias ${alias} (${JSON.stringify(fields[alias])}) — pass only '${canonical}'.`
+        );
+      }
+      fields[canonical] = fields[alias];
+      delete fields[alias];
+    }
+    return fields;
+  };
+
+  // Uptime Kuma generates push tokens in the browser (src/pages/EditMonitor.vue:
+  // genSecret(pushTokenLength) with pushTokenLength = 32). Match its length and alphabet.
+  const generatePushToken = (): string => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    const bytes = randomBytes(32 * 2);
+    let token = '';
+    // Rejection sampling — modulo on a raw byte would bias the alphabet.
+    const max = 256 - (256 % chars.length);
+    for (let i = 0; token.length < 32 && i < bytes.length; i++) {
+      if (bytes[i] < max) token += chars[bytes[i] % chars.length];
+    }
+    while (token.length < 32) token += chars[randomInt(0, chars.length)];
+    return token;
+  };
+
+  // Uptime Kuma's own intent for an unset timeout is 0.8 x interval; only its unit handling is
+  // wrong. Storing the value at creation means the buggy runtime fallback never runs.
+  // push never polls and group has no request of its own, so both correctly keep 0.
+  const defaultTimeoutForInterval = (type: string, interval?: number): number | undefined => {
+    if (type === 'push' || type === 'group') return undefined;
+    const seconds = Math.round((interval ?? 60) * 0.8 * 10) / 10;
+    // Monitor.validate() rejects a ping timeout outside PING_GLOBAL_TIMEOUT_MIN/MAX (1..300).
+    if (type === 'ping') return Math.min(Math.max(Math.round(seconds), 1), 300);
+    return seconds;
+  };
+
   server.registerTool(
     'createMonitor',
     {
       title: 'Create Monitor',
-      description: 'Creates a new monitor in Uptime Kuma. Requires at minimum a name and type. Use listMonitorTypes to see supported types. For HTTP monitors include url; for TCP/port monitors include hostname and port.',
+      description: 'Creates a new monitor in Uptime Kuma. Requires at minimum a name and type. Use listMonitorTypes to see supported types. For HTTP monitors include url; for TCP/port monitors include hostname and port; for json-query include url, jsonPath, jsonPathOperator and expectedValue. A push monitor is given a generated push token (Uptime Kuma only generates one in its own web UI) and the resulting ping URL is returned. timeout defaults to 0.8 x interval seconds for polled types.',
       inputSchema: {
         name: z.string().describe('Display name for the monitor'),
         type: z.string().describe('Monitor type (e.g. http, port, ping, dns, push, keyword). Use listMonitorTypes for all options.'),
+        description: z.string().nullable().optional().describe('Free-text description shown on the monitor page'),
+        active: z.boolean().optional().describe('Whether the monitor starts checking immediately (default: true). Pass false to create it paused.'),
+        resendInterval: z.coerce.number().optional().describe('Resend notification every N checks while down (0 = disabled, the default)'),
+        timeout: z.coerce.number().nullable().optional().describe('Request timeout in SECONDS. Omit for 0.8 x interval. Avoid 0: Uptime Kuma\'s runtime fallback for a stored 0 computes interval * 1000 * 0.8 and then multiplies by 1000 again, yielding a ~13 hour timeout, so the monitor can never report DOWN against a host that accepts the connection and never answers.'),
+        jsonPath: z.string().optional().describe('JSONata expression for json-query monitors. Must resolve to a primitive.'),
+        json_path: z.string().optional().describe('Alias for jsonPath (the database column name). Prefer jsonPath.'),
+        jsonPathOperator: z.enum(['>', '>=', '<', '<=', '==', '!=', 'contains']).optional().describe('Comparison operator for json-query monitors. UP while value <operator> expectedValue.'),
+        json_path_operator: z.enum(['>', '>=', '<', '<=', '==', '!=', 'contains']).optional().describe('Alias for jsonPathOperator. Prefer jsonPathOperator.'),
+        expectedValue: z.coerce.string().optional().describe('Threshold the json-query result is compared against. Stored as a string.'),
+        expected_value: z.coerce.string().optional().describe('Alias for expectedValue. Prefer expectedValue.'),
+        pushToken: z.string().min(8).optional().describe('Push token for push monitors — the secret in the ping URL. Omit and one is generated and returned.'),
+        push_token: z.string().min(8).optional().describe('Alias for pushToken (the database column name). Prefer pushToken.'),
         url: z.string().optional().describe('URL to monitor (required for http/keyword/json-query types)'),
         hostname: z.string().optional().describe('Hostname to monitor (required for port/ping/dns types)'),
         port: z.coerce.number().optional().describe('Port number (required for port/tcp types)'),
@@ -586,6 +655,9 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         ok: z.boolean(),
         monitorID: z.number().optional(),
         msg: z.string().optional(),
+        pushToken: z.string().optional().describe('Push monitors only. The token, so the sender can be wired up without a second, wider read.'),
+        pushURL: z.string().optional().describe('Push monitors only. The URL the sender should GET.'),
+        timeout: z.number().optional().describe('The timeout in seconds actually stored, including the default applied when omitted.'),
       },
     },
     async (input) => {
@@ -602,14 +674,67 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
           defaults.dns_resolve_server = '1.1.1.1';
           defaults.dns_resolve_type = 'A';
         }
+
+        const requested = normaliseMonitorAliases({ ...input } as Record<string, unknown>);
+
+        // A json-query monitor without a query is accepted by Uptime Kuma and then fails
+        // every single check, which looks like a broken target rather than a broken config.
+        if (requested.type === 'json-query') {
+          const missing = ['jsonPath', 'jsonPathOperator', 'expectedValue'].filter(
+            (f) => requested[f] === undefined || requested[f] === ''
+          );
+          if (missing.length > 0) {
+            throw new Error(
+              `A json-query monitor needs ${missing.join(', ')}. Without them Uptime Kuma creates the monitor and then fails every check.`
+            );
+          }
+        }
+
+        // Uptime Kuma generates push tokens in the browser only (src/pages/EditMonitor.vue,
+        // genSecret(32)); the server has no such code path. Without this an API-created push
+        // monitor has an empty push_token, no ping URL, and can never report — while looking
+        // identical to one that is merely awaiting its first beat.
+        let generatedPushToken = false;
+        if (requested.type === 'push' && !requested.pushToken) {
+          requested.pushToken = generatePushToken();
+          generatedPushToken = true;
+        }
+
+        // Never leave timeout at 0 — see the schema description for why that is a ~13 hour
+        // timeout rather than a default.
+        if (requested.timeout === undefined || requested.timeout === null) {
+          const fallback = defaultTimeoutForInterval(
+            requested.type as string,
+            requested.interval as number | undefined
+          );
+          if (fallback !== undefined) requested.timeout = fallback;
+          else delete requested.timeout;
+        }
+
         const monitorData = {
           ...defaults,
-          ...input,
+          ...requested,
         };
         const response = await client.createMonitor(monitorData as Record<string, unknown>);
+
+        const structuredContent: Record<string, unknown> = {
+          ok: response.ok,
+          monitorID: response.monitorID,
+          msg: response.msg,
+        };
+        if (requested.timeout !== undefined) structuredContent.timeout = Number(requested.timeout);
+
+        let text = response.msg || `Monitor created with ID ${response.monitorID}`;
+        if (requested.type === 'push' && requested.pushToken) {
+          const base = config.url.replace(/\/+$/, '');
+          structuredContent.pushToken = requested.pushToken;
+          structuredContent.pushURL = `${base}/api/push/${requested.pushToken}?status=up&msg=OK&ping=`;
+          text += `\n\nPush monitor ${response.monitorID}: point the sender at (GET, not POST)\n  ${structuredContent.pushURL}\nThis URL contains a secret — treat it as a credential.${generatedPushToken ? ' The token was generated because Uptime Kuma only ever generates one in its own web UI.' : ''}`;
+        }
+
         return {
-          content: [{ type: 'text', text: response.msg || `Monitor created with ID ${response.monitorID}` }],
-          structuredContent: { ok: response.ok, monitorID: response.monitorID, msg: response.msg },
+          content: [{ type: 'text', text }],
+          structuredContent,
         };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -625,6 +750,23 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       description: 'Updates an existing monitor configuration. You must include the monitorID. Only the fields you provide will be changed (the server merges your changes with the existing config). Use getMonitor first to get the current config.',
       inputSchema: {
         monitorID: z.coerce.number().int().nonnegative().describe('The ID of the monitor to update'),
+        // `parent` was declared on createMonitor but not here, so an existing monitor could
+        // never be moved into or out of a group (issue #63). The merge below then folded the
+        // old value back in and Uptime Kuma replied "Saved." — a no-op reported as success.
+        parent: z.coerce.number().int().nullable().optional().describe('Parent group monitor ID — re-parents this monitor into that group. Pass null to move it to the top level.'),
+        parentID: z.coerce.number().int().nullable().optional().describe('Alias for parent. Prefer parent.'),
+        parent_id: z.coerce.number().int().nullable().optional().describe('Alias for parent. Prefer parent.'),
+        description: z.string().nullable().optional().describe('Free-text description shown on the monitor page'),
+        resendInterval: z.coerce.number().optional().describe('Resend notification every N checks while down (0 = disabled)'),
+        timeout: z.coerce.number().nullable().optional().describe('Request timeout in SECONDS. Avoid 0 — Uptime Kuma\'s runtime fallback for a stored 0 yields a ~13 hour timeout, so the monitor can never report DOWN against a black-holed endpoint.'),
+        jsonPath: z.string().optional().describe('JSONata expression for json-query monitors. Must resolve to a primitive.'),
+        json_path: z.string().optional().describe('Alias for jsonPath (the database column name). Prefer jsonPath.'),
+        jsonPathOperator: z.enum(['>', '>=', '<', '<=', '==', '!=', 'contains']).optional().describe('Comparison operator for json-query monitors.'),
+        json_path_operator: z.enum(['>', '>=', '<', '<=', '==', '!=', 'contains']).optional().describe('Alias for jsonPathOperator. Prefer jsonPathOperator.'),
+        expectedValue: z.coerce.string().optional().describe('Threshold the json-query result is compared against, stored as a string.'),
+        expected_value: z.coerce.string().optional().describe('Alias for expectedValue. Prefer expectedValue.'),
+        pushToken: z.string().min(8).optional().describe('Push token — the secret in the ping URL. Changing it invalidates the existing URL and any sender still using it stops beating.'),
+        push_token: z.string().min(8).optional().describe('Alias for pushToken (the database column name). Prefer pushToken.'),
         name: z.string().optional().describe('Display name'),
         url: z.string().optional().describe('URL to monitor'),
         hostname: z.string().optional().describe('Hostname'),
@@ -669,6 +811,19 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         }
         // Strip undefined values so existing config is preserved for omitted fields
         const defined = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined));
+        // Fold `parentID` / `parent_id` onto the single field Uptime Kuma's editMonitor
+        // handler reads (`bean.parent = monitor.parent`), along with the snake_case
+        // type-specific aliases, so a reasonable guess at a name cannot become a silent no-op.
+        for (const alias of ['parentID', 'parent_id']) {
+          if (alias in defined) {
+            if ('parent' in defined && defined.parent !== defined[alias]) {
+              throw new Error(`Conflicting values for parent (${defined.parent}) and ${alias} (${defined[alias]}) — pass only 'parent'.`);
+            }
+            defined.parent = defined[alias];
+            delete defined[alias];
+          }
+        }
+        normaliseMonitorAliases(defined);
         const merged = { ...existing, ...defined, id: monitorID };
         // Ensure retryInterval is valid — Kuma rejects values < 1 on edit even if
         // it stored 0 during creation (pre-existing monitors or older defaults)

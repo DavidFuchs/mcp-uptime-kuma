@@ -217,4 +217,188 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
       }
     },
   },
+  {
+    name: '#58: createMonitor and updateMonitor persist description',
+    fn: async ({ client }) => {
+      const createResult = await client.callTool({
+        name: 'createMonitor',
+        arguments: {
+          name: 'Integration Test - Issue 58',
+          type: 'http',
+          url: 'https://example.com',
+          interval: 120,
+          description: 'created with a description',
+          active: false,
+        },
+      }) as CallToolResult;
+      const monitorID = extractID(createResult, 'createMonitor', 'monitorID');
+
+      try {
+        const created = JSON.parse(extractText(
+          await client.callTool({ name: 'getMonitor', arguments: { monitorID } }) as CallToolResult,
+          'getMonitor'
+        ));
+        if (created.description !== 'created with a description') {
+          throw new Error(`description not persisted on create: got ${JSON.stringify(created.description)}`);
+        }
+        // `active` was also absent from createMonitor's schema, so a request to create a
+        // paused monitor was silently ignored and it started checking immediately.
+        if (created.active !== false) throw new Error('active:false not honoured on create');
+
+        await client.callTool({ name: 'updateMonitor', arguments: { monitorID, description: 'edited' } });
+        const edited = JSON.parse(extractText(
+          await client.callTool({ name: 'getMonitor', arguments: { monitorID } }) as CallToolResult,
+          'getMonitor'
+        ));
+        if (edited.description !== 'edited') {
+          throw new Error(`description not persisted on update: got ${JSON.stringify(edited.description)}`);
+        }
+        console.log('  ✓ #58: description persists on create and update; active:false honoured');
+      } finally {
+        await client.callTool({ name: 'deleteMonitor', arguments: { monitorID } });
+      }
+    },
+  },
+  {
+    name: '#60: json-query monitors are fully configurable',
+    fn: async ({ client }) => {
+      const createResult = await client.callTool({
+        name: 'createMonitor',
+        arguments: {
+          name: 'Integration Test - Issue 60 json-query',
+          type: 'json-query',
+          url: 'https://example.com',
+          interval: 300,
+          active: false,
+          jsonPath: '$.freeSpace',
+          jsonPathOperator: '>',
+          expectedValue: 161061273600,
+        },
+      }) as CallToolResult;
+      const monitorID = extractID(createResult, 'createMonitor', 'monitorID');
+
+      try {
+        const m = JSON.parse(extractText(
+          await client.callTool({ name: 'getMonitor', arguments: { monitorID, includeTypeSpecificFields: true } }) as CallToolResult,
+          'getMonitor'
+        ));
+        if (m.jsonPath !== '$.freeSpace') throw new Error(`jsonPath not persisted: ${JSON.stringify(m.jsonPath)}`);
+        if (m.jsonPathOperator !== '>') throw new Error(`jsonPathOperator not persisted: ${JSON.stringify(m.jsonPathOperator)}`);
+        if (String(m.expectedValue) !== '161061273600') throw new Error(`expectedValue not persisted: ${JSON.stringify(m.expectedValue)}`);
+
+        // snake_case aliases — the database column names, and the spelling used in #60
+        await client.callTool({
+          name: 'updateMonitor',
+          arguments: { monitorID, json_path: '$.total', json_path_operator: '<', expected_value: '42' },
+        });
+        const m2 = JSON.parse(extractText(
+          await client.callTool({ name: 'getMonitor', arguments: { monitorID, includeTypeSpecificFields: true } }) as CallToolResult,
+          'getMonitor'
+        ));
+        if (m2.jsonPath !== '$.total' || m2.jsonPathOperator !== '<' || String(m2.expectedValue) !== '42') {
+          throw new Error('snake_case aliases were not normalised onto the camelCase fields');
+        }
+        console.log('  ✓ #60: json-query triple persists, snake_case aliases normalised');
+      } finally {
+        await client.callTool({ name: 'deleteMonitor', arguments: { monitorID } });
+      }
+    },
+  },
+  {
+    name: '#60: push monitors are created with a usable token and ping URL',
+    fn: async ({ client }) => {
+      const createResult = await client.callTool({
+        name: 'createMonitor',
+        arguments: { name: 'Integration Test - Issue 60 push', type: 'push', interval: 3600 },
+      }) as CallToolResult;
+      const monitorID = extractID(createResult, 'createMonitor', 'monitorID');
+
+      try {
+        const sc = (createResult as any).structuredContent;
+        if (!sc?.pushToken || String(sc.pushToken).length !== 32) {
+          throw new Error(`expected a 32-character generated push token, got ${JSON.stringify(sc?.pushToken)}`);
+        }
+        if (!sc?.pushURL || !String(sc.pushURL).includes('/api/push/')) {
+          throw new Error(`expected a ping URL, got ${JSON.stringify(sc?.pushURL)}`);
+        }
+        const stored = JSON.parse(extractText(
+          await client.callTool({ name: 'getMonitor', arguments: { monitorID, includeTypeSpecificFields: true } }) as CallToolResult,
+          'getMonitor'
+        ));
+        if (stored.pushToken !== sc.pushToken) throw new Error('stored push token does not match the returned one');
+
+        // The whole point: the returned URL must actually be able to record a beat.
+        const res = await fetch(`${String(sc.pushURL)}&msg=integration-test`);
+        if (res.status !== 200) throw new Error(`push URL returned HTTP ${res.status}`);
+        console.log('  ✓ #60: push token generated, stored, and the ping URL accepts a heartbeat');
+      } finally {
+        await client.callTool({ name: 'deleteMonitor', arguments: { monitorID } });
+      }
+    },
+  },
+  {
+    name: '#63/#65: updateMonitor re-parents, and listMonitors filters by parent',
+    fn: async ({ client }) => {
+      const groupID = extractID(await client.callTool({
+        name: 'createMonitor',
+        arguments: { name: 'Integration Test - Issue 63 group', type: 'group', interval: 300, active: false },
+      }) as CallToolResult, 'createMonitor', 'monitorID');
+      const monitorID = extractID(await client.callTool({
+        name: 'createMonitor',
+        arguments: { name: 'Integration Test - Issue 63 child', type: 'http', url: 'https://example.com', interval: 300, active: false },
+      }) as CallToolResult, 'createMonitor', 'monitorID');
+
+      try {
+        await client.callTool({ name: 'updateMonitor', arguments: { monitorID, parent: groupID } });
+        const moved = JSON.parse(extractText(
+          await client.callTool({ name: 'getMonitor', arguments: { monitorID } }) as CallToolResult,
+          'getMonitor'
+        ));
+        if (Number(moved.parent) !== groupID) {
+          throw new Error(`re-parent did not persist: parent is ${JSON.stringify(moved.parent)}, expected ${groupID}`);
+        }
+
+        const listed = JSON.parse(extractText(
+          await client.callTool({ name: 'listMonitors', arguments: { parentId: groupID } }) as CallToolResult,
+          'listMonitors'
+        ));
+        if (!Array.isArray(listed) || listed.length !== 1 || Number(listed[0].id) !== monitorID) {
+          throw new Error(`parentId filter returned ${Array.isArray(listed) ? listed.length : 'non-array'} monitors, expected exactly the one child`);
+        }
+
+        await client.callTool({ name: 'updateMonitor', arguments: { monitorID, parent: null } });
+        const back = JSON.parse(extractText(
+          await client.callTool({ name: 'getMonitor', arguments: { monitorID } }) as CallToolResult,
+          'getMonitor'
+        ));
+        if (back.parent !== null) throw new Error('re-parent to top level did not persist');
+        console.log('  ✓ #63/#65: re-parent works both ways; parentId returns direct children');
+      } finally {
+        await client.callTool({ name: 'deleteMonitor', arguments: { monitorID } });
+        await client.callTool({ name: 'deleteMonitor', arguments: { monitorID: groupID } });
+      }
+    },
+  },
+  {
+    name: 'timeout defaults to 0.8 x interval instead of being stored as 0',
+    fn: async ({ client }) => {
+      const monitorID = extractID(await client.callTool({
+        name: 'createMonitor',
+        arguments: { name: 'Integration Test - timeout default', type: 'http', url: 'https://example.com', interval: 300, active: false },
+      }) as CallToolResult, 'createMonitor', 'monitorID');
+
+      try {
+        const m = JSON.parse(extractText(
+          await client.callTool({ name: 'getMonitor', arguments: { monitorID } }) as CallToolResult,
+          'getMonitor'
+        ));
+        if (Number(m.timeout) !== 240) {
+          throw new Error(`expected timeout 240 (0.8 x 300), got ${JSON.stringify(m.timeout)}`);
+        }
+        console.log('  ✓ timeout defaulted to 240s rather than 0');
+      } finally {
+        await client.callTool({ name: 'deleteMonitor', arguments: { monitorID } });
+      }
+    },
+  },
 ];

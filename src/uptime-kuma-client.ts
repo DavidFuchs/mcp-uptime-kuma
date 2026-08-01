@@ -417,7 +417,11 @@ export class UptimeKumaClient {
       // The heartbeatList event sends data per monitor, not all at once
       // Format: (monitorID, array of heartbeats, important flag)
       this.safeLog('debug', `Received heartbeatList for monitor ${monitorID}: ${heartbeatList.length} heartbeats`);
-      this.heartbeatListCache[monitorID.toString()] = heartbeatList;
+      // Uptime Kuma emits heartbeatList in ascending (oldest-first) order, but the
+      // cache is consumed newest-first: live 'heartbeat' events are unshift()ed to the
+      // front and reads use slice(0, maxHeartbeats). Reverse on receipt so the cache
+      // is consistently newest-first; otherwise reads return the oldest ~100 beats.
+      this.heartbeatListCache[monitorID.toString()] = heartbeatList.slice().reverse();
     });
 
     // Listen for individual heartbeat updates (real-time)
@@ -531,20 +535,34 @@ export class UptimeKumaClient {
     active?: boolean;
     maintenance?: boolean;
     tags?: string;
+    parentId?: number | null;
     includeTypeSpecificFields?: T;
   }): MonitorList<T> {
     const result: MonitorList<true> = {};
-    
+
     // Parse keywords into an array
     const keywordArray = filters?.keywords ? filters.keywords.trim().split(/\s+/) : [];
-    
+
     // Parse type filter from comma-separated string
     const typeFilter = filters?.type ? filters.type.split(',').map(t => t.trim()).filter(t => t.length > 0) : [];
-    
+
     // Parse tag filter from comma-separated string
     const tagFilter = filters?.tags ? filters.tags.split(',').map(t => t.trim()).filter(t => t.length > 0) : [];
-    
+
+    // `undefined` means "no parent filter"; `null` is a real value meaning "top level only",
+    // so the two must not be conflated into a truthiness check.
+    const filterByParent = filters?.parentId !== undefined;
+    const wantedParent = filters?.parentId === null ? null : Number(filters?.parentId);
+
     for (const [monitorID, monitor] of Object.entries(this.monitorListCache)) {
+      // Filter by parent group — direct children only, matching Uptime Kuma's `parent` column
+      if (filterByParent) {
+        const actualParent = monitor.parent === null || monitor.parent === undefined ? null : Number(monitor.parent);
+        if (actualParent !== wantedParent) {
+          continue;
+        }
+      }
+
     // Filter by keywords if provided using fuzzy matching
     if (keywordArray.length > 0) {
       const pathName = monitor.pathName || '';
