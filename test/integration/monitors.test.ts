@@ -321,8 +321,11 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
         if (!sc?.pushURL || !String(sc.pushURL).includes('/api/push/')) {
           throw new Error(`expected a ping URL, got ${JSON.stringify(sc?.pushURL)}`);
         }
+        // includeSecrets is required here (#59): pushToken reads "***" by default, and
+        // comparing what was stored against what was returned needs the real value. This is
+        // the canonical case for the opt-in — verifying a credential rather than listing it.
         const stored = JSON.parse(extractText(
-          await client.callTool({ name: 'getMonitor', arguments: { monitorID, includeTypeSpecificFields: true } }) as CallToolResult,
+          await client.callTool({ name: 'getMonitor', arguments: { monitorID, includeTypeSpecificFields: true, includeSecrets: true } }) as CallToolResult,
           'getMonitor'
         ));
         if (stored.pushToken !== sc.pushToken) throw new Error('stored push token does not match the returned one');

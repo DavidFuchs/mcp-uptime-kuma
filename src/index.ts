@@ -26,6 +26,9 @@ function validateEnvironment(): UptimeKumaConfig {
   const password = process.env.UPTIME_KUMA_PASSWORD;
   const token = process.env.UPTIME_KUMA_2FA_TOKEN;
   const jwtToken = process.env.UPTIME_KUMA_JWT_TOKEN;
+  // Global opt-in to unredacted credentials in read-tool output (issue #59). Only an
+  // explicit "true"/"1" enables it — an unset or misspelled value must fail closed.
+  const includeSecrets = /^(true|1)$/i.test(process.env.UPTIME_KUMA_INCLUDE_SECRETS ?? '');
 
   if (!url) {
     console.error('Error: UPTIME_KUMA_URL environment variable is required');
@@ -44,7 +47,7 @@ function validateEnvironment(): UptimeKumaConfig {
     );
   }
 
-  return { url, username, password, token, jwtToken };
+  return { url, username, password, token, jwtToken, includeSecrets };
 }
 
 // Parse command-line arguments

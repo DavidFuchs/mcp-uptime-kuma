@@ -191,6 +191,56 @@ docker run --rm davidfuchs/mcp-uptime-kuma:latest get-jwt http://host.docker.int
 
 **From browser:** Open Developer Tools → Storage/Application → Local Storage → find `token` key.
 
+## Credential Redaction
+
+Read tools return `***` in place of secrets rather than the values themselves.
+
+Uptime Kuma's socket API returns configuration verbatim — its web UI masks credentials at
+render time. That is fine for a browser and not fine for an MCP server, whose output lands
+in an LLM's context window and is then persisted in conversation transcripts, logs and
+synced history. Asking "what am I monitoring?" should not write a live SMTP password or a
+third-party API key into storage you may not control.
+
+What is withheld:
+
+| Tool | Withheld |
+|---|---|
+| `listNotifications` | everything in `config` except `type`/`name`/`isDefault`/`applyExisting`. The withheld field names are listed in `redactedConfigKeys` |
+| `listMonitors`, `getMonitor` | `pushToken`, `basic_auth_pass`, `bearer_token`, `oauth_client_secret`, `radiusPassword`, `radiusSecret`, `mqttPassword`, `rabbitmqPassword`, `tlsCert`/`tlsKey`/`tlsCa`, `databaseConnectionString`, `headers`, `grpcMetadata`, plus anything matching `/pass|secret|token|apikey|auth(oriz\|entic)|bearer|credential|private.?key|jwt/i` |
+| `listDockerHosts` | `user:password@` inside a `dockerDaemon` URL |
+| `getSettings` | any secret-named field Uptime Kuma returns (e.g. `steamAPIKey`) |
+| `getMonitorSummary` | nothing — it returns no credentials to begin with |
+
+`hostname`, `port`, `url`, `authMethod`, `oauth_token_url`, `oauth_scopes` and usernames stay
+visible: hiding useful configuration is how a redaction feature gets switched off.
+
+To get the real values, either pass `includeSecrets: true` on the call:
+
+```
+listNotifications({ includeSecrets: true })
+```
+
+or enable it globally:
+
+```
+UPTIME_KUMA_INCLUDE_SECRETS=true
+```
+
+The per-call parameter wins over the environment variable in both directions, so a
+permissive deployment can still ask one call to redact.
+
+**Writing `***` back is safe.** `updateMonitor` and `updateNotification` restore the stored
+value when a field arrives as the marker, and report which fields they preserved. This
+matters most for `updateNotification`: Uptime Kuma replaces the notification row rather than
+merging it, so without this a read-edit-write round trip would replace a working password
+with three asterisks. If there is no stored value to restore, the call fails rather than
+writing a credential that looks set and cannot work.
+
+`updateDockerHost` gets the same protection for the credentials embedded in a `dockerDaemon`
+URL: a `http://***:***@host:2375` read back from `listDockerHosts` has its userinfo restored
+from the stored URL rather than persisted verbatim, so repointing a host without re-entering
+its credentials does not wipe them.
+
 ## LibreChat Configuration
 
 **stdio transport:**

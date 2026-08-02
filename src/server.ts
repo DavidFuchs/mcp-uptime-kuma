@@ -5,6 +5,13 @@ import { randomBytes, randomInt } from 'node:crypto';
 import { UptimeKumaClient } from './uptime-kuma-client.js';
 import { HeartbeatSchema, MonitorBaseSchema, MonitorSummarySchema, SettingsSchema, NotificationSchema, MaintenanceSchema, StatusPageSchema, DockerHostSchema } from './types/index.js';
 import type { UptimeKumaConfig } from './types/index.js';
+import {
+  INCLUDE_SECRETS_DESCRIPTION,
+  redactNotifications,
+  redactSecrets,
+  rehydrateSecrets,
+  rehydrateUrlCredentials,
+} from './redact.js';
 import { VERSION } from './version.js';
 
 /**
@@ -43,6 +50,15 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         - Use 'testDockerHost' to verify a docker daemon is reachable before saving.
         - Use 'createStatusPage' / 'updateStatusPage' / 'deleteStatusPage' to manage status pages. Creating returns an empty page — follow up with updateStatusPage to set groups and monitors.
         - Use 'pauseMonitor' / 'resumeMonitor' to temporarily stop/start checks.
+
+        CREDENTIALS:
+        - Read tools return "***" in place of passwords, tokens, API keys and HTTP headers.
+          To attach a notification channel to a monitor you only need its id, so the common
+          workflows never need the real values.
+        - Pass includeSecrets: true (or set UPTIME_KUMA_INCLUDE_SECRETS=true) only when the
+          value itself is needed. It will be written to this conversation's transcript.
+        - "***" sent back to updateMonitor / updateNotification restores the stored value
+          rather than overwriting it, so a read-edit-write round trip is safe.
       `,
       capabilities: {
         logging: {}
@@ -147,6 +163,18 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
   };
   
   const client = new UptimeKumaClient(config.url, server, shouldLog);
+
+  // Issue #59: read tools withhold credentials by default. Captured here because the
+  // registerTool wrapper above shadows `config` with the per-tool registration object.
+  //
+  // The env var is the global switch and the per-call `includeSecrets` parameter is the
+  // narrow one; the parameter wins where both are present, in either direction, so a
+  // globally-permissive deployment can still ask a single call to redact.
+  const includeSecretsByDefault = config.includeSecrets === true;
+  const wantsSecrets = (perCall?: boolean): boolean =>
+    perCall === undefined ? includeSecretsByDefault : perCall;
+  const includeSecretsParam = z.boolean().optional().describe(INCLUDE_SECRETS_DESCRIPTION);
+
   let isAuthenticated = false;
   let authInFlight: Promise<void> | null = null;
 
@@ -233,28 +261,31 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     {
       title: 'Get Monitor',
       description: 'Retrieves configuration details for a specific monitor by ID (URL, check interval, notification settings, etc.). Use this when you need to examine or modify settings for a specific monitor. For current status, use getMonitorSummary instead. By default returns only common fields plus runtime data (uptime, avgPing); set includeTypeSpecificFields to true to include type-specific fields (e.g., url for HTTP, hostname/port for TCP).',
-      inputSchema: { 
+      inputSchema: {
         monitorID: z.coerce.number().int().nonnegative().describe('The ID of the monitor to retrieve'),
-        includeTypeSpecificFields: z.boolean().optional().describe('Include type-specific fields (url, hostname, port, etc.) in addition to common fields. Default: false. When false, only returns MonitorBase fields plus uptime/avgPing.')
+        includeTypeSpecificFields: z.boolean().optional().describe('Include type-specific fields (url, hostname, port, etc.) in addition to common fields. Default: false. When false, only returns MonitorBase fields plus uptime/avgPing.'),
+        includeSecrets: includeSecretsParam
       },
-      outputSchema: { 
-        monitor: MonitorBaseSchema.passthrough().describe('Monitor object with common fields plus uptime/avgPing. May include type-specific fields when includeTypeSpecificFields is true.')
+      outputSchema: {
+        monitor: MonitorBaseSchema.passthrough().describe('Monitor object with common fields plus uptime/avgPing. May include type-specific fields when includeTypeSpecificFields is true. Credentials (pushToken, basic_auth_pass, bearer_token, headers, ...) read "***" unless includeSecrets is set.')
       },
     },
-    async ({ monitorID, includeTypeSpecificFields }) => {
+    async ({ monitorID, includeTypeSpecificFields, includeSecrets }) => {
       await authenticateClient();
 
       try {
-        const monitor = includeTypeSpecificFields 
+        const monitor = includeTypeSpecificFields
           ? client.getMonitor(monitorID, true)
           : client.getMonitor(monitorID, false);
-        
+
         if (!monitor) {
           throw new Error(`Monitor with ID ${monitorID} not found`);
         }
-        
-        const result = monitor;
-        
+
+        // Redact on a copy. getMonitor() spreads the cached row, but nested values are
+        // still shared with monitorListCache — which updateMonitor merges over on write.
+        const result = wantsSecrets(includeSecrets) ? monitor : redactSecrets(monitor);
+
         return {
           content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
           structuredContent: { monitor: result },
@@ -284,22 +315,26 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         tags: z.string().optional().describe('Filter by tag name and optional value. Comma-separated for multiple tags. Format: "tagName" or "tagName=value". Monitor must have all specified tags. Case-insensitive. Examples: "production", "env=staging", "production,region=us-east"'),
         // Issue #65: there was no way to list a group's members, so callers passing
         // `parentId` got the entire monitor list back, which reads as a broken filter.
-        parentId: z.union([z.null(), z.coerce.number().int()]).optional().describe('Filter to the DIRECT children of this group monitor. Pass null for top-level monitors (those with no parent). Not recursive — use the group\'s own childrenIDs to walk deeper.')
+        parentId: z.union([z.null(), z.coerce.number().int()]).optional().describe('Filter to the DIRECT children of this group monitor. Pass null for top-level monitors (those with no parent). Not recursive — use the group\'s own childrenIDs to walk deeper.'),
+        includeSecrets: includeSecretsParam
       },
       outputSchema: {
-        monitors: z.array(MonitorBaseSchema.passthrough()).describe('Array of monitor objects with common fields plus uptime/avgPing. May include type-specific fields when includeTypeSpecificFields is true.'),
+        monitors: z.array(MonitorBaseSchema.passthrough()).describe('Array of monitor objects with common fields plus uptime/avgPing. May include type-specific fields when includeTypeSpecificFields is true. Credentials (pushToken, basic_auth_pass, bearer_token, headers, ...) read "***" unless includeSecrets is set.'),
         count: z.number()
       },
     },
-    async ({ includeTypeSpecificFields, keywords, type, active, maintenance, tags, parentId }) => {
+    async ({ includeTypeSpecificFields, keywords, type, active, maintenance, tags, parentId, includeSecrets }) => {
       await authenticateClient();
 
       try {
         const monitorList = includeTypeSpecificFields
           ? client.getMonitorList({ keywords, type, active, maintenance, tags, parentId, includeTypeSpecificFields: true })
           : client.getMonitorList({ keywords, type, active, maintenance, tags, parentId, includeTypeSpecificFields: false });
-        const monitors = Object.values(monitorList);
-        
+        const raw = Object.values(monitorList);
+        // This is the tool an agent reaches for to answer "what am I monitoring?", so it
+        // is both the highest-volume caller and the one carrying the most credentials.
+        const monitors = wantsSecrets(includeSecrets) ? raw : raw.map((m) => redactSecrets(m));
+
         return {
           content: [{ 
             type: 'text', 
@@ -470,24 +505,31 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     {
       title: 'Get Settings',
       description: 'Retrieves the current Uptime Kuma server settings including timezone, authentication status, primary base URL, and other configuration options.',
-      inputSchema: {},
+      inputSchema: {
+        includeSecrets: includeSecretsParam
+      },
       outputSchema: {
         settings: SettingsSchema.describe('Current Uptime Kuma server settings')
       },
     },
-    async () => {
+    async ({ includeSecrets }) => {
       await authenticateClient();
 
       try {
         const response = await client.getSettings();
-        
+
         if (!response.data) {
           throw new Error('No settings data returned');
         }
-        
+
+        // SettingsSchema declares a safe subset, but the text content below stringifies
+        // whatever Uptime Kuma actually sent — which includes steamAPIKey. Redacting the
+        // object covers both channels; redacting only structuredContent would not.
+        const settings = wantsSecrets(includeSecrets) ? response.data : redactSecrets(response.data);
+
         return {
-          content: [{ type: 'text', text: JSON.stringify(response.data, null, 2) }],
-          structuredContent: { settings: response.data },
+          content: [{ type: 'text', text: JSON.stringify(settings, null, 2) }],
+          structuredContent: { settings },
         };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -756,6 +798,16 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
 
         const requested = normaliseMonitorAliases({ ...input } as Record<string, unknown>);
 
+        // Issue #59: nothing to restore on a create, so the redaction marker must be refused
+        // rather than persisted — writing "***" produces a credential that looks set and can
+        // never work. Reached by copying a redacted monitor to make a similar one.
+        const markers = rehydrateSecrets(requested, undefined).missing;
+        if (markers.length > 0) {
+          throw new Error(
+            `"***" is the redaction marker, not a credential — pass the real value for ${markers.join(', ')}, or omit the field.`
+          );
+        }
+
         // A json-query monitor without a query is accepted by Uptime Kuma and then fails
         // every single check, which looks like a broken target rather than a broken config.
         if (requested.type === 'json-query') {
@@ -903,6 +955,23 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
           }
         }
         normaliseMonitorAliases(defined);
+
+        // Issue #59: a caller that read this monitor back holds "***" where a credential
+        // was, and the natural edit-one-field-and-write-it-back loop would then persist
+        // the marker. Restore the stored value instead. Runs AFTER alias normalisation so
+        // `push_token: "***"` is matched against the stored `pushToken`.
+        //
+        // `existing` is the unredacted cache row: redaction lives at the tool output
+        // boundary only, precisely so this comparison still has a real value to find.
+        const { preserved, missing } = rehydrateSecrets(defined, existing as unknown as Record<string, unknown>);
+        if (missing.length > 0) {
+          throw new Error(
+            `Cannot write the redaction marker "***" to ${missing.join(', ')} — the monitor has no stored value ` +
+            'to restore, so this would create a credential that looks set and cannot work. ' +
+            'Pass the real value, or omit the field to leave it unchanged.'
+          );
+        }
+
         const merged = { ...existing, ...defined, id: monitorID };
         // Ensure retryInterval is valid — Kuma rejects values < 1 on edit even if
         // it stored 0 during creation (pre-existing monitors or older defaults)
@@ -910,8 +979,12 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
           (merged as any).retryInterval = (merged as any).interval || 60;
         }
         const response = await client.updateMonitor(merged as unknown as Record<string, unknown>);
+        let text = response.msg || `Monitor ${monitorID} updated successfully`;
+        if (preserved.length > 0) {
+          text += `\n\nKept the existing value for ${preserved.join(', ')} — "***" was sent, which is the redaction marker, not a credential.`;
+        }
         return {
-          content: [{ type: 'text', text: response.msg || `Monitor ${monitorID} updated successfully` }],
+          content: [{ type: 'text', text }],
           structuredContent: { ok: response.ok, monitorID: response.monitorID, msg: response.msg },
         };
       } catch (error) {
@@ -956,18 +1029,25 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     'listNotifications',
     {
       title: 'List Notifications',
-      description: 'Returns all configured notification channels (Slack, ntfy, Discord, email, webhooks, etc.).',
-      inputSchema: {},
+      description: 'Returns all configured notification channels (Slack, ntfy, Discord, email, webhooks, etc.). To attach a channel to a monitor you only need its id — the credentials in `config` are withheld by default and the names of the withheld fields are listed in `redactedConfigKeys`.',
+      inputSchema: {
+        includeSecrets: includeSecretsParam
+      },
       outputSchema: {
-        notifications: z.array(NotificationSchema).describe('Array of notification channel configurations'),
+        notifications: z.array(NotificationSchema).describe('Array of notification channel configurations. By default `config` is reduced to its non-secret fields and `redactedConfigKeys` names what was withheld.'),
         count: z.number(),
       },
     },
-    async () => {
+    async ({ includeSecrets }) => {
       await authenticateClient();
 
       try {
-        const notifications = client.getNotificationList();
+        const raw = client.getNotificationList();
+        // getNotificationList() returns references into notificationListCache, so this
+        // must not mutate — redactNotifications builds new objects.
+        const notifications = wantsSecrets(includeSecrets)
+          ? raw
+          : redactNotifications(raw as unknown as Record<string, unknown>[]);
         return {
           content: [{ type: 'text', text: JSON.stringify(notifications, null, 2) }],
           structuredContent: { notifications, count: notifications.length },
@@ -1002,6 +1082,18 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
 
       try {
         const notification = { name, type, isDefault, applyExisting, ...config };
+
+        // Issue #59: as with createMonitor, there is no stored value to restore on a create,
+        // so the redaction marker is refused rather than saved as the credential. This is the
+        // path you hit cloning an existing channel from a redacted listNotifications.
+        const markers = rehydrateSecrets(notification as Record<string, unknown>, undefined).missing;
+        if (markers.length > 0) {
+          throw new Error(
+            `"***" is the redaction marker, not a credential — pass the real value for ${markers.join(', ')}. ` +
+            'To copy an existing channel, read it with listNotifications { includeSecrets: true }.'
+          );
+        }
+
         const response = await client.addNotification(notification as Record<string, unknown>);
         return {
           content: [{ type: 'text', text: response.msg || `Notification created with ID ${response.id}` }],
@@ -1042,9 +1134,45 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         if (type !== undefined) notification['type'] = type;
         if (isDefault !== undefined) notification['isDefault'] = isDefault;
         if (applyExisting !== undefined) notification['applyExisting'] = applyExisting;
+
+        // Issue #59, and the sharper edge of it. Uptime Kuma's addNotification REPLACES the
+        // row rather than merging, so the read-edit-write loop writes back whatever the
+        // caller was shown — and after redaction that is `smtpPassword: "***"`. Renaming a
+        // channel would otherwise destroy the credential that makes it work.
+        const stored = client
+          .getNotificationList()
+          .find((n) => (n as Record<string, unknown>)['id'] === notificationID) as
+          | Record<string, unknown>
+          | undefined;
+        let storedConfig: Record<string, unknown> | undefined;
+        const rawStored = stored?.['config'];
+        if (typeof rawStored === 'string') {
+          try {
+            const parsed: unknown = JSON.parse(rawStored);
+            if (parsed && typeof parsed === 'object') storedConfig = parsed as Record<string, unknown>;
+          } catch {
+            storedConfig = undefined;
+          }
+        } else if (rawStored && typeof rawStored === 'object') {
+          storedConfig = rawStored as Record<string, unknown>;
+        }
+
+        const { preserved, missing } = rehydrateSecrets(notification, storedConfig);
+        if (missing.length > 0) {
+          throw new Error(
+            `Cannot write the redaction marker "***" to ${missing.join(', ')} — notification ${notificationID} has ` +
+            'no stored value to restore. Pass the real value, or call listNotifications with includeSecrets ' +
+            'to read the current one.'
+          );
+        }
+
         const response = await client.addNotification(notification, notificationID);
+        let text = response.msg || `Notification ${notificationID} updated`;
+        if (preserved.length > 0) {
+          text += `\n\nKept the existing value for ${preserved.join(', ')} — "***" was sent, which is the redaction marker, not a credential.`;
+        }
         return {
-          content: [{ type: 'text', text: response.msg || `Notification ${notificationID} updated` }],
+          content: [{ type: 'text', text }],
           structuredContent: { ok: response.ok, id: response.id, msg: response.msg },
         };
       } catch (error) {
@@ -1090,17 +1218,22 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     {
       title: 'List Docker Hosts',
       description: 'Returns all docker daemon connections configured in Uptime Kuma. These are referenced by docker container monitors via docker_host.',
-      inputSchema: {},
+      inputSchema: {
+        includeSecrets: includeSecretsParam
+      },
       outputSchema: {
-        dockerHosts: z.array(DockerHostSchema).describe('Array of docker host configurations'),
+        dockerHosts: z.array(DockerHostSchema).describe('Array of docker host configurations. Any credentials embedded in a dockerDaemon URL read "***" unless includeSecrets is set.'),
         count: z.number(),
       },
     },
-    async () => {
+    async ({ includeSecrets }) => {
       await authenticateClient();
 
       try {
-        const dockerHosts = client.getDockerHostList();
+        const raw = client.getDockerHostList();
+        // A TCP dockerDaemon can be http://user:pass@host:2375 — the field name gives no
+        // hint of that, so the URL scrub in redactSecrets is what catches it.
+        const dockerHosts = wantsSecrets(includeSecrets) ? raw : raw.map((h) => redactSecrets(h));
         return {
           content: [{ type: 'text', text: JSON.stringify(dockerHosts, null, 2) }],
           structuredContent: { dockerHosts, count: dockerHosts.length },
@@ -1179,9 +1312,35 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
           dockerDaemon: dockerDaemon ?? existing.dockerDaemon,
         };
 
+        // Issue #59: listDockerHosts scrubs inline URL credentials to "***:***@host", and a
+        // dockerDaemon TCP URL is written back here wholesale. The read-edit-write loop an agent
+        // performs would otherwise persist those markers over the real credentials. Restore them
+        // from the stored URL. The marker sits inside the URL userinfo, not as a bare "***", so
+        // rehydrateSecrets cannot catch it — rehydrateUrlCredentials is its URL-shaped counterpart.
+        // Only reached when the caller passed dockerDaemon; omitting it already keeps the stored URL.
+        let preservedCreds = false;
+        if (dockerDaemon !== undefined) {
+          const restored = rehydrateUrlCredentials(dockerDaemon, existing.dockerDaemon);
+          if (restored.missing) {
+            throw new Error(
+              'Cannot write the redaction marker "***" into dockerDaemon — the docker host has no ' +
+              'stored credential to restore, so this would save an endpoint that looks authenticated ' +
+              'and cannot connect. Pass the real URL, or call listDockerHosts with includeSecrets to ' +
+              'read the current one.'
+            );
+          }
+          merged.dockerDaemon = restored.value;
+          preservedCreds = restored.preserved;
+        }
+
         const response = await client.addDockerHost(merged, dockerHostID);
+        let text = response.msg || `Docker host ${dockerHostID} updated`;
+        if (preservedCreds) {
+          text += '\n\nKept the existing credentials embedded in dockerDaemon — "***" was sent, ' +
+            'which is the redaction marker, not a credential.';
+        }
         return {
-          content: [{ type: 'text', text: response.msg || `Docker host ${dockerHostID} updated` }],
+          content: [{ type: 'text', text }],
           structuredContent: { ok: response.ok, id: response.id, msg: response.msg },
         };
       } catch (error) {
