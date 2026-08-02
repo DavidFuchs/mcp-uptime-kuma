@@ -1,3 +1,5 @@
+import { HeartbeatSchema } from './types/heartbeat.js';
+
 /**
  * Redaction of secrets on the way OUT of the read tools (issue #59).
  *
@@ -88,24 +90,23 @@ export function isSecretKey(key: string): boolean {
 }
 
 /**
- * Strips `user:password@` out of a URL while leaving the rest readable.
+ * Scrubs `scheme://user:pass@` credentials out of a string, whether the whole value is a
+ * URL or a URL quoted inside a larger message.
  *
- * A monitor `url`, a `dockerDaemon` TCP endpoint and every entry of `rabbitmqNodes`
- * can all carry inline credentials, and none of those field NAMES suggest a secret.
- * Replacing the whole value would hide the endpoint too — and would break
- * `rabbitmqNodes`, whose schema requires each entry to still be a valid URL.
+ * A monitor `url`, a `dockerDaemon` TCP endpoint and every entry of `rabbitmqNodes` carry
+ * inline credentials that no field NAME reveals, and a heartbeat `msg` can echo the
+ * monitor's own URL mid-sentence ("connect ETIMEDOUT to http://admin:s3cret@host"). One
+ * regex covers both: it masks the userinfo of every occurrence and leaves the scheme, host
+ * and surrounding text byte-for-byte intact, so the endpoint stays readable and a
+ * `rabbitmqNodes` entry stays a valid URL. Working on the raw string rather than parsing it
+ * also means a value that is not a clean URL still has its credentials scrubbed.
  */
+const URL_USERINFO = /([a-z][a-z0-9+.-]*:\/\/)([^/?#\s@]+)@/gi;
 export function redactUrlCredentials(value: string): string {
-  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return value;
-  try {
-    const url = new URL(value);
-    if (!url.username && !url.password) return value;
-    if (url.username) url.username = SECRET_MARKER;
-    if (url.password) url.password = SECRET_MARKER;
-    return url.toString();
-  } catch {
-    return value;
-  }
+  return value.replace(URL_USERINFO, (_match, scheme: string, userinfo: string) => {
+    const masked = userinfo.includes(':') ? `${SECRET_MARKER}:${SECRET_MARKER}` : SECRET_MARKER;
+    return `${scheme}${masked}@`;
+  });
 }
 
 /**
@@ -138,6 +139,35 @@ export function redactSecrets<T>(value: T, keyHint?: string): T {
     }
   }
   return out as unknown as T;
+}
+
+/**
+ * The heartbeat's declared fields, and the allowlist its output is projected onto.
+ * Derived from the schema so the two cannot drift apart.
+ */
+const HEARTBEAT_FIELDS: ReadonlySet<string> = new Set(Object.keys(HeartbeatSchema.shape));
+
+/**
+ * Redacts one heartbeat on the way out of the read tools (issue #59, finding #3).
+ *
+ * A heartbeat is a STATUS record, but `HeartbeatSchema` used to `.passthrough()`, so any
+ * undeclared column Uptime Kuma sends — `response` most of all, which carries the monitored
+ * service's own response body — reached the tool surface untouched. `redactSecrets` cannot
+ * help there: `response` is not a secret-NAMED field and its body is arbitrary content, not a
+ * `user:pass@` URL. So this first PROJECTS the heartbeat onto its declared fields, dropping
+ * `response` and anything else passthrough used to admit, then runs `redactSecrets` over what
+ * survives to scrub a credential the `msg` may quote as a URL.
+ *
+ * The projection has to happen on the DATA, not just the schema: the tools stringify the object
+ * into their text block, which no output schema touches.
+ */
+export function redactHeartbeat<T>(heartbeat: T): T {
+  const source = heartbeat as Record<string, unknown>;
+  const projected: Record<string, unknown> = {};
+  for (const key of Object.keys(source)) {
+    if (HEARTBEAT_FIELDS.has(key)) projected[key] = source[key];
+  }
+  return redactSecrets(projected) as T;
 }
 
 /**
