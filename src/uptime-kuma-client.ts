@@ -433,7 +433,13 @@ export class UptimeKumaClient {
       }
       
       const monitorID = heartbeat.monitorID.toString();
-      this.safeLog('debug', `Received heartbeat for monitor ${monitorID}: status=${heartbeat.status}, msg="${heartbeat.msg || ''}", ping=${heartbeat.ping || 'N/A'}ms`);
+      // The heartbeat msg is the monitored service's own status text. For HTTP monitors it can
+      // echo the target URL (including any user:password@ in it) or a slice of the response body,
+      // so logging it verbatim would push that onto the MCP logging channel, which on the stdio
+      // transport reaches the client. Report only its shape (length), never its content, the same
+      // rule #71 applies everywhere else a credential could surface.
+      const msgLength = (heartbeat.msg || '').length;
+      this.safeLog('debug', `Received heartbeat for monitor ${monitorID}: status=${heartbeat.status}, msgLength=${msgLength}, ping=${heartbeat.ping || 'N/A'}ms`);
       
       // Initialize array for this monitor if it doesn't exist
       if (!this.heartbeatListCache[monitorID]) {
