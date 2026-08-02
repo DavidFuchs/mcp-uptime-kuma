@@ -1034,6 +1034,35 @@ export class UptimeKumaClient {
   }
 
   /**
+   * Read a monitor back from the SERVER, bypassing the cache.
+   *
+   * Deliberately not `getMonitor()`, which serves `monitorListCache`. That cache is
+   * refreshed by pushed events, and those can arrive AFTER the callback of a write has
+   * already resolved — so a read taken from it immediately after a write can echo a
+   * value that was never stored. Uptime Kuma's `getMonitor` socket handler reads the
+   * database, which is the only answer worth verifying against.
+   *
+   * @param monitorID - The ID of the monitor to fetch
+   * @returns Promise resolving to the monitor exactly as stored server-side
+   */
+  fetchMonitor(monitorID: number): Promise<Record<string, unknown>> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      this.socket.emit('getMonitor', monitorID, (response: ApiResponse & { monitor?: Record<string, unknown> }) => {
+        if (response && response.ok && response.monitor) {
+          resolve(response.monitor);
+        } else {
+          reject(new Error((response && response.msg) || `Failed to fetch monitor ${monitorID}`));
+        }
+      });
+    });
+  }
+
+  /**
    * Delete a monitor
    *
    * @param monitorID - The ID of the monitor to delete
