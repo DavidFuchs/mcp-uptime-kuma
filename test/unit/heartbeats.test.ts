@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { UptimeKumaClient } from '../../src/uptime-kuma-client.js';
-import { injectHeartbeatListCache } from './helpers.js';
+import { injectHeartbeatListCache, createMockSocket, injectSocket } from './helpers.js';
 
 describe('UptimeKumaClient - Heartbeat Operations', () => {
   let client: UptimeKumaClient;
@@ -85,6 +85,35 @@ describe('UptimeKumaClient - Heartbeat Operations', () => {
 
       const result = client.getHeartbeatsForMonitor(5, 2);
       expect(result).toHaveLength(2);
+    });
+  });
+
+  describe('heartbeat debug log - the MCP logging channel boundary', () => {
+    // The live 'heartbeat' listener logs at debug level, and on the stdio transport that
+    // notification reaches the client. The monitored service's msg can carry a URL with
+    // embedded credentials or a slice of a response body, so the log must report the msg
+    // shape (its length) and never its content.
+    it('logs the msg length, never the msg content', () => {
+      const logged: string[] = [];
+      const server = {
+        sendLoggingMessage: async ({ data }: { level: string; data: unknown }) => {
+          logged.push(String(data));
+        },
+      };
+      const loggingClient = new UptimeKumaClient('http://localhost:3001', server, () => true);
+
+      const { socket, onHandlers } = createMockSocket();
+      injectSocket(loggingClient, socket);
+      (loggingClient as unknown as { setupHeartbeatListeners: () => void }).setupHeartbeatListeners();
+
+      const secretMsg = 'GET https://admin:hunter2@internal.example.com/health failed';
+      onHandlers['heartbeat']({ monitorID: 7, status: 0, msg: secretMsg, ping: 42, time: '2024-01-01' });
+
+      const heartbeatLog = logged.find((line) => line.includes('Received heartbeat for monitor 7'));
+      expect(heartbeatLog).toBeDefined();
+      expect(heartbeatLog).not.toContain('hunter2');
+      expect(heartbeatLog).not.toContain(secretMsg);
+      expect(heartbeatLog).toContain(`msgLength=${secretMsg.length}`);
     });
   });
 });

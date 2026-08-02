@@ -242,6 +242,11 @@ URL: a `http://***:***@host:2375` read back from `listDockerHosts` has its useri
 from the stored URL rather than persisted verbatim, so repointing a host without re-entering
 its credentials does not wipe them.
 
+The MCP logging channel gets the same rule. The debug log for a live heartbeat reports the
+monitored service's status message by length only (`msgLength=...`), never its content, since
+that message can echo a target URL with an embedded `user:password@` or a slice of a response
+body, and on the stdio transport those log notifications reach the client.
+
 ## LibreChat Configuration
 
 **stdio transport:**
