@@ -88,9 +88,27 @@ Examples:
 // Run with the stdio transport
 async function runStdio(config: UptimeKumaConfig) {
   try {
-    const { server, authenticateClient } = await createServer(config);
+    const { server, client, authenticateClient } = await createServer(config);
     const transport = new StdioServerTransport();
-    
+
+    // Shut down cleanly when the client goes away. The socket.io connection to Uptime Kuma
+    // keeps Node's event loop alive, so without this the process lingers forever once the
+    // client disconnects. Spawned over stdio that orphaned process also holds the parent's
+    // pipe open, which is what makes a wrapping command appear to hang after its work is done.
+    // The client closing our stdin is the reliable signal here: a wrapper like npx can be
+    // killed without its children, but stdin EOF still reaches us.
+    let shuttingDown = false;
+    const shutdown = (code = 0) => {
+      if (shuttingDown) return;
+      shuttingDown = true;
+      try { client.disconnect(); } catch { /* best effort on the way out */ }
+      process.exit(code);
+    };
+    process.stdin.on('end', () => shutdown());
+    process.stdin.on('close', () => shutdown());
+    process.on('SIGINT', () => shutdown());
+    process.on('SIGTERM', () => shutdown());
+
     await server.connect(transport);
 
     // Now authenticate after transport is connected so we can log properly.
