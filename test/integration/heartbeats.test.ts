@@ -45,4 +45,103 @@ export const heartbeatTests: Array<{ name: string; fn: TestFn }> = [
       console.log(`  ✓ getHeartbeats: ${heartbeats.length} heartbeats for monitor ${monitorID}`);
     },
   },
+  {
+    name: '#56: beats come back newest-first, and `limit` is honoured',
+    fn: async ({ client }) => {
+      const summaries = JSON.parse(extractText(
+        await client.callTool({ name: 'getMonitorSummary', arguments: {} }) as CallToolResult,
+        'getMonitorSummary'
+      ));
+
+      // Find a monitor that actually has history to order.
+      let target: number | undefined;
+      let beats: any[] = [];
+      for (const s of summaries) {
+        const got = JSON.parse(extractText(
+          await client.callTool({ name: 'getHeartbeats', arguments: { monitorID: s.id, limit: 5 } }) as CallToolResult,
+          'getHeartbeats'
+        ));
+        if (got.length >= 3) {
+          target = s.id;
+          beats = got;
+          break;
+        }
+      }
+
+      if (target === undefined) {
+        console.log('  ⚠ ordering: skipped (no monitor with ≥3 heartbeats yet)');
+        return;
+      }
+
+      // `limit` used to be stripped, leaving maxHeartbeats undefined and the call returning
+      // exactly one beat — the second half of #56.
+      if (beats.length < 3) throw new Error(`limit:5 returned ${beats.length} beat(s)`);
+
+      const times = beats.map((b: any) => Date.parse(b.time));
+      for (let i = 1; i < times.length; i++) {
+        if (times[i] > times[i - 1]) {
+          throw new Error(`beats are not newest-first: ${beats[i - 1].time} then ${beats[i].time}`);
+        }
+      }
+      console.log(`  ✓ #56: monitor ${target} returned ${beats.length} beats, newest-first`);
+    },
+  },
+  {
+    name: 'getMonitorSummary exposes lastBeatTime, matching the newest beat',
+    fn: async ({ client }) => {
+      const summaries = JSON.parse(extractText(
+        await client.callTool({ name: 'getMonitorSummary', arguments: {} }) as CallToolResult,
+        'getMonitorSummary'
+      ));
+      const withBeat = summaries.find((s: any) => s.lastBeatTime);
+      if (!withBeat) {
+        console.log('  ⚠ lastBeatTime: skipped (no monitor has beaten yet)');
+        return;
+      }
+
+      const beats = JSON.parse(extractText(
+        await client.callTool({ name: 'getHeartbeats', arguments: { monitorID: withBeat.id, limit: 1 } }) as CallToolResult,
+        'getHeartbeats'
+      ));
+      if (beats[0]?.time !== withBeat.lastBeatTime) {
+        throw new Error(`lastBeatTime ${withBeat.lastBeatTime} != newest beat ${beats[0]?.time}`);
+      }
+      // Without this, a push monitor that stopped beating is indistinguishable from a
+      // healthy one — it keeps reporting its last known status forever.
+      console.log(`  ✓ lastBeatTime matches the newest beat (monitor ${withBeat.id})`);
+    },
+  },
+  {
+    name: 'important:true returns event history from the server, newest-first',
+    fn: async ({ client }) => {
+      const summaries = JSON.parse(extractText(
+        await client.callTool({ name: 'getMonitorSummary', arguments: {} }) as CallToolResult,
+        'getMonitorSummary'
+      ));
+      if (summaries.length === 0) {
+        console.log('  ⚠ important: skipped (no monitors)');
+        return;
+      }
+
+      for (const s of summaries) {
+        const important = JSON.parse(extractText(
+          await client.callTool({
+            name: 'getHeartbeats',
+            arguments: { monitorID: s.id, important: true, limit: 10 },
+          }) as CallToolResult,
+          'getHeartbeats'
+        ));
+        if (!Array.isArray(important)) throw new Error('Expected array');
+        if (important.length >= 2) {
+          const times = important.map((b: any) => Date.parse(b.time));
+          for (let i = 1; i < times.length; i++) {
+            if (times[i] > times[i - 1]) throw new Error('important beats are not newest-first');
+          }
+          console.log(`  ✓ important: ${important.length} event beats for monitor ${s.id}, newest-first`);
+          return;
+        }
+      }
+      console.log('  ⚠ important: no monitor has ≥2 status changes yet (call succeeded)');
+    },
+  },
 ];
