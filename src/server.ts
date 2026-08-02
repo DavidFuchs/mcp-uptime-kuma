@@ -7,6 +7,7 @@ import { HeartbeatSchema, MonitorBaseSchema, MonitorSummarySchema, SettingsSchem
 import type { UptimeKumaConfig } from './types/index.js';
 import {
   INCLUDE_SECRETS_DESCRIPTION,
+  redactHeartbeat,
   redactNotifications,
   redactSecrets,
   rehydrateSecrets,
@@ -460,10 +461,11 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     'getHeartbeats',
     {
       title: 'Get Heartbeats',
-      description: 'Retrieves historical heartbeat data for a specific monitor (response times, status changes over time). Use this for analyzing patterns or history for one monitor. By default returns only the most recent heartbeat; set maxHeartbeats (up to 100) for historical analysis. Keep maxHeartbeats ≤10 unless user requests more.',
+      description: 'Retrieves historical heartbeat data for a specific monitor (response times, status changes over time). Use this for analyzing patterns or history for one monitor. By default returns only the most recent heartbeat; set maxHeartbeats (up to 100) for historical analysis. Keep maxHeartbeats ≤10 unless user requests more. Credentials embedded in a status message URL (user:pass@host) read "***" unless includeSecrets is set.',
       inputSchema: {
         monitorID: z.coerce.number().int().nonnegative().describe('The ID of the monitor to get heartbeats for'),
-        maxHeartbeats: z.coerce.number().int().positive().max(100).optional().describe('If set, returns the most recent X heartbeats (up to 100). If unset, returns only the most recent heartbeat (default: 1)')
+        maxHeartbeats: z.coerce.number().int().positive().max(100).optional().describe('If set, returns the most recent X heartbeats (up to 100). If unset, returns only the most recent heartbeat (default: 1)'),
+        includeSecrets: includeSecretsParam
       },
       outputSchema: { 
         monitorID: z.number(),
@@ -471,12 +473,15 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         count: z.number()
       },
     },
-    async ({ monitorID, maxHeartbeats }) => {
+    async ({ monitorID, maxHeartbeats, includeSecrets }) => {
       await authenticateClient();
 
       try {
         const count = maxHeartbeats ?? 1;
-        const heartbeatsArray = client.getHeartbeatsForMonitor(monitorID, count);
+        const raw = client.getHeartbeatsForMonitor(monitorID, count);
+        // Heartbeats are projected to their declared fields (dropping passthrough columns
+        // like response) and a msg that quotes the monitor's URL has its credentials scrubbed.
+        const heartbeatsArray = wantsSecrets(includeSecrets) ? raw : raw.map((hb) => redactHeartbeat(hb));
         
         return {
           content: [{ 
@@ -546,9 +551,10 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     'listHeartbeats',
     {
       title: 'List Heartbeats',
-      description: 'Retrieves historical heartbeat data for ALL monitors (response times, status changes over time). Use this for analyzing patterns across multiple monitors or correlating events. By default returns only the most recent heartbeat per monitor; set maxHeartbeats (up to 100) for historical analysis. Keep maxHeartbeats ≤5 unless user requests more.',
+      description: 'Retrieves historical heartbeat data for ALL monitors (response times, status changes over time). Use this for analyzing patterns across multiple monitors or correlating events. By default returns only the most recent heartbeat per monitor; set maxHeartbeats (up to 100) for historical analysis. Keep maxHeartbeats ≤5 unless user requests more. Credentials embedded in a status message URL (user:pass@host) read "***" unless includeSecrets is set.',
       inputSchema: {
-        maxHeartbeats: z.coerce.number().int().positive().max(100).optional().describe('If set, returns the most recent X heartbeats per monitor (up to 100). If unset, returns only the most recent heartbeat per monitor (default: 1)')
+        maxHeartbeats: z.coerce.number().int().positive().max(100).optional().describe('If set, returns the most recent X heartbeats per monitor (up to 100). If unset, returns only the most recent heartbeat per monitor (default: 1)'),
+        includeSecrets: includeSecretsParam
       },
       outputSchema: { 
         heartbeats: z.record(z.string(), z.array(HeartbeatSchema)).describe('Map of monitor IDs to their heartbeat arrays'),
@@ -556,12 +562,19 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         totalHeartbeatCount: z.number()
       },
     },
-    async ({ maxHeartbeats }) => {
+    async ({ maxHeartbeats, includeSecrets }) => {
       await authenticateClient();
 
       try {
         const count = maxHeartbeats ?? 1;
-        const heartbeatList = client.getHeartbeatList(count);
+        const raw = client.getHeartbeatList(count);
+        // Heartbeats are projected to their declared fields (dropping passthrough columns
+        // like response) and a msg that quotes the monitor's URL has its credentials scrubbed.
+        const heartbeatList = wantsSecrets(includeSecrets)
+          ? raw
+          : Object.fromEntries(
+              Object.entries(raw).map(([id, beats]) => [id, beats.map((hb) => redactHeartbeat(hb))])
+            );
         
         // Calculate total heartbeat count
         const totalCount = Object.values(heartbeatList).reduce(

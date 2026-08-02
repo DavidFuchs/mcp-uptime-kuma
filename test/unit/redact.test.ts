@@ -4,6 +4,7 @@ import {
   isSecretKey,
   redactSecrets,
   redactUrlCredentials,
+  redactHeartbeat,
   redactNotification,
   redactNotifications,
   rehydrateSecrets,
@@ -332,5 +333,83 @@ describe('rehydrateUrlCredentials - the dockerDaemon read-edit-write loop', () =
     const { value, preserved } = rehydrateUrlCredentials('http://:***@dockerd.local:2375', 'http://:s3cret@dockerd.local:2375');
     expect(value).toBe('http://:s3cret@dockerd.local:2375/');
     expect(preserved).toBe(true);
+  });
+});
+
+describe('redactUrlCredentials - credentials quoted inside free text', () => {
+  it('masks user:pass embedded mid-message', () => {
+    const msg = 'connect ETIMEDOUT to http://admin:s3cret@dockerd.local:2375 after 10s';
+    expect(redactUrlCredentials(msg)).toBe(
+      'connect ETIMEDOUT to http://***:***@dockerd.local:2375 after 10s'
+    );
+  });
+
+  it('masks a username-only userinfo', () => {
+    expect(redactUrlCredentials('fetching https://token@api.example.com/v1')).toBe(
+      'fetching https://***@api.example.com/v1'
+    );
+  });
+
+  it('masks every occurrence in one string', () => {
+    const msg = 'primary http://a:b@one.local failed, retry http://c:d@two.local';
+    expect(redactUrlCredentials(msg)).toBe(
+      'primary http://***:***@one.local failed, retry http://***:***@two.local'
+    );
+  });
+
+  it('leaves a URL with no userinfo untouched', () => {
+    const msg = 'GET https://status.example.com/health returned 200';
+    expect(redactUrlCredentials(msg)).toBe(msg);
+  });
+
+  it('leaves text with no URL untouched', () => {
+    const msg = 'Request failed with status code 401';
+    expect(redactUrlCredentials(msg)).toBe(msg);
+  });
+});
+
+describe('redactHeartbeat - the read-tool boundary for heartbeats', () => {
+  it('scrubs credentials quoted in the status message', () => {
+    const beat = {
+      status: 0,
+      time: '2026-08-02 10:00:00',
+      msg: 'connect ECONNREFUSED http://admin:s3cret@internal.local:8080',
+      ping: null,
+    };
+    const out = redactHeartbeat(beat);
+    expect(out.msg).toBe('connect ECONNREFUSED http://***:***@internal.local:8080');
+    // Declared fields are kept.
+    expect(out.status).toBe(0);
+    expect(out.time).toBe('2026-08-02 10:00:00');
+  });
+
+  it('drops a passed-through response column rather than surfacing its body', () => {
+    const out = redactHeartbeat({
+      status: 1,
+      time: '2026-08-02 10:00:00',
+      msg: '200 - OK',
+      response: '{"access_token":"abc123","refresh_token":"def456"}',
+    });
+    expect(out).not.toHaveProperty('response');
+    expect(out.msg).toBe('200 - OK');
+  });
+
+  it('drops any undeclared column, including a secret-named one', () => {
+    const out = redactHeartbeat({
+      status: 1,
+      time: '2026-08-02 10:00:00',
+      msg: 'OK',
+      authToken: 'abc123',
+      internalDebugField: 'whatever',
+    });
+    expect(out).not.toHaveProperty('authToken');
+    expect(out).not.toHaveProperty('internalDebugField');
+  });
+
+  it('keeps declared fields, and returns a copy', () => {
+    const beat = { status: 1, time: '2026-08-02 10:00:00', msg: '200 - OK', ping: 42 };
+    const out = redactHeartbeat(beat);
+    expect(out).toEqual(beat);
+    expect(out).not.toBe(beat);
   });
 });
