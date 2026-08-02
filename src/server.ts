@@ -10,6 +10,7 @@ import {
   redactNotifications,
   redactSecrets,
   rehydrateSecrets,
+  rehydrateUrlCredentials,
 } from './redact.js';
 import { VERSION } from './version.js';
 
@@ -1311,9 +1312,35 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
           dockerDaemon: dockerDaemon ?? existing.dockerDaemon,
         };
 
+        // Issue #59: listDockerHosts scrubs inline URL credentials to "***:***@host", and a
+        // dockerDaemon TCP URL is written back here wholesale. The read-edit-write loop an agent
+        // performs would otherwise persist those markers over the real credentials. Restore them
+        // from the stored URL. The marker sits inside the URL userinfo, not as a bare "***", so
+        // rehydrateSecrets cannot catch it — rehydrateUrlCredentials is its URL-shaped counterpart.
+        // Only reached when the caller passed dockerDaemon; omitting it already keeps the stored URL.
+        let preservedCreds = false;
+        if (dockerDaemon !== undefined) {
+          const restored = rehydrateUrlCredentials(dockerDaemon, existing.dockerDaemon);
+          if (restored.missing) {
+            throw new Error(
+              'Cannot write the redaction marker "***" into dockerDaemon — the docker host has no ' +
+              'stored credential to restore, so this would save an endpoint that looks authenticated ' +
+              'and cannot connect. Pass the real URL, or call listDockerHosts with includeSecrets to ' +
+              'read the current one.'
+            );
+          }
+          merged.dockerDaemon = restored.value;
+          preservedCreds = restored.preserved;
+        }
+
         const response = await client.addDockerHost(merged, dockerHostID);
+        let text = response.msg || `Docker host ${dockerHostID} updated`;
+        if (preservedCreds) {
+          text += '\n\nKept the existing credentials embedded in dockerDaemon — "***" was sent, ' +
+            'which is the redaction marker, not a credential.';
+        }
         return {
-          content: [{ type: 'text', text: response.msg || `Docker host ${dockerHostID} updated` }],
+          content: [{ type: 'text', text }],
           structuredContent: { ok: response.ok, id: response.id, msg: response.msg },
         };
       } catch (error) {

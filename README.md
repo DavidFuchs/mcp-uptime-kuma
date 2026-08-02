@@ -236,6 +236,11 @@ merging it, so without this a read-edit-write round trip would replace a working
 with three asterisks. If there is no stored value to restore, the call fails rather than
 writing a credential that looks set and cannot work.
 
+`updateDockerHost` gets the same protection for the credentials embedded in a `dockerDaemon`
+URL: a `http://***:***@host:2375` read back from `listDockerHosts` has its userinfo restored
+from the stored URL rather than persisted verbatim, so repointing a host without re-entering
+its credentials does not wipe them.
+
 ## LibreChat Configuration
 
 **stdio transport:**

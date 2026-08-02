@@ -7,6 +7,7 @@ import {
   redactNotification,
   redactNotifications,
   rehydrateSecrets,
+  rehydrateUrlCredentials,
 } from '../../src/redact.js';
 
 describe('redact - key classification', () => {
@@ -271,5 +272,65 @@ describe('rehydrateSecrets - the read-edit-write loop', () => {
 
     expect(shown.smtpPassword).toBe('super-secret');
     expect(shown.smtpHost).toBe('smtp2.example.com');
+  });
+});
+
+describe('rehydrateUrlCredentials - the dockerDaemon read-edit-write loop', () => {
+  // redactUrlCredentials scrubs user:pass to "***:***@host", which is NOT the bare "***"
+  // marker rehydrateSecrets matches. updateDockerHost writes the whole URL back, so this is
+  // the counterpart that keeps that path from clobbering the credential.
+  const stored = 'http://admin:s3cret@dockerd.local:2375';
+
+  it('restores both userinfo halves a redacted read scrubbed', () => {
+    const shown = redactUrlCredentials(stored); // http://***:***@dockerd.local:2375/
+    const { value, preserved, missing } = rehydrateUrlCredentials(shown, stored);
+
+    // URL serialization normalises an empty path to "/", the same normalisation
+    // redactUrlCredentials already applied on the way out — the credential is what matters.
+    expect(value).toBe('http://admin:s3cret@dockerd.local:2375/');
+    expect(preserved).toBe(true);
+    expect(missing).toBe(false);
+  });
+
+  it('restores credentials even when the caller changed the endpoint', () => {
+    // The realistic edit: read the redacted host, repoint it, write it back. The
+    // credentials must ride along to the new endpoint rather than being wiped.
+    const { value, preserved } = rehydrateUrlCredentials('http://***:***@new-host:2375', stored);
+    expect(value).toBe('http://admin:s3cret@new-host:2375/');
+    expect(preserved).toBe(true);
+  });
+
+  it('reports missing when there is no stored credential to restore', () => {
+    // A create, or a host that never had inline credentials. Writing "***" would save an
+    // endpoint that looks authenticated and cannot connect.
+    const withoutCreds = rehydrateUrlCredentials('http://***:***@new-host:2375', 'http://dockerd.local:2375');
+    expect(withoutCreds.missing).toBe(true);
+    expect(withoutCreds.preserved).toBe(false);
+
+    const noStored = rehydrateUrlCredentials('http://***:***@new-host:2375', undefined);
+    expect(noStored.missing).toBe(true);
+  });
+
+  it('leaves a URL without the marker untouched', () => {
+    const realEdit = 'http://newuser:newpass@dockerd.local:2375';
+    const { value, preserved, missing } = rehydrateUrlCredentials(realEdit, stored);
+    expect(value).toBe(realEdit);
+    expect(preserved).toBe(false);
+    expect(missing).toBe(false);
+  });
+
+  it('leaves non-URL values (a unix socket path) untouched', () => {
+    const socket = '/var/run/docker.sock';
+    expect(rehydrateUrlCredentials(socket, undefined)).toEqual({
+      value: socket,
+      preserved: false,
+      missing: false,
+    });
+  });
+
+  it('restores a password-only userinfo', () => {
+    const { value, preserved } = rehydrateUrlCredentials('http://:***@dockerd.local:2375', 'http://:s3cret@dockerd.local:2375');
+    expect(value).toBe('http://:s3cret@dockerd.local:2375/');
+    expect(preserved).toBe(true);
   });
 });

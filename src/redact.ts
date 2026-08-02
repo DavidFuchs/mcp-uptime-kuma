@@ -272,6 +272,73 @@ export function rehydrateSecrets(
 }
 
 /**
+ * Restores inline URL credentials that a redacted read scrubbed to the marker.
+ *
+ * `redactUrlCredentials` turns `http://user:pass@host` into `http://***:***@host`, and that
+ * scrubbed form is NOT the bare `***` that `rehydrateSecrets` recognises — the marker lives
+ * inside the URL's userinfo, not as the whole field value. A `dockerDaemon` TCP endpoint is the
+ * field that carries this, and `updateDockerHost` writes the whole value back, so without this a
+ * read-edit-write loop persists `***:***@host` and wipes the credential — the exact clobber
+ * `rehydrateSecrets` prevents for monitors and notifications.
+ *
+ * Returns the restored URL and whether a marker was restored (`preserved`) or had nothing behind
+ * it (`missing` — a create, or a stored URL that never had that credential). A URL with no marker
+ * in its userinfo, or a non-URL string, is returned unchanged.
+ */
+export function rehydrateUrlCredentials(
+  incoming: string,
+  stored: string | undefined
+): { value: string; preserved: boolean; missing: boolean } {
+  if (typeof incoming !== 'string' || !/^[a-z][a-z0-9+.-]*:\/\//i.test(incoming)) {
+    return { value: incoming, preserved: false, missing: false };
+  }
+
+  let url: URL;
+  try {
+    url = new URL(incoming);
+  } catch {
+    return { value: incoming, preserved: false, missing: false };
+  }
+
+  if (url.username !== SECRET_MARKER && url.password !== SECRET_MARKER) {
+    return { value: incoming, preserved: false, missing: false };
+  }
+
+  let storedUrl: URL | undefined;
+  if (typeof stored === 'string') {
+    try {
+      storedUrl = new URL(stored);
+    } catch {
+      storedUrl = undefined;
+    }
+  }
+
+  let preserved = false;
+  let missing = false;
+
+  if (url.username === SECRET_MARKER) {
+    const previous = storedUrl?.username;
+    if (previous) {
+      url.username = previous;
+      preserved = true;
+    } else {
+      missing = true;
+    }
+  }
+  if (url.password === SECRET_MARKER) {
+    const previous = storedUrl?.password;
+    if (previous) {
+      url.password = previous;
+      preserved = true;
+    } else {
+      missing = true;
+    }
+  }
+
+  return { value: url.toString(), preserved, missing };
+}
+
+/**
  * Shared wording for the opt-in, so every tool describes it the same way.
  */
 export const INCLUDE_SECRETS_DESCRIPTION =
