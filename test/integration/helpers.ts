@@ -8,7 +8,14 @@ import { config as dotenvConfig } from 'dotenv';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-dotenvConfig({ path: join(__dirname, '.env.test') });
+// override: true is load-bearing. dotenv does NOT replace variables already present in the
+// environment, so on any machine that also has UPTIME_KUMA_URL / UPTIME_KUMA_JWT_TOKEN set for
+// a real instance -- which is the normal state for anyone actually running this MCP server --
+// the ambient values silently win over .env.test. This suite creates and deletes monitors, so
+// the failure mode is running destructive tests against whatever the developer's own client is
+// pointed at. run-tests.sh already assumes the opposite ("environment loaded from .env.test by
+// the test file itself"); this makes that true.
+dotenvConfig({ path: join(__dirname, '.env.test'), override: true });
 
 export interface TestConfig {
   url: string;
