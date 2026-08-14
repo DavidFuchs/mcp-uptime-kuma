@@ -1,5 +1,5 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { McpError, ErrorCode, SetLevelRequestSchema, LoggingLevelSchema, type LoggingLevel } from '@modelcontextprotocol/sdk/types.js';
+import { McpError, ErrorCode, SetLevelRequestSchema, ListToolsRequestSchema, LoggingLevelSchema, type LoggingLevel } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { randomBytes, randomInt } from 'node:crypto';
 import { UptimeKumaClient } from './uptime-kuma-client.js';
@@ -145,6 +145,49 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
 
     return schema;
   }
+
+  // Issue #83: the SDK converts every tool's input/output Zod schema to JSON Schema via
+  // zod-to-json-schema without setting a `target`, so each one is stamped
+  // "$schema": "http://json-schema.org/draft-07/schema#" — verified against both the SDK
+  // version this project pins (^1.22.0) and the current latest (1.30.0); the behavior is
+  // unchanged between them. Clients whose validator only accepts the MCP spec's default
+  // dialect (2020-12, per SEP-1613) reject every tool outright before ever calling it
+  // (see modelcontextprotocol/typescript-sdk#745, still open upstream).
+  //
+  // None of the schemas below use anything that differs between the two drafts (no
+  // `dependencies`, no positional tuple items), so relabeling the declared dialect is safe —
+  // only the version stamp was wrong, not the shape. This intercepts the SDK's own
+  // `setRequestHandler(ListToolsRequestSchema, ...)` call (made lazily on first
+  // `registerTool`, below) rather than reimplementing tools/list, so it keeps working across
+  // SDK internals changing between versions.
+  const DRAFT_07_DIALECT = 'http://json-schema.org/draft-07/schema#';
+  const DIALECT_2020_12 = 'https://json-schema.org/draft/2020-12/schema';
+  const relabelDialect = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(relabelDialect);
+    if (value && typeof value === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+        out[key] = key === '$schema' && val === DRAFT_07_DIALECT ? DIALECT_2020_12 : relabelDialect(val);
+      }
+      return out;
+    }
+    return value;
+  };
+
+  const setRequestHandlerUnpatched = server.server.setRequestHandler.bind(server.server) as (
+    requestSchema: unknown,
+    handler: (...args: unknown[]) => unknown
+  ) => unknown;
+  (server.server as unknown as { setRequestHandler: typeof server.server.setRequestHandler }).setRequestHandler = ((
+    requestSchema: unknown,
+    handler: (...args: unknown[]) => unknown
+  ) => {
+    if (requestSchema === ListToolsRequestSchema) {
+      const wrapped = async (...args: unknown[]) => relabelDialect(await handler(...args));
+      return setRequestHandlerUnpatched(requestSchema, wrapped);
+    }
+    return setRequestHandlerUnpatched(requestSchema, handler);
+  }) as typeof server.server.setRequestHandler;
 
   // Handle logging level changes via the underlying server
   server.server.setRequestHandler(SetLevelRequestSchema, async (request) => {
