@@ -9,6 +9,12 @@ services:
 #      - UPTIME_KUMA_PASSWORD=${UPTIME_KUMA_PASSWORD} # Optional, if using username/password authentication
 #      - UPTIME_KUMA_JWT_TOKEN=${UPTIME_KUMA_JWT_TOKEN} # Optional, if using JWT authentication
 #      - PORT=3000 # Internal port. This is optional, defaults to 3000
+      # Strongly recommended: without MCP_AUTH_TOKEN anyone who can reach this port has full
+      # read/write control of your Uptime Kuma instance. Generate one with: openssl rand -base64 32
+#      - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN} # Clients must send 'Authorization: Bearer <token>'
+      # Only needed for browser-based MCP clients; native clients send no Origin header.
+      # Defaults to '*', which performs no Origin validation.
+#      - ALLOWED_ORIGIN=https://your-browser-client.example.com
     ports:
       - "3000:3000"
     # Override default CMD to use streamable HTTP transport instead of stdio

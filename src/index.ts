@@ -12,6 +12,7 @@ import express from 'express';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import { createServer } from './server.js';
+import { parseAllowedOrigins, createOriginMiddleware, createAuthMiddleware } from './http-security.js';
 import type { UptimeKumaConfig } from './types/index.js';
 
 /**
@@ -77,6 +78,12 @@ Examples:
   mcp-uptime-kuma -t stdio                 # Run with stdio transport
   mcp-uptime-kuma -t streamable-http       # Run with streamable HTTP transport (port 3000)
   PORT=8080 mcp-uptime-kuma -t streamable-http  # Run HTTP on custom port
+
+Environment variables for the streamable HTTP transport:
+  MCP_AUTH_TOKEN   Shared secret required as 'Authorization: Bearer <token>'. Unset = no auth.
+  ALLOWED_ORIGIN   Comma-separated origins allowed to call /mcp. Default '*' = no validation.
+  HOST             Address to bind. Default '0.0.0.0'; use '127.0.0.1' for local-only.
+  PORT             Port to listen on. Default 3000.
 `);
       process.exit(0);
     }
@@ -134,16 +141,13 @@ async function runHttp(config: UptimeKumaConfig) {
   const app = express();
   app.use(express.json());
 
-  // CORS configuration for MCP client compatibility
-  app.use(
-    cors({
-      origin: process.env.ALLOWED_ORIGIN || '*',
-      exposedHeaders: ['mcp-session-id'],
-      allowedHeaders: ['Content-Type', 'mcp-session-id', 'mcp-protocol-version'],
-    })
-  );
+  const allowedOrigins = parseAllowedOrigins(process.env.ALLOWED_ORIGIN);
+  const authToken = process.env.MCP_AUTH_TOKEN;
 
-  // Rate limiting: 100 requests per 15 minutes per IP
+  // Rate limiting: 100 requests per 15 minutes per IP.
+  //
+  // Stays outermost so that an unauthenticated flood is throttled before it reaches
+  // anything that does work — including the guards below.
   app.use(
     rateLimit({
       windowMs: 15 * 60 * 1000,
@@ -153,6 +157,28 @@ async function runHttp(config: UptimeKumaConfig) {
       message: 'Too many requests from this IP, please try again later.',
     })
   );
+
+  // Origin validation ahead of authentication, so a caller from an origin we do not
+  // recognise never gets to probe whether its token is correct. Both guards are scoped
+  // to the MCP endpoint: /health has to stay reachable for container healthchecks and
+  // load balancer probes, and it discloses nothing beyond the fact that we are running.
+  app.use('/mcp', createOriginMiddleware(allowedOrigins));
+
+  // CORS configuration for MCP client compatibility. `Authorization` MUST be listed:
+  // without it a browser-based client's preflight rejects the very header the auth
+  // guard below requires.
+  app.use(
+    cors({
+      origin: allowedOrigins,
+      exposedHeaders: ['mcp-session-id'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'mcp-session-id', 'mcp-protocol-version'],
+    })
+  );
+
+  // Authentication AFTER cors, which answers `OPTIONS` preflights itself. A preflight
+  // carries no `Authorization` header by definition, so a guard placed ahead of cors
+  // would 401 every browser client before it ever sent its credential.
+  app.use('/mcp', createAuthMiddleware(authToken));
 
   // Create the MCP server once (reused across requests)
   const { server, authenticateClient } = await createServer(config);
@@ -223,10 +249,32 @@ async function runHttp(config: UptimeKumaConfig) {
   });
 
   const port = parseInt(process.env.PORT || '3000');
-  
-  const httpServer = app.listen(port, () => {
+
+  // Defaults to all interfaces. The MCP spec prefers binding to loopback for a local
+  // server, but this image's whole purpose is to be reached from outside its container,
+  // where 0.0.0.0 is mandatory — so the safer value is offered rather than imposed.
+  const host = process.env.HOST || '0.0.0.0';
+
+  const httpServer = app.listen(port, host, () => {
     console.log(`mcp-uptime-kuma server running on http://localhost:${port}/mcp`);
     console.log(`Health check available at http://localhost:${port}/health`);
+
+    // Warn rather than refuse to start. Both settings default to permissive so that
+    // upgrading cannot break a working deployment, which makes an unprotected server the
+    // quiet outcome — and a quiet outcome is exactly what nobody notices.
+    if (!authToken?.trim()) {
+      console.warn(
+        'WARNING: MCP_AUTH_TOKEN is not set. This endpoint is unauthenticated — anyone who can '
+        + 'reach it has full read/write control of your Uptime Kuma instance, including deleting monitors.'
+      );
+    }
+    if (allowedOrigins === '*') {
+      console.warn(
+        'WARNING: ALLOWED_ORIGIN is "*", so no Origin validation is performed. A website the user '
+        + 'visits can reach this server via DNS rebinding. Set ALLOWED_ORIGIN to a comma-separated '
+        + 'list of the origins your browser-based clients actually use.'
+      );
+    }
   }).on('error', (error) => {
     process.stderr.write(`Server error: ${error}\n`);
     process.exit(1);

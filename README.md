@@ -79,6 +79,10 @@ Then configure your MCP client to connect to the endpoint:
 
 See [Authentication Methods](#authentication-methods) for JWT token and anonymous authentication options.
 
+> **The endpoint above is unauthenticated.** Anyone who can reach port 3000 gets full
+> read/write control of your Uptime Kuma instance. See
+> [Securing the HTTP Endpoint](#securing-the-http-endpoint) before exposing it beyond localhost.
+
 ## Example Conversation
 
 ![MCP server answering questions about Uptime Kuma monitors](.github/images/screenshot-1.png)
@@ -190,6 +194,76 @@ docker run --rm davidfuchs/mcp-uptime-kuma:latest get-jwt http://host.docker.int
 ```
 
 **From browser:** Open Developer Tools → Storage/Application → Local Storage → find `token` key.
+
+## Securing the HTTP Endpoint
+
+Applies to `-t streamable-http` only. The stdio transport has no listener to protect and
+takes its credentials from the environment, as the MCP specification prescribes.
+
+Anyone who can reach `/mcp` has full read/write control of your Uptime Kuma instance,
+including deleting monitors. Two settings guard it, and both default to permissive so that
+upgrading cannot break an existing deployment — the server warns at startup in that state.
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `MCP_AUTH_TOKEN` | unset (no authentication) | Shared secret that callers must present as `Authorization: Bearer <token>`. Anything else gets `401`. |
+| `ALLOWED_ORIGIN` | `*` (no validation) | Comma-separated list of browser origins permitted to call `/mcp`. A request whose `Origin` is not listed gets `403`. Requests with no `Origin` header — every native MCP client — are always allowed. |
+| `HOST` | `0.0.0.0` | Address to bind. Set to `127.0.0.1` when running locally outside a container. |
+| `PORT` | `3000` | Port to listen on. |
+
+`/health` is deliberately left unauthenticated so container healthchecks and load balancer
+probes keep working. It reports nothing but liveness.
+
+### Setting a token
+
+Generate a high-entropy secret — this is a password, and it is compared in constant time,
+so length is the only thing protecting it:
+
+```bash
+openssl rand -base64 32
+```
+
+```bash
+docker run -d \
+  --name mcp-uptime-kuma \
+  -p 3000:3000 \
+  -e UPTIME_KUMA_URL=http://your-uptime-kuma-instance:3001 \
+  -e UPTIME_KUMA_JWT_TOKEN=your_jwt_token \
+  -e MCP_AUTH_TOKEN=your_generated_secret \
+  davidfuchs/mcp-uptime-kuma:latest \
+  -t streamable-http
+```
+
+Clients then send it as a header:
+
+```json
+{
+  "mcpServers": {
+    "uptime-kuma": {
+      "url": "http://localhost:3000/mcp",
+      "headers": {
+        "Authorization": "Bearer your_generated_secret"
+      }
+    }
+  }
+}
+```
+
+### Why `Origin` validation matters separately
+
+A shared secret stops anyone who cannot present it. It does not stop a website your browser
+already trusts. Under a DNS rebinding attack a page on `evil.example` resolves its own
+hostname to `127.0.0.1`, so the browser treats requests to your local server as same-origin
+— no preflight happens and CORS never applies. The server comparing the `Origin` header it
+was sent against a list of expected origins is the only check left standing, which is why
+the MCP specification makes it a MUST rather than a SHOULD.
+
+If you only use native clients, leaving `ALLOWED_ORIGIN` unset costs you nothing; those
+clients send no `Origin` header. If you use a browser-based client, list its origin:
+
+```
+ALLOWED_ORIGIN=https://librechat.example.com,http://localhost:5173
+```
 
 ## Credential Redaction
 
