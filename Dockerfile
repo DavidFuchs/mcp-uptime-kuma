@@ -60,7 +60,11 @@ ENV UPTIME_KUMA_USERNAME=""
 ENV UPTIME_KUMA_PASSWORD=""
 ENV UPTIME_KUMA_2FA_TOKEN=""
 ENV UPTIME_KUMA_JWT_TOKEN=""
+# Guards for the streamable HTTP transport. Both are permissive by default; the server
+# warns at startup when it is left unprotected. See "Securing the HTTP Endpoint" in README.
+ENV MCP_AUTH_TOKEN=""
 ENV ALLOWED_ORIGIN="*"
+ENV HOST="0.0.0.0"
 ENV PORT=3000
 
 # Expose port for HTTP transport
