@@ -459,7 +459,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     'getMonitorSummary',
     {
       title: 'Get Monitor Summary',
-      description: 'START HERE for status overview questions. Retrieves current status for all monitors showing UP/DOWN/PENDING/MAINTENANCE states with the most recent heartbeat message. Use this when asked "how is everything doing?", "what\'s down?", "what\'s up?", or for any general status overview. Returns essential information (ID, name, pathName, active state, maintenance state, status, message, type, tags). Supports filtering by keywords, type, active/maintenance status, tags, and current status.',
+      description: 'START HERE for status overview questions. Retrieves current status for all monitors showing UP/DOWN/PENDING/MAINTENANCE states with the most recent heartbeat message. Use this when asked "how is everything doing?", "what\'s down?", "what\'s up?", or for any general status overview. Returns essential information (ID, name, pathName, active state, maintenance state, status, message, lastBeatTime, type, tags). Supports filtering by keywords, type, active/maintenance status, tags, and current status. Check lastBeatTime before trusting the status of a push monitor — one that has stopped beating keeps reporting its last known status. lastBeatTime is UTC with no zone marker, so measure staleness against the current UTC time.',
       inputSchema: {
         keywords: z.string().optional().describe('Space-separated keywords to filter monitors by pathName (case-insensitive fuzzy match). All keywords must match for a monitor to be included.'),
         type: z.string().optional().describe('Filter by monitor type(s). Comma-separated for multiple types. Use listMonitorTypes tool to see all available types.'),
@@ -504,10 +504,15 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     'getHeartbeats',
     {
       title: 'Get Heartbeats',
-      description: 'Retrieves historical heartbeat data for a specific monitor (response times, status changes over time). Use this for analyzing patterns or history for one monitor. By default returns only the most recent heartbeat; set maxHeartbeats (up to 100) for historical analysis. Keep maxHeartbeats ≤10 unless user requests more. Credentials embedded in a status message URL (user:pass@host) read "***" unless includeSecrets is set.',
+      description: 'Retrieves historical heartbeat data for a specific monitor (response times, status changes over time). Use this for analyzing patterns or history for one monitor. Beats are returned NEWEST-FIRST. By default returns only the most recent heartbeat; set maxHeartbeats (up to 100) for historical analysis. Keep maxHeartbeats ≤10 unless user requests more. Set important:true for the status CHANGES only (Uptime Kuma\'s own event list) — that is history, not current state, so do not read status from it. Credentials embedded in a status message URL (user:pass@host) read "***" unless includeSecrets is set.',
       inputSchema: {
         monitorID: z.coerce.number().int().nonnegative().describe('The ID of the monitor to get heartbeats for'),
         maxHeartbeats: z.coerce.number().int().positive().max(100).optional().describe('If set, returns the most recent X heartbeats (up to 100). If unset, returns only the most recent heartbeat (default: 1)'),
+        // `limit` and `count` are what a caller reaches for first. Both used to be stripped,
+        // leaving maxHeartbeats undefined and the call silently returning a single beat.
+        limit: z.coerce.number().int().positive().max(100).optional().describe('Alias for maxHeartbeats. Prefer maxHeartbeats.'),
+        count: z.coerce.number().int().positive().max(100).optional().describe('Alias for maxHeartbeats. Prefer maxHeartbeats.'),
+        important: z.boolean().optional().describe('Return only IMPORTANT beats — the status changes behind Uptime Kuma\'s event list — fetched live from the server rather than the cache. History only: the newest important beat is not the monitor\'s current status.'),
         includeSecrets: includeSecretsParam
       },
       outputSchema: { 
@@ -516,16 +521,28 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         count: z.number()
       },
     },
-    async ({ monitorID, maxHeartbeats, includeSecrets }) => {
+    async ({ monitorID, maxHeartbeats, limit, count: countAlias, important, includeSecrets }) => {
       await authenticateClient();
 
       try {
-        const count = maxHeartbeats ?? 1;
-        const raw = client.getHeartbeatsForMonitor(monitorID, count);
+        const requested = [maxHeartbeats, limit, countAlias].filter((v) => v !== undefined);
+        if (new Set(requested).size > 1) {
+          throw new Error(
+            `Conflicting values for maxHeartbeats and its aliases (${requested.join(', ')}) — pass only 'maxHeartbeats'.`
+          );
+        }
+        const count = requested[0] ?? 1;
+        // The important/event feed is fetched live rather than served from the cache, but it
+        // is heartbeat data all the same — it carries the same `msg`, so it goes through the
+        // same redaction. Redacting only the cached path would leave the event list as an
+        // unguarded second way to read the credentials out of a status message (#59).
+        const raw = important
+          ? await client.fetchImportantHeartbeats(monitorID, count)
+          : client.getHeartbeatsForMonitor(monitorID, count);
         // Heartbeats are projected to their declared fields (dropping passthrough columns
         // like response) and a msg that quotes the monitor's URL has its credentials scrubbed.
         const heartbeatsArray = wantsSecrets(includeSecrets) ? raw : raw.map((hb) => redactHeartbeat(hb));
-        
+
         return {
           content: [{ 
             type: 'text', 
@@ -594,9 +611,11 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     'listHeartbeats',
     {
       title: 'List Heartbeats',
-      description: 'Retrieves historical heartbeat data for ALL monitors (response times, status changes over time). Use this for analyzing patterns across multiple monitors or correlating events. By default returns only the most recent heartbeat per monitor; set maxHeartbeats (up to 100) for historical analysis. Keep maxHeartbeats ≤5 unless user requests more. Credentials embedded in a status message URL (user:pass@host) read "***" unless includeSecrets is set.',
+      description: 'Retrieves historical heartbeat data for ALL monitors (response times, status changes over time). Use this for analyzing patterns across multiple monitors or correlating events. Beats are returned NEWEST-FIRST. By default returns only the most recent heartbeat per monitor; set maxHeartbeats (up to 100) for historical analysis. Keep maxHeartbeats ≤5 unless user requests more. Credentials embedded in a status message URL (user:pass@host) read "***" unless includeSecrets is set.',
       inputSchema: {
         maxHeartbeats: z.coerce.number().int().positive().max(100).optional().describe('If set, returns the most recent X heartbeats per monitor (up to 100). If unset, returns only the most recent heartbeat per monitor (default: 1)'),
+        limit: z.coerce.number().int().positive().max(100).optional().describe('Alias for maxHeartbeats. Prefer maxHeartbeats.'),
+        count: z.coerce.number().int().positive().max(100).optional().describe('Alias for maxHeartbeats. Prefer maxHeartbeats.'),
         includeSecrets: includeSecretsParam
       },
       outputSchema: { 
@@ -605,11 +624,17 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         totalHeartbeatCount: z.number()
       },
     },
-    async ({ maxHeartbeats, includeSecrets }) => {
+    async ({ maxHeartbeats, limit, count: countAlias, includeSecrets }) => {
       await authenticateClient();
 
       try {
-        const count = maxHeartbeats ?? 1;
+        const requested = [maxHeartbeats, limit, countAlias].filter((v) => v !== undefined);
+        if (new Set(requested).size > 1) {
+          throw new Error(
+            `Conflicting values for maxHeartbeats and its aliases (${requested.join(', ')}) — pass only 'maxHeartbeats'.`
+          );
+        }
+        const count = requested[0] ?? 1;
         const raw = client.getHeartbeatList(count);
         // Heartbeats are projected to their declared fields (dropping passthrough columns
         // like response) and a msg that quotes the monitor's URL has its credentials scrubbed.

@@ -413,6 +413,69 @@ export class UptimeKumaClient {
   }
 
   /**
+   * Orders heartbeats newest-first.
+   *
+   * Sorts by `time`, NOT by `id`: live `heartbeat` events carry no `id` at all — the
+   * payload is monitorID/status/time/msg/ping/important/retries — so an id-based
+   * comparator would sink every live beat to the bottom. `id` only breaks ties between
+   * two beats stamped in the same millisecond.
+   *
+   * `time` looks like "2026-07-28 04:13:43.158". Not ISO-8601, but Date.parse accepts it
+   * and parses every beat the same way, so relative order holds. The format is also
+   * fixed-width, which makes a lexicographic compare a safe fallback if a future version
+   * emits something Date.parse rejects.
+   */
+  static compareBeatsNewestFirst(a: Heartbeat, b: Heartbeat): number {
+    const ta = Date.parse(a?.time ?? '');
+    const tb = Date.parse(b?.time ?? '');
+
+    if (!Number.isNaN(ta) && !Number.isNaN(tb) && ta !== tb) return tb - ta;
+    if (Number.isNaN(ta) !== Number.isNaN(tb)) {
+      // An unparseable timestamp sorts last rather than corrupting the head of the list,
+      // which is the position every read depends on.
+      return Number.isNaN(ta) ? 1 : -1;
+    }
+    if (Number.isNaN(ta) && Number.isNaN(tb)) {
+      return String(b?.time ?? '').localeCompare(String(a?.time ?? ''));
+    }
+    if (typeof a?.id === 'number' && typeof b?.id === 'number') return b.id - a.id;
+    return 0;
+  }
+
+  /**
+   * Normalise any heartbeat array to newest-first and de-duplicated.
+   *
+   * Two sources of duplicates, each keyed differently:
+   *
+   * - A `heartbeatList` refresh re-sending beats already held. Those carry an `id`, which
+   *   is the database primary key and so identifies the beat exactly.
+   * - socket.io re-delivering a live `heartbeat` event. Those carry no `id` at all, so the
+   *   key has to be built from the payload. Timestamp alone is NOT enough: two genuinely
+   *   different beats can land in the same millisecond, and collapsing those would silently
+   *   drop one. Including status/msg/ping means an identical redelivery collapses while a
+   *   distinct same-millisecond beat survives.
+   *
+   * The two key spaces are deliberately kept apart — a live beat and its later persisted
+   * twin cannot be cross-matched, because the live one has no id to match on. That costs
+   * nothing here: the `heartbeatList` handler replaces the cached array wholesale rather
+   * than merging into it, so the persisted copy never lands beside the live one.
+   */
+  static normaliseBeats(list: Heartbeat[]): Heartbeat[] {
+    const seen = new Set<string>();
+    const deduped: Heartbeat[] = [];
+    for (const beat of list) {
+      const key =
+        typeof beat?.id === 'number'
+          ? `id:${beat.id}`
+          : `t:${beat?.time}|${beat?.status}|${beat?.msg ?? ''}|${beat?.ping ?? ''}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      deduped.push(beat);
+    }
+    return deduped.sort(UptimeKumaClient.compareBeatsNewestFirst);
+  }
+
+  /**
    * Set up event listeners for heartbeat updates
    * These listeners keep the cached heartbeat list in sync with the server
    */
@@ -420,15 +483,21 @@ export class UptimeKumaClient {
     if (!this.socket) return;
 
     // Listen for the full heartbeat list (sent after login)
-    this.socket.on('heartbeatList', (monitorID: number, heartbeatList: Heartbeat[], important?: boolean | number) => {
-      // The heartbeatList event sends data per monitor, not all at once
-      // Format: (monitorID, array of heartbeats, important flag)
-      this.safeLog('debug', `Received heartbeatList for monitor ${monitorID}: ${heartbeatList.length} heartbeats`);
-      // Uptime Kuma emits heartbeatList in ascending (oldest-first) order, but the
-      // cache is consumed newest-first: live 'heartbeat' events are unshift()ed to the
-      // front and reads use slice(0, maxHeartbeats). Reverse on receipt so the cache
-      // is consistently newest-first; otherwise reads return the oldest ~100 beats.
-      this.heartbeatListCache[monitorID.toString()] = heartbeatList.slice().reverse();
+    this.socket.on('heartbeatList', (monitorID: number, heartbeatList: Heartbeat[], overwrite?: boolean) => {
+      // Format: (monitorID, array of heartbeats, overwrite). The third argument is Kuma's
+      // `overwrite` flag and has nothing to do with important/event beats, despite the
+      // name it is often given.
+      //
+      // Coerce before anything reads the payload, including the log line. A malformed or
+      // empty emit would otherwise throw straight out of a socket.io listener, where there
+      // is no caller to catch it.
+      const beats = Array.isArray(heartbeatList) ? heartbeatList : [];
+      this.safeLog('debug', `Received heartbeatList for monitor ${monitorID}: ${beats.length} heartbeats`);
+
+      // Uptime Kuma emits this list oldest-first while the cache is consumed newest-first
+      // (#56/#57). Sorting rather than reversing keeps that true if the server's ordering
+      // ever changes, and costs nothing on an already-ordered list.
+      this.heartbeatListCache[monitorID.toString()] = UptimeKumaClient.normaliseBeats(beats);
     });
 
     // Listen for individual heartbeat updates (real-time)
@@ -438,7 +507,7 @@ export class UptimeKumaClient {
         this.safeLog('warning', 'Received heartbeat without monitorID');
         return;
       }
-      
+
       const monitorID = heartbeat.monitorID.toString();
       // The heartbeat msg is the monitored service's own status text. For HTTP monitors it can
       // echo the target URL (including any user:password@ in it) or a slice of the response body,
@@ -447,15 +516,30 @@ export class UptimeKumaClient {
       // rule #71 applies everywhere else a credential could surface.
       const msgLength = (heartbeat.msg || '').length;
       this.safeLog('debug', `Received heartbeat for monitor ${monitorID}: status=${heartbeat.status}, msgLength=${msgLength}, ping=${heartbeat.ping || 'N/A'}ms`);
-      
+
+
       // Initialize array for this monitor if it doesn't exist
       if (!this.heartbeatListCache[monitorID]) {
         this.heartbeatListCache[monitorID] = [];
       }
-      
-      // Add the new heartbeat to the beginning of the array
-      this.heartbeatListCache[monitorID].unshift(heartbeat);
-      
+
+      const list = this.heartbeatListCache[monitorID];
+      list.unshift(heartbeat);
+
+      // unshift assumes the beat that just arrived is the newest one. Usually true, but
+      // not after a reconnect, when a heartbeatList refresh races a live beat, or across a
+      // clock step — so re-assert the invariant instead of trusting arrival order. The
+      // check is a single comparison on the already-sorted head; the sort only runs when
+      // the order was actually violated.
+      //
+      // `>= 0` rather than `> 0`: a tie means the arriving beat is not strictly newer than
+      // the head, which is exactly the shape of a socket.io redelivery of the beat already
+      // there. A live beat has no id for the comparator to break the tie with, so a tie is
+      // the only signal that a duplicate may need collapsing.
+      if (list.length > 1 && UptimeKumaClient.compareBeatsNewestFirst(list[0], list[1]) >= 0) {
+        this.heartbeatListCache[monitorID] = UptimeKumaClient.normaliseBeats(list);
+      }
+
       // Keep only the most recent heartbeats (limit to 100 like the API does)
       if (this.heartbeatListCache[monitorID].length > 100) {
         this.heartbeatListCache[monitorID] = this.heartbeatListCache[monitorID].slice(0, 100);
@@ -683,6 +767,60 @@ export class UptimeKumaClient {
   }
 
   /**
+   * The single authority for "what is this monitor's current state".
+   *
+   * Every caller that wants current status should come through here rather than indexing
+   * the cache itself, so there is one definition of "latest" to keep correct.
+   *
+   * @param monitorID - The ID of the monitor
+   * @returns The most recent heartbeat, or undefined if none is cached
+   */
+  getLatestHeartbeat(monitorID: number): Heartbeat | undefined {
+    const heartbeats = this.heartbeatListCache[monitorID.toString()];
+    return heartbeats && heartbeats.length > 0 ? heartbeats[0] : undefined;
+  }
+
+  /**
+   * Important ("event") heartbeats — the status *changes* that drive Uptime Kuma's own
+   * event list.
+   *
+   * Deliberately NOT cached and NOT used for current state. Uptime Kuma does not push
+   * `importantHeartbeatList` at login (only `heartbeatList`), so a cache would start empty
+   * and go stale; this fetches on demand through the `monitorImportantHeartbeatListPaged`
+   * RPC, which reads the database.
+   *
+   * That feed arrives newest-first — the opposite order to `heartbeatList` — so it goes
+   * through the same comparator rather than being trusted.
+   *
+   * @param monitorID - The ID of the monitor
+   * @param count - How many important beats to return
+   * @param offset - Pagination offset
+   * @returns Array of important heartbeats, newest-first
+   */
+  fetchImportantHeartbeats(monitorID: number, count: number = 25, offset: number = 0): Promise<Heartbeat[]> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      this.socket.emit(
+        'monitorImportantHeartbeatListPaged',
+        monitorID,
+        offset,
+        count,
+        (response: ApiResponse & { data?: Heartbeat[] }) => {
+          if (response && response.ok) {
+            resolve(UptimeKumaClient.normaliseBeats(response.data || []));
+          } else {
+            reject(new Error(response?.msg || 'Failed to fetch important heartbeats'));
+          }
+        }
+      );
+    });
+  }
+
+  /**
    * Get a summarized list of all monitors with their most recent heartbeat status
    * 
    * @param filters - Optional filter criteria
@@ -766,10 +904,10 @@ export class UptimeKumaClient {
         }
       }
       
-      // Get the most recent heartbeat for this monitor
-      const heartbeats = this.heartbeatListCache[monitorID];
-      const latestHeartbeat = heartbeats && heartbeats.length > 0 ? heartbeats[0] : undefined;
-      
+      // Get the most recent heartbeat for this monitor. Routed through getLatestHeartbeat
+      // so "current state" has exactly one definition.
+      const latestHeartbeat = this.getLatestHeartbeat(Number(monitorID));
+
       // Filter by current status
       if (statusFilter.length > 0 && latestHeartbeat?.status !== undefined) {
         if (!statusFilter.includes(latestHeartbeat.status)) {
@@ -792,6 +930,10 @@ export class UptimeKumaClient {
         maintenance: monitor.maintenance,
         status: latestHeartbeat?.status,
         msg: latestHeartbeat?.msg,
+        // Correct ordering alone does not solve the real hazard: a push monitor that has
+        // STOPPED beating reports its last known status forever and looks identical to a
+        // healthy one. The timestamp is what makes staleness checkable rather than assumed.
+        lastBeatTime: latestHeartbeat?.time,
         uptime: uptime || {},
         avgPing,
         type: monitor.type,
