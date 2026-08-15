@@ -202,12 +202,12 @@ takes its credentials from the environment, as the MCP specification prescribes.
 
 Anyone who can reach `/mcp` has full read/write control of your Uptime Kuma instance,
 including deleting monitors. Two settings guard it, and both default to permissive so that
-upgrading cannot break an existing deployment — the server warns at startup in that state.
+upgrading cannot break an existing deployment - the server warns at startup in that state.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `MCP_AUTH_TOKEN` | unset (no authentication) | Shared secret that callers must present as `Authorization: Bearer <token>`. Anything else gets `401`. |
-| `ALLOWED_ORIGIN` | `*` (no validation) | Comma-separated list of browser origins permitted to call `/mcp`. A request whose `Origin` is not listed gets `403`. Requests with no `Origin` header — every native MCP client — are always allowed. |
+| `ALLOWED_ORIGIN` | `*` (no validation) | Comma-separated list of browser origins permitted to call `/mcp`. A request whose `Origin` is not listed gets `403`. Requests with no `Origin` header (every native MCP client) are always allowed. |
 | `HOST` | `0.0.0.0` | Address to bind. Set to `127.0.0.1` when running locally outside a container. |
 | `PORT` | `3000` | Port to listen on. |
 
@@ -216,7 +216,7 @@ probes keep working. It reports nothing but liveness.
 
 ### Setting a token
 
-Generate a high-entropy secret — this is a password, and it is compared in constant time,
+Generate a high-entropy secret - this is a password, and it is compared in constant time,
 so length is the only thing protecting it:
 
 ```bash
@@ -254,7 +254,7 @@ Clients then send it as a header:
 A shared secret stops anyone who cannot present it. It does not stop a website your browser
 already trusts. Under a DNS rebinding attack a page on `evil.example` resolves its own
 hostname to `127.0.0.1`, so the browser treats requests to your local server as same-origin
-— no preflight happens and CORS never applies. The server comparing the `Origin` header it
+- no preflight happens and CORS never applies. The server comparing the `Origin` header it
 was sent against a list of expected origins is the only check left standing, which is why
 the MCP specification makes it a MUST rather than a SHOULD.
 
@@ -269,7 +269,7 @@ ALLOWED_ORIGIN=https://librechat.example.com,http://localhost:5173
 
 Read tools return `***` in place of secrets rather than the values themselves.
 
-Uptime Kuma's socket API returns configuration verbatim — its web UI masks credentials at
+Uptime Kuma's socket API returns configuration verbatim - its web UI masks credentials at
 render time. That is fine for a browser and not fine for an MCP server, whose output lands
 in an LLM's context window and is then persisted in conversation transcripts, logs and
 synced history. Asking "what am I monitoring?" should not write a live SMTP password or a
@@ -284,7 +284,7 @@ What is withheld:
 | `listDockerHosts` | `user:password@` inside a `dockerDaemon` URL |
 | `getHeartbeats`, `listHeartbeats` | any column Uptime Kuma returns beyond the declared heartbeat fields (e.g. `response`, which can carry a service's response body) is dropped, and `user:password@` inside a URL quoted in the status message is scrubbed |
 | `getSettings` | any secret-named field Uptime Kuma returns (e.g. `steamAPIKey`) |
-| `getMonitorSummary` | nothing — it returns no credentials to begin with |
+| `getMonitorSummary` | nothing - it returns no credentials to begin with |
 
 `hostname`, `port`, `url`, `authMethod`, `oauth_token_url`, `oauth_scopes` and usernames stay
 visible: hiding useful configuration is how a redaction feature gets switched off.
