@@ -14,6 +14,12 @@ import { createMockSocket, injectSocket, injectMonitorListCache } from './helper
  * contain the value that was asked for, and asserts the tool refuses to report success.
  */
 
+// createServer() registers a SIGINT and a SIGTERM handler per instance and never removes
+// them (src/server.ts), so a file that builds one server per test trips Node's default
+// 10-listener warning. Pre-existing and not what this file is testing — just raise the cap
+// rather than let it print noise over the results.
+process.setMaxListeners(50);
+
 const EXISTING_MONITOR = {
   id: 7,
   name: 'Existing',
@@ -188,6 +194,119 @@ describe('post-write read-back verification', () => {
   });
 });
 
+/**
+ * What a failed verification must still hand back.
+ *
+ * A monitor that was created and then failed verification EXISTS. Reporting that as a bare
+ * "Failed to create monitor" loses the monitorID and — for a push monitor — the only copy of
+ * a token this process generated itself, and invites the caller to retry a create that
+ * already succeeded.
+ */
+describe('a failed verification still reports what was written', () => {
+  let fetchMonitor: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.spyOn(UptimeKumaClient.prototype, 'ensureConnected').mockResolvedValue(undefined as never);
+    vi.spyOn(UptimeKumaClient.prototype, 'login').mockResolvedValue({ ok: true } as never);
+    vi.spyOn(UptimeKumaClient.prototype, 'getSettings').mockResolvedValue({ ok: true, data: {} } as never);
+    vi.spyOn(UptimeKumaClient.prototype, 'getMonitor').mockReturnValue({ ...EXISTING_MONITOR } as never);
+    vi.spyOn(UptimeKumaClient.prototype, 'updateMonitor').mockResolvedValue({
+      ok: true,
+      msg: 'Saved.',
+      monitorID: 7,
+    } as never);
+    vi.spyOn(UptimeKumaClient.prototype, 'createMonitor').mockResolvedValue({
+      ok: true,
+      msg: 'Added Successfully.',
+      monitorID: 7,
+    } as never);
+    fetchMonitor = vi.spyOn(UptimeKumaClient.prototype, 'fetchMonitor');
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('returns the monitorID of a created monitor whose field did not persist', async () => {
+    fetchMonitor.mockResolvedValue({ id: 7, type: 'http', description: 'before' } as never);
+    const { client } = await connectServer();
+
+    const result = await client.callTool({
+      name: 'createMonitor',
+      arguments: { name: 'New', type: 'http', url: 'https://example.com', interval: 60, description: 'after' },
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toMatchObject({ monitorID: 7 });
+  });
+
+  it('hands back the generated push token even when verification fails', async () => {
+    // The token was generated in THIS process (Uptime Kuma only generates one in its web UI),
+    // so a response that drops it destroys the only copy that exists outside the database.
+    fetchMonitor.mockResolvedValue({ id: 7, type: 'push', description: 'before' } as never);
+    const { client } = await connectServer();
+
+    const result = await client.callTool({
+      name: 'createMonitor',
+      arguments: { name: 'Push', type: 'push', interval: 60, description: 'after' },
+    });
+
+    expect(result.isError).toBe(true);
+    const structured = result.structuredContent as Record<string, unknown>;
+    expect(structured.pushToken).toEqual(expect.any(String));
+    expect(structured.pushURL).toContain(structured.pushToken as string);
+  });
+
+  it('tells the caller the monitor exists rather than that the create failed', async () => {
+    fetchMonitor.mockResolvedValue({ id: 7, type: 'http', description: 'before' } as never);
+    const { client } = await connectServer();
+
+    const result = await client.callTool({
+      name: 'createMonitor',
+      arguments: { name: 'New', type: 'http', url: 'https://example.com', interval: 60, description: 'after' },
+    });
+
+    const text = JSON.stringify(result.content);
+    // "Failed to create monitor" is false — it was created. A caller that believes it will
+    // retry and end up with two monitors.
+    expect(text).not.toContain('Failed to create monitor');
+    expect(text).toContain('Monitor 7 EXISTS');
+    expect(text).toContain('do not create it again');
+  });
+
+  it('returns the monitorID when an update fails verification', async () => {
+    fetchMonitor.mockResolvedValue({ ...EXISTING_MONITOR, description: 'before' } as never);
+    const { client } = await connectServer();
+
+    const result = await client.callTool({
+      name: 'updateMonitor',
+      arguments: { monitorID: 7, description: 'after' },
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toMatchObject({ monitorID: 7 });
+  });
+
+  it('does not claim the monitor exists when the create itself failed', async () => {
+    // A genuine create failure must still read as a failure — the point is to distinguish
+    // "created but unverified" from "not created", not to soften every error.
+    vi.spyOn(UptimeKumaClient.prototype, 'createMonitor').mockRejectedValue(
+      new Error('Invalid monitor type') as never
+    );
+    const { client } = await connectServer();
+
+    const result = await client.callTool({
+      name: 'createMonitor',
+      arguments: { name: 'New', type: 'http', url: 'https://example.com', interval: 60 },
+    });
+
+    expect(result.isError).toBe(true);
+    const text = JSON.stringify(result.content);
+    expect(text).toContain('Failed to create monitor');
+    expect(text).not.toContain('EXISTS');
+  });
+});
+
 describe('UptimeKumaClient.fetchMonitor', () => {
   let client: UptimeKumaClient;
 
@@ -226,5 +345,23 @@ describe('UptimeKumaClient.fetchMonitor', () => {
   it('rejects when not connected', async () => {
     injectSocket(client, { connected: false, emit: vi.fn(), on: vi.fn(), off: vi.fn(), disconnect: vi.fn() });
     await expect(client.fetchMonitor(7)).rejects.toThrow('Not connected to server');
+  });
+
+  it('rejects rather than hanging when the acknowledgement never arrives', async () => {
+    // A disconnect between emit and ack leaves a socket.io callback that is simply never
+    // invoked. Unsettled, this promise hangs the tool call — and verification now sits on
+    // the success path of every monitor write.
+    const { socket } = createMockSocket({ getMonitor: () => {} });
+    injectSocket(client, socket);
+    vi.useFakeTimers();
+
+    try {
+      const pending = client.fetchMonitor(7);
+      const assertion = expect(pending).rejects.toThrow(/timed out/i);
+      await vi.advanceTimersByTimeAsync(30_000);
+      await assertion;
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

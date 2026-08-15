@@ -841,21 +841,26 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
    * Uses `fetchMonitor()` (Kuma's `getMonitor` handler, which reads the DB) and NOT
    * `getMonitor()` (which serves `monitorListCache`, refreshed by pushed events that can
    * arrive after this write's callback resolved — so it can echo a write that never happened).
+   *
+   * Returns the problem as a string rather than throwing: by the time this runs the write has
+   * already happened, so the caller still has to report the monitorID and any generated push
+   * token. Throwing from here would unwind into the handler's catch, which reports "Failed to
+   * create monitor" and returns no structured content at all — see the call sites.
    */
   const verifyMonitorWrite = async (
     monitorID: number,
     requested: Record<string, unknown>,
     operation: string
-  ): Promise<void> => {
+  ): Promise<string | null> => {
     const fields = Object.keys(VERIFIED_MONITOR_FIELDS).filter((f) => f in requested);
-    if (fields.length === 0) return;
+    if (fields.length === 0) return null;
 
     let fresh: Record<string, unknown>;
     try {
       fresh = await client.fetchMonitor(monitorID);
     } catch (verifyError) {
       const m = verifyError instanceof Error ? verifyError.message : String(verifyError);
-      throw new Error(
+      return (
         `Monitor ${monitorID} was ${operation}, but the write of ${fields.join(', ')} could NOT be verified: ${m}. ` +
         'Do not assume it applied — check the monitor before relying on it.'
       );
@@ -878,12 +883,14 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     }
 
     if (mismatches.length > 0) {
-      throw new Error(
+      return (
         `Monitor ${monitorID} was ${operation} and Uptime Kuma acknowledged it, but the following did NOT persist:\n` +
         `  - ${mismatches.join('\n  - ')}\n` +
         'Uptime Kuma answers "Saved." for any edit it accepts, including one that changed nothing.'
       );
     }
+
+    return null;
   };
 
   server.registerTool(
@@ -1010,9 +1017,10 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         const response = await client.createMonitor(monitorData as Record<string, unknown>);
 
         // Prove the dangerous fields actually landed, rather than trusting "Saved."
-        if (response.monitorID !== undefined) {
-          await verifyMonitorWrite(response.monitorID, requested, 'created');
-        }
+        const verifyProblem =
+          response.monitorID !== undefined
+            ? await verifyMonitorWrite(response.monitorID, requested, 'created')
+            : null;
 
         const structuredContent: Record<string, unknown> = {
           ok: response.ok,
@@ -1027,6 +1035,25 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
           structuredContent.pushToken = requested.pushToken;
           structuredContent.pushURL = `${base}/api/push/${requested.pushToken}?status=up&msg=OK&ping=`;
           text += `\n\nPush monitor ${response.monitorID}: point the sender at (GET, not POST)\n  ${structuredContent.pushURL}\nThis URL contains a secret — treat it as a credential.${generatedPushToken ? ' The token was generated because Uptime Kuma only ever generates one in its own web UI.' : ''}`;
+        }
+
+        if (verifyProblem) {
+          // The monitor was created — the write is what could not be confirmed. Say so
+          // explicitly and keep the whole payload: a caller told only "failed" retries and
+          // ends up with two monitors, and for a push monitor the token above is the only
+          // copy outside the database, since Uptime Kuma never generated it server-side.
+          return {
+            content: [
+              {
+                type: 'text',
+                text:
+                  `${verifyProblem}\n\nMonitor ${response.monitorID} EXISTS — do not create it again. ` +
+                  `Fix it with updateMonitor, or delete it with deleteMonitor ${response.monitorID}.\n\n${text}`,
+              },
+            ],
+            structuredContent,
+            isError: true,
+          };
         }
 
         return {
@@ -1149,15 +1176,26 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         // Verify against what the CALLER asked for (`defined`), not the merged object —
         // re-checking fields that were only carried over from the existing config would
         // prove nothing about this write.
-        await verifyMonitorWrite(monitorID, defined, 'saved');
+        const verifyProblem = await verifyMonitorWrite(monitorID, defined, 'saved');
 
         let text = response.msg || `Monitor ${monitorID} updated successfully`;
         if (preserved.length > 0) {
           text += `\n\nKept the existing value for ${preserved.join(', ')} — "***" was sent, which is the redaction marker, not a credential.`;
         }
+
+        const structuredContent = { ok: response.ok, monitorID: response.monitorID ?? monitorID, msg: response.msg };
+
+        if (verifyProblem) {
+          return {
+            content: [{ type: 'text', text: `${verifyProblem}\n\n${text}` }],
+            structuredContent,
+            isError: true,
+          };
+        }
+
         return {
           content: [{ type: 'text', text }],
-          structuredContent: { ok: response.ok, monitorID: response.monitorID, msg: response.msg },
+          structuredContent,
         };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
