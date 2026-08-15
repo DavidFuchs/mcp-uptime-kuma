@@ -16,6 +16,34 @@ import {
 import { VERSION } from './version.js';
 
 /**
+ * A required Uptime Kuma record ID (monitorID, notificationID, dockerHostID, tagID).
+ *
+ * These were declared `z.coerce.number().int().nonnegative()`, which is the root cause of #65.
+ * Coercion runs `Number()` over whatever arrives, and that costs twice:
+ *
+ *   - An ABSENT field becomes NaN, so the caller is told "expected number, received nan" —
+ *     a type complaint about a field they never wrote, rather than "this field is missing".
+ *     That is what made a misspelled `monitorId` so confusing to diagnose: the unknown key is
+ *     rejected, the declared key is then absent, and the absence was reported as a bad number.
+ *   - `Number(null)`, `Number('')` and `Number([])` are all 0, and `Number(true)` is 1, so
+ *     `getMonitor {monitorID: null}` did not fail at all — it read monitor 0. Junk silently
+ *     became a real ID, which is worse than a confusing message.
+ *
+ * Plain `z.number()` fixes both but would break clients that stringify their arguments, which
+ * is why the coercion was there. So strings are still accepted, but only ones that are
+ * actually a number: the preprocess step converts a numeric string and passes everything else
+ * through untouched, letting `z.number()` report what really arrived.
+ */
+function requiredId(description: string) {
+  return z.preprocess(
+    (value) => (typeof value === 'string' && /^\s*\d+\s*$/.test(value) ? Number(value) : value),
+    z.number({ required_error: `${description} — this field is required and was not provided` })
+      .int()
+      .nonnegative()
+  ).describe(description);
+}
+
+/**
  * Creates and configures the MCP server with tools, resources, and prompts
  * Note: Authentication must be done separately after connecting the transport
  */
@@ -306,7 +334,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       title: 'Get Monitor',
       description: 'Retrieves configuration details for a specific monitor by ID (URL, check interval, notification settings, etc.). Use this when you need to examine or modify settings for a specific monitor. For current status, use getMonitorSummary instead. By default returns only common fields plus runtime data (uptime, avgPing); set includeTypeSpecificFields to true to include type-specific fields (e.g., url for HTTP, hostname/port for TCP).',
       inputSchema: {
-        monitorID: z.coerce.number().int().nonnegative().describe('The ID of the monitor to retrieve'),
+        monitorID: requiredId('The ID of the monitor to retrieve'),
         includeTypeSpecificFields: z.boolean().optional().describe('Include type-specific fields (url, hostname, port, etc.) in addition to common fields. Default: false. When false, only returns MonitorBase fields plus uptime/avgPing.'),
         includeSecrets: includeSecretsParam
       },
@@ -349,7 +377,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     'listMonitors',
     {
       title: 'List Monitors',
-      description: 'Retrieves configuration details for all monitors (URLs, check intervals, notification settings, etc.). Use this when you need to examine or modify monitor settings. For status checks ("how is everything doing?", "what\'s down?"), use getMonitorSummary instead. By default returns only common fields plus runtime data (uptime, avgPing); set includeTypeSpecificFields to true to include type-specific fields (e.g., url for HTTP, hostname/port for TCP). Supports filtering by keywords, type, active/maintenance status, and tags.',
+      description: 'Retrieves configuration details for all monitors (URLs, check intervals, notification settings, etc.). Use this when you need to examine or modify monitor settings. For status checks ("how is everything doing?", "what\'s down?"), use getMonitorSummary instead. By default returns only common fields plus runtime data (uptime, avgPing); set includeTypeSpecificFields to true to include type-specific fields (e.g., url for HTTP, hostname/port for TCP). Supports filtering by keywords, type, active/maintenance status, tags, and parent group.',
       inputSchema: {
         includeTypeSpecificFields: z.boolean().optional().describe('Include type-specific fields (url, hostname, port, etc.) in addition to common fields. Default: false. When false, only returns MonitorBase fields plus uptime/avgPing.'),
         keywords: z.string().optional().describe('Space-separated keywords to filter monitors by pathName (case-insensitive fuzzy match). All keywords must match for a monitor to be included.'),
@@ -506,7 +534,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       title: 'Get Heartbeats',
       description: 'Retrieves historical heartbeat data for a specific monitor (response times, status changes over time). Use this for analyzing patterns or history for one monitor. Beats are returned NEWEST-FIRST. By default returns only the most recent heartbeat; set maxHeartbeats (up to 100) for historical analysis. Keep maxHeartbeats ≤10 unless user requests more. Set important:true for the status CHANGES only (Uptime Kuma\'s own event list) — that is history, not current state, so do not read status from it. Credentials embedded in a status message URL (user:pass@host) read "***" unless includeSecrets is set.',
       inputSchema: {
-        monitorID: z.coerce.number().int().nonnegative().describe('The ID of the monitor to get heartbeats for'),
+        monitorID: requiredId('The ID of the monitor to get heartbeats for'),
         maxHeartbeats: z.coerce.number().int().positive().max(100).optional().describe('If set, returns the most recent X heartbeats (up to 100). If unset, returns only the most recent heartbeat (default: 1)'),
         // `limit` and `count` are what a caller reaches for first. Both used to be stripped,
         // leaving maxHeartbeats undefined and the call silently returning a single beat.
@@ -678,7 +706,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       title: 'Pause Monitor',
       description: 'Pauses a monitor, stopping it from performing checks. The monitor will remain in the system but will not send notifications or collect data until resumed.',
       inputSchema: {
-        monitorID: z.coerce.number().int().nonnegative().describe('The ID of the monitor to pause')
+        monitorID: requiredId('The ID of the monitor to pause')
       },
       outputSchema: {
         ok: z.boolean(),
@@ -718,7 +746,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       title: 'Resume Monitor',
       description: 'Resumes a paused monitor, restarting all checks. Use this to re-enable monitoring after pausing.',
       inputSchema: {
-        monitorID: z.coerce.number().int().nonnegative().describe('The ID of the monitor to resume')
+        monitorID: requiredId('The ID of the monitor to resume')
       },
       outputSchema: {
         ok: z.boolean(),
@@ -1098,7 +1126,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       title: 'Update Monitor',
       description: 'Updates an existing monitor configuration. You must include the monitorID. Only the fields you provide will be changed (the server merges your changes with the existing config). Use getMonitor first to get the current config.',
       inputSchema: {
-        monitorID: z.coerce.number().int().nonnegative().describe('The ID of the monitor to update'),
+        monitorID: requiredId('The ID of the monitor to update'),
         // `parent` was declared on createMonitor but not here, so an existing monitor could
         // never be moved into or out of a group (issue #63). The merge below then folded the
         // old value back in and Uptime Kuma replied "Saved." — a no-op reported as success.
@@ -1235,7 +1263,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       title: 'Delete Monitor',
       description: 'Permanently deletes a monitor and all its heartbeat history. This action cannot be undone.',
       inputSchema: {
-        monitorID: z.coerce.number().int().nonnegative().describe('The ID of the monitor to delete'),
+        monitorID: requiredId('The ID of the monitor to delete'),
       },
       outputSchema: {
         ok: z.boolean(),
@@ -1347,7 +1375,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       title: 'Update Notification',
       description: 'Updates an existing notification channel. Use listNotifications to find the notification ID.',
       inputSchema: {
-        notificationID: z.coerce.number().int().nonnegative().describe('The ID of the notification to update'),
+        notificationID: requiredId('The ID of the notification to update'),
         name: z.string().optional().describe('Human-readable name'),
         type: z.string().optional().describe('Notification type'),
         isDefault: z.boolean().optional().describe('Enable by default for new monitors'),
@@ -1423,7 +1451,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       title: 'Delete Notification',
       description: 'Permanently deletes a notification channel. Monitors that used this channel will no longer send alerts through it.',
       inputSchema: {
-        notificationID: z.coerce.number().int().nonnegative().describe('The ID of the notification to delete'),
+        notificationID: requiredId('The ID of the notification to delete'),
       },
       outputSchema: {
         ok: z.boolean(),
@@ -1518,7 +1546,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       title: 'Update Docker Host',
       description: 'Updates an existing docker daemon connection. Use listDockerHosts to find the docker host ID. Only the fields you pass are changed — the others are preserved.',
       inputSchema: {
-        dockerHostID: z.coerce.number().int().nonnegative().describe('The ID of the docker host to update'),
+        dockerHostID: requiredId('The ID of the docker host to update'),
         name: z.string().optional().describe('New human-readable name'),
         dockerType: z.enum(['socket', 'tcp']).optional().describe('New connection type'),
         dockerDaemon: z.string().optional().describe('New socket path or TCP URL'),
@@ -1591,7 +1619,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       title: 'Delete Docker Host',
       description: 'Permanently deletes a docker daemon connection. Any monitors referencing it will have their docker_host cleared by Uptime Kuma (the monitors themselves are not deleted).',
       inputSchema: {
-        dockerHostID: z.coerce.number().int().nonnegative().describe('The ID of the docker host to delete'),
+        dockerHostID: requiredId('The ID of the docker host to delete'),
       },
       outputSchema: {
         ok: z.boolean(),
@@ -1715,7 +1743,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       title: 'Delete Tag',
       description: 'Permanently deletes a tag. It will be removed from all monitors that use it. Use listTags to find the tag ID.',
       inputSchema: {
-        tagID: z.coerce.number().int().nonnegative().describe('The ID of the tag to delete'),
+        tagID: requiredId('The ID of the tag to delete'),
       },
       outputSchema: {
         ok: z.boolean(),

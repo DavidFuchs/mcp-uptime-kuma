@@ -40,13 +40,14 @@ export const strictSchemaTests: Array<{ name: string; fn: TestFn }> = [
       if (!/Accepted fields/.test(message)) {
         throw new Error(`error does not list the accepted fields: ${message}`);
       }
-      // The NaN complaint may still appear (Zod appends unrecognized_keys last), but it must
-      // not be the first thing read — that is the misleading half of #65.
-      const nanAt = message.toLowerCase().indexOf('nan');
-      if (nanAt !== -1 && message.indexOf('monitorId') > nanAt) {
-        throw new Error('the NaN complaint still precedes the unknown-key error');
+      // The NaN complaint used to appear underneath the unknown-key error, because the
+      // required IDs were `z.coerce.number()` and coercion turns the now-absent `monitorID`
+      // into NaN. Those are now declared with `requiredId`, so the absence is reported as an
+      // absence and the NaN line is gone entirely rather than merely demoted.
+      if (/nan/i.test(message)) {
+        throw new Error(`the NaN complaint is still present: ${message}`);
       }
-      console.log('  ✓ #65: unknown key named first, accepted fields listed');
+      console.log('  ✓ #65: unknown key named first, accepted fields listed, no NaN complaint');
     },
   },
   {
