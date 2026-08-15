@@ -103,8 +103,26 @@ export const heartbeatTests: Array<{ name: string; fn: TestFn }> = [
         await client.callTool({ name: 'getHeartbeats', arguments: { monitorID: withBeat.id, limit: 1 } }) as CallToolResult,
         'getHeartbeats'
       ));
-      if (beats[0]?.time !== withBeat.lastBeatTime) {
-        throw new Error(`lastBeatTime ${withBeat.lastBeatTime} != newest beat ${beats[0]?.time}`);
+
+      // These are two reads of a cache a live server keeps mutating, so a beat landing
+      // between them would fail a bare equality check on a perfectly correct build. Read
+      // the summary again afterwards and accept either observation: whichever side of the
+      // getHeartbeats call the new beat landed on, one of the two summaries saw the same
+      // beat that getHeartbeats did. Both being wrong needs two beats inside one round
+      // trip, which the 20s minimum check interval rules out.
+      const after = JSON.parse(extractText(
+        await client.callTool({ name: 'getMonitorSummary', arguments: {} }) as CallToolResult,
+        'getMonitorSummary'
+      ));
+      const observed = [
+        withBeat.lastBeatTime,
+        after.find((s: any) => s.id === withBeat.id)?.lastBeatTime,
+      ].filter(Boolean);
+
+      if (!observed.includes(beats[0]?.time)) {
+        throw new Error(
+          `lastBeatTime ${observed.join(' / ')} != newest beat ${beats[0]?.time}`
+        );
       }
       // Without this, a push monitor that stopped beating is indistinguishable from a
       // healthy one — it keeps reporting its last known status forever.

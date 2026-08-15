@@ -435,13 +435,32 @@ export class UptimeKumaClient {
     return 0;
   }
 
-  /** Normalise any heartbeat array to newest-first and de-duplicated. */
+  /**
+   * Normalise any heartbeat array to newest-first and de-duplicated.
+   *
+   * Two sources of duplicates, each keyed differently:
+   *
+   * - A `heartbeatList` refresh re-sending beats already held. Those carry an `id`, which
+   *   is the database primary key and so identifies the beat exactly.
+   * - socket.io re-delivering a live `heartbeat` event. Those carry no `id` at all, so the
+   *   key has to be built from the payload. Timestamp alone is NOT enough: two genuinely
+   *   different beats can land in the same millisecond, and collapsing those would silently
+   *   drop one. Including status/msg/ping means an identical redelivery collapses while a
+   *   distinct same-millisecond beat survives.
+   *
+   * The two key spaces are deliberately kept apart — a live beat and its later persisted
+   * twin cannot be cross-matched, because the live one has no id to match on. That costs
+   * nothing here: the `heartbeatList` handler replaces the cached array wholesale rather
+   * than merging into it, so the persisted copy never lands beside the live one.
+   */
   static normaliseBeats(list: Heartbeat[]): Heartbeat[] {
     const seen = new Set<string>();
     const deduped: Heartbeat[] = [];
     for (const beat of list) {
-      // Live beats have no id, so key those on the millisecond timestamp instead.
-      const key = typeof beat?.id === 'number' ? `id:${beat.id}` : `t:${beat?.time}`;
+      const key =
+        typeof beat?.id === 'number'
+          ? `id:${beat.id}`
+          : `t:${beat?.time}|${beat?.status}|${beat?.msg ?? ''}|${beat?.ping ?? ''}`;
       if (seen.has(key)) continue;
       seen.add(key);
       deduped.push(beat);
@@ -461,12 +480,17 @@ export class UptimeKumaClient {
       // Format: (monitorID, array of heartbeats, overwrite). The third argument is Kuma's
       // `overwrite` flag and has nothing to do with important/event beats, despite the
       // name it is often given.
-      this.safeLog('debug', `Received heartbeatList for monitor ${monitorID}: ${heartbeatList.length} heartbeats`);
+      //
+      // Coerce before anything reads the payload, including the log line. A malformed or
+      // empty emit would otherwise throw straight out of a socket.io listener, where there
+      // is no caller to catch it.
+      const beats = Array.isArray(heartbeatList) ? heartbeatList : [];
+      this.safeLog('debug', `Received heartbeatList for monitor ${monitorID}: ${beats.length} heartbeats`);
 
       // Uptime Kuma emits this list oldest-first while the cache is consumed newest-first
       // (#56/#57). Sorting rather than reversing keeps that true if the server's ordering
       // ever changes, and costs nothing on an already-ordered list.
-      this.heartbeatListCache[monitorID.toString()] = UptimeKumaClient.normaliseBeats(heartbeatList || []);
+      this.heartbeatListCache[monitorID.toString()] = UptimeKumaClient.normaliseBeats(beats);
     });
 
     // Listen for individual heartbeat updates (real-time)
@@ -500,7 +524,12 @@ export class UptimeKumaClient {
       // clock step — so re-assert the invariant instead of trusting arrival order. The
       // check is a single comparison on the already-sorted head; the sort only runs when
       // the order was actually violated.
-      if (list.length > 1 && UptimeKumaClient.compareBeatsNewestFirst(list[0], list[1]) > 0) {
+      //
+      // `>= 0` rather than `> 0`: a tie means the arriving beat is not strictly newer than
+      // the head, which is exactly the shape of a socket.io redelivery of the beat already
+      // there. A live beat has no id for the comparator to break the tie with, so a tie is
+      // the only signal that a duplicate may need collapsing.
+      if (list.length > 1 && UptimeKumaClient.compareBeatsNewestFirst(list[0], list[1]) >= 0) {
         this.heartbeatListCache[monitorID] = UptimeKumaClient.normaliseBeats(list);
       }
 

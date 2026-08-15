@@ -119,6 +119,35 @@ describe('heartbeat cache ordering', () => {
     expect(client.getHeartbeatsForMonitor(1, 100)).toHaveLength(3);
   });
 
+  it('collapses a live beat the socket re-delivers', () => {
+    // socket.io redelivers on a flaky link. A live beat carries no id, so it cannot be
+    // de-duplicated by id the way a heartbeatList refresh is — and it arrives stamped with
+    // the same millisecond as the copy already at the head, so it is not "newer" either.
+    handlers.heartbeatList(1, [beat(1, '2026-07-28 04:00:00.000')]);
+    const live = liveBeat('2026-07-28 05:00:00.000');
+    handlers.heartbeat(live);
+    handlers.heartbeat({ ...live });
+
+    expect(client.getHeartbeatsForMonitor(1, 100)).toHaveLength(2);
+    expect(client.getLatestHeartbeat(1)?.time).toBe('2026-07-28 05:00:00.000');
+  });
+
+  it('keeps two DIFFERENT live beats stamped in the same millisecond', () => {
+    // The flip side of the above: identical timestamp is not on its own proof of a
+    // duplicate, so the key has to look at the payload before collapsing anything.
+    handlers.heartbeat(liveBeat('2026-07-28 05:00:00.000', { msg: 'first', status: 1 }));
+    handlers.heartbeat(liveBeat('2026-07-28 05:00:00.000', { msg: 'second', status: 0 }));
+
+    expect(client.getHeartbeatsForMonitor(1, 100)).toHaveLength(2);
+  });
+
+  it('survives a malformed heartbeatList payload instead of throwing out of the listener', () => {
+    // There is no caller to catch inside a socket.io handler, so a bad emit has to be
+    // absorbed here rather than dereferenced.
+    expect(() => handlers.heartbeatList(1, undefined)).not.toThrow();
+    expect(client.getHeartbeatsForMonitor(1, 10)).toEqual([]);
+  });
+
   it('still caps the cache at 100 beats', () => {
     const many = Array.from({ length: 120 }, (_, i) =>
       beat(i, `2026-07-28 04:00:${String(i % 60).padStart(2, '0')}.000`)
