@@ -23,6 +23,13 @@ import type {
 } from './types/index.js';
 
 /**
+ * How long a post-write read-back waits for the server's acknowledgement before giving up.
+ * Generous — this is a single indexed row and the only thing being guarded against is an
+ * acknowledgement that never comes at all.
+ */
+const FETCH_MONITOR_TIMEOUT_MS = 10_000;
+
+/**
  * Helper function to filter a MonitorWithExtendedData down to MonitorBaseWithExtendedData
  * Strips out type-specific fields while keeping common fields and runtime data
  */
@@ -1031,6 +1038,52 @@ export class UptimeKumaClient {
       });
       (this.monitorListCache[String(monitorID)] as any).tags = updatedTags;
     }
+  }
+
+  /**
+   * Read a monitor back from the SERVER, bypassing the cache.
+   *
+   * Deliberately not `getMonitor()`, which serves `monitorListCache`. That cache is
+   * refreshed by pushed events, and those can arrive AFTER the callback of a write has
+   * already resolved — so a read taken from it immediately after a write can echo a
+   * value that was never stored. Uptime Kuma's `getMonitor` socket handler reads the
+   * database, which is the only answer worth verifying against.
+   *
+   * Bounded by a timeout because a disconnect between the emit and the acknowledgement
+   * leaves a socket.io callback that is simply never invoked. This read sits on the success
+   * path of every monitor write, so an unsettled promise here hangs the whole tool call —
+   * a slow answer is worth waiting for, an answer that never comes is not.
+   *
+   * @param monitorID - The ID of the monitor to fetch
+   * @returns Promise resolving to the monitor exactly as stored server-side
+   */
+  fetchMonitor(monitorID: number): Promise<Record<string, unknown>> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      let settled = false;
+      const timer = setTimeout(() => {
+        settled = true;
+        reject(
+          new Error(
+            `Timed out after ${FETCH_MONITOR_TIMEOUT_MS}ms waiting for the server to return monitor ${monitorID}`
+          )
+        );
+      }, FETCH_MONITOR_TIMEOUT_MS);
+
+      this.socket.emit('getMonitor', monitorID, (response: ApiResponse & { monitor?: Record<string, unknown> }) => {
+        if (settled) return;
+        clearTimeout(timer);
+        if (response && response.ok && response.monitor) {
+          resolve(response.monitor);
+        } else {
+          reject(new Error((response && response.msg) || `Failed to fetch monitor ${monitorID}`));
+        }
+      });
+    });
   }
 
   /**

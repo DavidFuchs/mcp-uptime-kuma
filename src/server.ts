@@ -781,6 +781,118 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     return seconds;
   };
 
+  const asText = (v: unknown): string | null =>
+    v === null || v === undefined || v === '' ? null : String(v);
+  const asNumber = (v: unknown): number | null =>
+    v === null || v === undefined || v === '' ? null : Number(v);
+
+  interface VerifiedField {
+    read: (v: unknown) => string | number | null;
+    equals?: (wanted: string | number | null, stored: string | number | null) => boolean;
+    /** Never put this field's value in an error message — it is a credential. */
+    secret?: boolean;
+    hint: string;
+  }
+
+  /**
+   * The fields where a write that quietly does not land is dangerous: it either produces a
+   * monitor that silently cannot report (timeout, pushToken, the json-query triple) or loses
+   * information with no error (description, parent).
+   *
+   * These are exactly the fields #58, #60 and #63 were filed about. Declaring them in the
+   * schema stops them being stripped; reading them back is what proves they were stored.
+   */
+  const VERIFIED_MONITOR_FIELDS: Record<string, VerifiedField> = {
+    parent: {
+      read: asNumber,
+      hint: 'Uptime Kuma rejects a parent that is one of this monitor\'s own descendants, and the parent must be a monitor of type "group".',
+    },
+    description: {
+      read: asText,
+      hint: 'See #58 — the class of bug where the field is accepted and written as NULL.',
+    },
+    timeout: {
+      read: asNumber,
+      // Monitor.validate() rounds a ping timeout to whole seconds, so 47.5 -> 48 is correct
+      // rather than a failure. Anything else must match exactly.
+      equals: (wanted, stored) =>
+        wanted === stored ||
+        (typeof wanted === 'number' && typeof stored === 'number' && Math.round(wanted) === stored),
+      hint: 'timeout is stored in SECONDS, and a stored 0 is not "no timeout": Uptime Kuma\'s runtime fallback turns it into ~13 hours, so the monitor can never report DOWN against a black-holed endpoint.',
+    },
+    jsonPath: { read: asText, hint: 'See #60.' },
+    jsonPathOperator: { read: asText, hint: 'See #60.' },
+    expectedValue: { read: asText, hint: 'See #60 — the threshold is stored as a string.' },
+    pushToken: {
+      read: asText,
+      secret: true,
+      hint: 'See #60 — a push monitor with no token has no ping URL and can never report, while looking identical to one merely awaiting its first beat.',
+    },
+  };
+
+  /**
+   * Reads the monitor back after a write and proves the fields above actually landed.
+   *
+   * `{"ok":true,"msg":"Saved."}` means the socket call returned, not that your field was
+   * stored — Uptime Kuma answers that for any edit it accepts, including one that changed
+   * nothing. That is the whole reason #58/#60/#63 were each filed as separate bugs: there is
+   * nothing in the response to tell a partial write from a complete one.
+   *
+   * Uses `fetchMonitor()` (Kuma's `getMonitor` handler, which reads the DB) and NOT
+   * `getMonitor()` (which serves `monitorListCache`, refreshed by pushed events that can
+   * arrive after this write's callback resolved — so it can echo a write that never happened).
+   *
+   * Returns the problem as a string rather than throwing: by the time this runs the write has
+   * already happened, so the caller still has to report the monitorID and any generated push
+   * token. Throwing from here would unwind into the handler's catch, which reports "Failed to
+   * create monitor" and returns no structured content at all — see the call sites.
+   */
+  const verifyMonitorWrite = async (
+    monitorID: number,
+    requested: Record<string, unknown>,
+    operation: string
+  ): Promise<string | null> => {
+    const fields = Object.keys(VERIFIED_MONITOR_FIELDS).filter((f) => f in requested);
+    if (fields.length === 0) return null;
+
+    let fresh: Record<string, unknown>;
+    try {
+      fresh = await client.fetchMonitor(monitorID);
+    } catch (verifyError) {
+      const m = verifyError instanceof Error ? verifyError.message : String(verifyError);
+      return (
+        `Monitor ${monitorID} was ${operation}, but the write of ${fields.join(', ')} could NOT be verified: ${m}. ` +
+        'Do not assume it applied — check the monitor before relying on it.'
+      );
+    }
+
+    const mismatches: string[] = [];
+    for (const field of fields) {
+      const spec = VERIFIED_MONITOR_FIELDS[field];
+      const wanted = spec.read(requested[field]);
+      const stored = spec.read(fresh[field]);
+      if (spec.equals ? spec.equals(wanted, stored) : wanted === stored) continue;
+
+      mismatches.push(
+        spec.secret
+          ? `${field}: sent a ${wanted === null ? 'null' : `${String(wanted).length}-character`} value, server reports ` +
+            `${stored === null ? 'nothing stored' : `a different ${String(stored).length}-character value`} ` +
+            `(value withheld — it is a credential). ${spec.hint}`
+          : `${field}: asked for ${JSON.stringify(wanted)}, server reports ${JSON.stringify(stored)}. ${spec.hint}`
+      );
+    }
+
+    if (mismatches.length > 0) {
+      return (
+        `Monitor ${monitorID} was ${operation} and Uptime Kuma acknowledged it, but the following did NOT persist:\n` +
+        `  - ${mismatches.join('\n  - ')}\n` +
+        'Uptime Kuma answers "Saved." for any edit it accepts, including one that changed nothing.'
+      );
+    }
+
+    return null;
+  };
+
   server.registerTool(
     'createMonitor',
     {
@@ -904,6 +1016,12 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         };
         const response = await client.createMonitor(monitorData as Record<string, unknown>);
 
+        // Prove the dangerous fields actually landed, rather than trusting "Saved."
+        const verifyProblem =
+          response.monitorID !== undefined
+            ? await verifyMonitorWrite(response.monitorID, requested, 'created')
+            : null;
+
         const structuredContent: Record<string, unknown> = {
           ok: response.ok,
           monitorID: response.monitorID,
@@ -917,6 +1035,25 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
           structuredContent.pushToken = requested.pushToken;
           structuredContent.pushURL = `${base}/api/push/${requested.pushToken}?status=up&msg=OK&ping=`;
           text += `\n\nPush monitor ${response.monitorID}: point the sender at (GET, not POST)\n  ${structuredContent.pushURL}\nThis URL contains a secret — treat it as a credential.${generatedPushToken ? ' The token was generated because Uptime Kuma only ever generates one in its own web UI.' : ''}`;
+        }
+
+        if (verifyProblem) {
+          // The monitor was created — the write is what could not be confirmed. Say so
+          // explicitly and keep the whole payload: a caller told only "failed" retries and
+          // ends up with two monitors, and for a push monitor the token above is the only
+          // copy outside the database, since Uptime Kuma never generated it server-side.
+          return {
+            content: [
+              {
+                type: 'text',
+                text:
+                  `${verifyProblem}\n\nMonitor ${response.monitorID} EXISTS — do not create it again. ` +
+                  `Fix it with updateMonitor, or delete it with deleteMonitor ${response.monitorID}.\n\n${text}`,
+              },
+            ],
+            structuredContent,
+            isError: true,
+          };
         }
 
         return {
@@ -1035,13 +1172,30 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
           (merged as any).retryInterval = (merged as any).interval || 60;
         }
         const response = await client.updateMonitor(merged as unknown as Record<string, unknown>);
+
+        // Verify against what the CALLER asked for (`defined`), not the merged object —
+        // re-checking fields that were only carried over from the existing config would
+        // prove nothing about this write.
+        const verifyProblem = await verifyMonitorWrite(monitorID, defined, 'saved');
+
         let text = response.msg || `Monitor ${monitorID} updated successfully`;
         if (preserved.length > 0) {
           text += `\n\nKept the existing value for ${preserved.join(', ')} — "***" was sent, which is the redaction marker, not a credential.`;
         }
+
+        const structuredContent = { ok: response.ok, monitorID: response.monitorID ?? monitorID, msg: response.msg };
+
+        if (verifyProblem) {
+          return {
+            content: [{ type: 'text', text: `${verifyProblem}\n\n${text}` }],
+            structuredContent,
+            isError: true,
+          };
+        }
+
         return {
           content: [{ type: 'text', text }],
-          structuredContent: { ok: response.ok, monitorID: response.monitorID, msg: response.msg },
+          structuredContent,
         };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
