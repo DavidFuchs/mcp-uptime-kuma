@@ -40,13 +40,14 @@ export const strictSchemaTests: Array<{ name: string; fn: TestFn }> = [
       if (!/Accepted fields/.test(message)) {
         throw new Error(`error does not list the accepted fields: ${message}`);
       }
-      // The NaN complaint may still appear (Zod appends unrecognized_keys last), but it must
-      // not be the first thing read — that is the misleading half of #65.
-      const nanAt = message.toLowerCase().indexOf('nan');
-      if (nanAt !== -1 && message.indexOf('monitorId') > nanAt) {
-        throw new Error('the NaN complaint still precedes the unknown-key error');
+      // The NaN complaint used to appear underneath the unknown-key error, because the
+      // required IDs were `z.coerce.number()` and coercion turns the now-absent `monitorID`
+      // into NaN. Those are now declared with `requiredId`, so the absence is reported as an
+      // absence and the NaN line is gone entirely rather than merely demoted.
+      if (/nan/i.test(message)) {
+        throw new Error(`the NaN complaint is still present: ${message}`);
       }
-      console.log('  ✓ #65: unknown key named first, accepted fields listed');
+      console.log('  ✓ #65: unknown key named first, accepted fields listed, no NaN complaint');
     },
   },
   {
@@ -100,6 +101,42 @@ export const strictSchemaTests: Array<{ name: string; fn: TestFn }> = [
         ));
         if (monitor.name !== 'renamed') throw new Error('valid update did not apply');
         console.log('  ✓ valid calls unaffected');
+      } finally {
+        await client.callTool({ name: 'deleteMonitor', arguments: { monitorID } });
+      }
+    },
+  },
+  {
+    name: '#65: timeout:"" is refused rather than stored as the 0 that disables DOWN detection',
+    fn: async ({ client }) => {
+      const monitorID = extractID(await client.callTool({
+        name: 'createMonitor',
+        arguments: {
+          name: 'Integration Test - timeout coercion',
+          type: 'http',
+          url: 'https://example.com',
+          interval: 300,
+          active: false,
+        },
+      }) as CallToolResult, 'createMonitor', 'monitorID');
+
+      try {
+        // z.coerce.number() turned '' into 0, and Uptime Kuma's runtime fallback for a stored
+        // 0 yields a ~13 hour timeout — the monitor silently stops being able to report DOWN.
+        const message = await expectToolError(client, 'updateMonitor', { monitorID, timeout: '' });
+        if (!message.includes('timeout')) {
+          throw new Error(`error does not name the offending field: ${message}`);
+        }
+
+        // The rejection has to mean nothing was written, not merely that something complained.
+        const after = JSON.parse(extractText(
+          await client.callTool({ name: 'getMonitor', arguments: { monitorID } }) as CallToolResult,
+          'getMonitor'
+        ));
+        if (Number(after.timeout) !== 240) {
+          throw new Error(`timeout is now ${JSON.stringify(after.timeout)}, expected the original 240`);
+        }
+        console.log('  ✓ #65: timeout:"" rejected and the stored value left intact');
       } finally {
         await client.callTool({ name: 'deleteMonitor', arguments: { monitorID } });
       }

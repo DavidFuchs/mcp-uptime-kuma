@@ -55,6 +55,25 @@ function filterToBaseWithExtendedData(monitor: MonitorWithExtendedData): Monitor
 }
 
 /**
+ * Does `monitor` satisfy a `parentId` filter? Direct children only, matching Uptime Kuma's
+ * own `parent` column — a grandchild belongs to its immediate group, not to the one above it.
+ *
+ * The distinction this exists to protect: `undefined` means "no parent filter" while `null` is
+ * a real, requestable value meaning "top level only". A truthiness check (`if (parentId)`)
+ * conflates them AND silently drops group 0, so the branch is written out longhand.
+ *
+ * Shared by getMonitorList and getMonitorSummary. Both keep their own copy of the surrounding
+ * filter loop, and the parent filter reaching only the first of them is exactly what had to be
+ * fixed here — so the subtle half lives in one place rather than being copied a second time.
+ */
+function matchesParentFilter(monitor: { parent?: number | null }, parentId: number | null | undefined): boolean {
+  if (parentId === undefined) return true;
+  const wanted = parentId === null ? null : Number(parentId);
+  const actual = monitor.parent === null || monitor.parent === undefined ? null : Number(monitor.parent);
+  return actual === wanted;
+}
+
+/**
  * Uptime Kuma Socket.io API Client
  */
 export class UptimeKumaClient {
@@ -646,18 +665,10 @@ export class UptimeKumaClient {
     // Parse tag filter from comma-separated string
     const tagFilter = filters?.tags ? filters.tags.split(',').map(t => t.trim()).filter(t => t.length > 0) : [];
 
-    // `undefined` means "no parent filter"; `null` is a real value meaning "top level only",
-    // so the two must not be conflated into a truthiness check.
-    const filterByParent = filters?.parentId !== undefined;
-    const wantedParent = filters?.parentId === null ? null : Number(filters?.parentId);
-
     for (const [monitorID, monitor] of Object.entries(this.monitorListCache)) {
       // Filter by parent group — direct children only, matching Uptime Kuma's `parent` column
-      if (filterByParent) {
-        const actualParent = monitor.parent === null || monitor.parent === undefined ? null : Number(monitor.parent);
-        if (actualParent !== wantedParent) {
-          continue;
-        }
+      if (!matchesParentFilter(monitor, filters?.parentId)) {
+        continue;
       }
 
     // Filter by keywords if provided using fuzzy matching
@@ -832,6 +843,7 @@ export class UptimeKumaClient {
     active?: boolean;
     maintenance?: boolean;
     tags?: string;
+    parentId?: number | null;
     status?: string;
   }): MonitorSummary[] {
     const summaries = [];
@@ -849,6 +861,11 @@ export class UptimeKumaClient {
     const statusFilter = filters?.status ? filters.status.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n)) : [];
     
     for (const [monitorID, monitor] of Object.entries(this.monitorListCache)) {
+      // Filter by parent group — direct children only, matching Uptime Kuma's `parent` column
+      if (!matchesParentFilter(monitor, filters?.parentId)) {
+        continue;
+      }
+
       // Filter by keywords if provided using fuzzy matching
       if (keywordArray.length > 0) {
         const pathName = monitor.pathName || '';
