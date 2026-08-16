@@ -487,13 +487,17 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     'getMonitorSummary',
     {
       title: 'Get Monitor Summary',
-      description: 'START HERE for status overview questions. Retrieves current status for all monitors showing UP/DOWN/PENDING/MAINTENANCE states with the most recent heartbeat message. Use this when asked "how is everything doing?", "what\'s down?", "what\'s up?", or for any general status overview. Returns essential information (ID, name, pathName, active state, maintenance state, status, message, lastBeatTime, type, tags). Supports filtering by keywords, type, active/maintenance status, tags, and current status. Check lastBeatTime before trusting the status of a push monitor — one that has stopped beating keeps reporting its last known status. lastBeatTime is UTC with no zone marker, so measure staleness against the current UTC time.',
+      description: 'START HERE for status overview questions. Retrieves current status for all monitors showing UP/DOWN/PENDING/MAINTENANCE states with the most recent heartbeat message. Use this when asked "how is everything doing?", "what\'s down?", "what\'s up?", or for any general status overview. Returns essential information (ID, name, pathName, active state, maintenance state, status, message, lastBeatTime, type, tags). Supports filtering by keywords, type, active/maintenance status, tags, parent group, and current status. Check lastBeatTime before trusting the status of a push monitor — one that has stopped beating keeps reporting its last known status. lastBeatTime is UTC with no zone marker, so measure staleness against the current UTC time.',
       inputSchema: {
         keywords: z.string().optional().describe('Space-separated keywords to filter monitors by pathName (case-insensitive fuzzy match). All keywords must match for a monitor to be included.'),
         type: z.string().optional().describe('Filter by monitor type(s). Comma-separated for multiple types. Use listMonitorTypes tool to see all available types.'),
         active: z.boolean().optional().describe('Filter by active status. true=only active monitors, false=only inactive monitors.'),
         maintenance: z.boolean().optional().describe('Filter by maintenance status. true=only monitors in maintenance, false=only monitors not in maintenance.'),
         tags: z.string().optional().describe('Filter by tag name and optional value. Comma-separated for multiple tags. Format: "tagName" or "tagName=value". Monitor must have all specified tags. Case-insensitive. Examples: "production", "env=staging", "production,region=us-east"'),
+        // "What's down in this group?" is a status question, so it arrives here rather than at
+        // listMonitors — but the #65 parent filter only reached listMonitors, leaving the tool
+        // the instructions send callers to FIRST unable to answer it.
+        parentId: z.union([z.null(), z.coerce.number().int()]).optional().describe('Filter to the DIRECT children of this group monitor. Pass null for top-level monitors (those with no parent). Not recursive — use the group\'s own childrenIDs to walk deeper.'),
         status: z.string().optional().describe('Filter by current heartbeat status. Comma-separated for multiple statuses. 0=DOWN, 1=UP, 2=PENDING, 3=MAINTENANCE. Examples: "0", "1", "0,2"')
       },
       outputSchema: { 
@@ -501,11 +505,11 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         count: z.number()
       },
     },
-    async ({ keywords, type, active, maintenance, tags, status }) => {
+    async ({ keywords, type, active, maintenance, tags, parentId, status }) => {
       await authenticateClient();
 
       try {
-        const summaries = client.getMonitorSummary({ keywords, type, active, maintenance, tags, status });
+        const summaries = client.getMonitorSummary({ keywords, type, active, maintenance, tags, parentId, status });
         
         return {
           content: [{ 

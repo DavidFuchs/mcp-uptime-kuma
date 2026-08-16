@@ -151,13 +151,14 @@ See [Authentication Methods](#authentication-methods) for JWT token and anonymou
 - **active**: Filter by active (`true`) or inactive (`false`) monitors
 - **maintenance**: Filter by maintenance mode status
 - **tags**: Tag name and optional value, comma-separated (e.g., `"production"`, `"env=staging"`)
+- **parentId**: Group monitor ID, returning that group's **direct** children. Pass `null` for top-level monitors (those with no parent). Not recursive — to walk deeper, use each child group's own `childrenIDs`.
 - **status** (getMonitorSummary only): Heartbeat status (`"0"`=DOWN, `"1"`=UP, `"2"`=PENDING, `"3"`=MAINTENANCE)
-- **parentId** (listMonitors only): Group monitor ID, returning that group's **direct** children. Pass `null` for top-level monitors (those with no parent). Not recursive — to walk deeper, use each child group's own `childrenIDs`.
 
 **Examples:**
 ```javascript
-getMonitorSummary({ status: "0" })                    // All DOWN monitors
+getMonitorSummary({ status: "0" })                     // All DOWN monitors
 getMonitorSummary({ type: "http", maintenance: true }) // HTTP monitors in maintenance
+getMonitorSummary({ parentId: 12, status: "0" })       // What's down inside group 12
 listMonitors({ tags: "production,region=us-east" })    // Monitors with specific tags
 listMonitors({ parentId: 12 })                         // Direct children of group 12
 listMonitors({ parentId: null })                       // Top-level monitors only

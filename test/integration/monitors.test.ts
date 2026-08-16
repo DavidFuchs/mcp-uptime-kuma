@@ -369,13 +369,23 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
           throw new Error(`parentId filter returned ${Array.isArray(listed) ? listed.length : 'non-array'} monitors, expected exactly the one child`);
         }
 
+        // The same filter on the tool the instructions send status questions to first —
+        // "what's down in this group?" reaches getMonitorSummary, not listMonitors.
+        const summarised = JSON.parse(extractText(
+          await client.callTool({ name: 'getMonitorSummary', arguments: { parentId: groupID } }) as CallToolResult,
+          'getMonitorSummary'
+        ));
+        if (!Array.isArray(summarised) || summarised.length !== 1 || Number(summarised[0].id) !== monitorID) {
+          throw new Error(`getMonitorSummary parentId returned ${Array.isArray(summarised) ? summarised.length : 'non-array'} monitors, expected exactly the one child`);
+        }
+
         await client.callTool({ name: 'updateMonitor', arguments: { monitorID, parent: null } });
         const back = JSON.parse(extractText(
           await client.callTool({ name: 'getMonitor', arguments: { monitorID } }) as CallToolResult,
           'getMonitor'
         ));
         if (back.parent !== null) throw new Error('re-parent to top level did not persist');
-        console.log('  ✓ #63/#65: re-parent works both ways; parentId returns direct children');
+        console.log('  ✓ #63/#65: re-parent works both ways; parentId returns direct children on both list and summary');
       } finally {
         await client.callTool({ name: 'deleteMonitor', arguments: { monitorID } });
         await client.callTool({ name: 'deleteMonitor', arguments: { monitorID: groupID } });
