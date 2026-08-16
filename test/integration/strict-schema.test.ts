@@ -107,6 +107,42 @@ export const strictSchemaTests: Array<{ name: string; fn: TestFn }> = [
     },
   },
   {
+    name: '#65: timeout:"" is refused rather than stored as the 0 that disables DOWN detection',
+    fn: async ({ client }) => {
+      const monitorID = extractID(await client.callTool({
+        name: 'createMonitor',
+        arguments: {
+          name: 'Integration Test - timeout coercion',
+          type: 'http',
+          url: 'https://example.com',
+          interval: 300,
+          active: false,
+        },
+      }) as CallToolResult, 'createMonitor', 'monitorID');
+
+      try {
+        // z.coerce.number() turned '' into 0, and Uptime Kuma's runtime fallback for a stored
+        // 0 yields a ~13 hour timeout — the monitor silently stops being able to report DOWN.
+        const message = await expectToolError(client, 'updateMonitor', { monitorID, timeout: '' });
+        if (!message.includes('timeout')) {
+          throw new Error(`error does not name the offending field: ${message}`);
+        }
+
+        // The rejection has to mean nothing was written, not merely that something complained.
+        const after = JSON.parse(extractText(
+          await client.callTool({ name: 'getMonitor', arguments: { monitorID } }) as CallToolResult,
+          'getMonitor'
+        ));
+        if (Number(after.timeout) !== 240) {
+          throw new Error(`timeout is now ${JSON.stringify(after.timeout)}, expected the original 240`);
+        }
+        console.log('  ✓ #65: timeout:"" rejected and the stored value left intact');
+      } finally {
+        await client.callTool({ name: 'deleteMonitor', arguments: { monitorID } });
+      }
+    },
+  },
+  {
     name: 'tools/list advertises additionalProperties:false',
     fn: async ({ client }) => {
       const { tools } = await client.listTools();
