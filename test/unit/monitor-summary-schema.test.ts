@@ -22,4 +22,8 @@ describe('MonitorSummarySchema status messages', () => {
 
     expect(result.msg).toBe('HTTP 500, retrying');
   });
+
+  it('rejects unrelated invalid monitor summary data', () => {
+    expect(() => MonitorSummarySchema.parse({ ...summary, id: 'not-a-number' })).toThrow();
+  });
 });
