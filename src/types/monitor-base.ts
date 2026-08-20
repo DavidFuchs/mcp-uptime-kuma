@@ -16,7 +16,14 @@ export const MonitorSummarySchema = z.object({
   uptime: z.record(z.string(), z.number()).optional().describe('Uptime % by period (24h/720h/1y)'),
   avgPing: z.number().nullable().optional().describe('24h average ping (ms)'),
   status: z.number().optional().describe('0=DOWN 1=UP 2=PENDING 3=MAINT'),
-  msg: z.string().optional().describe('Latest status message'),
+  msg: z.preprocess(
+    value => {
+      if (typeof value === 'number') return String(value);
+      if (Array.isArray(value)) return value.join(', ');
+      return value;
+    },
+    z.string().optional()
+  ).describe('Latest status message'),
   lastBeatTime: z.string().nullable().optional().describe('Timestamp of the heartbeat that `status` and `msg` come from, in UTC as "YYYY-MM-DD HH:mm:ss.SSS" — Uptime Kuma sends no zone marker, so compare it against the current UTC time, not local time. Check this before trusting the status of a push monitor: one that has stopped beating reports its last known status indefinitely, and is otherwise indistinguishable from a healthy one.'),
 });
 

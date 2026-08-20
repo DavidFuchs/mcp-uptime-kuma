@@ -479,10 +479,22 @@ export class UptimeKumaClient {
    * nothing here: the `heartbeatList` handler replaces the cached array wholesale rather
    * than merging into it, so the persisted copy never lands beside the live one.
    */
+  static normaliseHeartbeat(beat: Heartbeat): Heartbeat {
+    const rawMsg = (beat as Heartbeat & { msg: unknown }).msg;
+    const msg = typeof rawMsg === 'number'
+      ? String(rawMsg)
+      : Array.isArray(rawMsg)
+        ? rawMsg.join(', ')
+        : rawMsg;
+
+    return msg === rawMsg ? beat : { ...beat, msg };
+  }
+
   static normaliseBeats(list: Heartbeat[]): Heartbeat[] {
     const seen = new Set<string>();
     const deduped: Heartbeat[] = [];
-    for (const beat of list) {
+    for (const rawBeat of list) {
+      const beat = UptimeKumaClient.normaliseHeartbeat(rawBeat);
       const key =
         typeof beat?.id === 'number'
           ? `id:${beat.id}`
@@ -520,7 +532,8 @@ export class UptimeKumaClient {
     });
 
     // Listen for individual heartbeat updates (real-time)
-    this.socket.on('heartbeat', (heartbeat: Heartbeat) => {
+    this.socket.on('heartbeat', (rawHeartbeat: Heartbeat) => {
+      const heartbeat = UptimeKumaClient.normaliseHeartbeat(rawHeartbeat);
       // The heartbeat event should always include monitorID
       if (!heartbeat.monitorID) {
         this.safeLog('warning', 'Received heartbeat without monitorID');
@@ -754,7 +767,7 @@ export class UptimeKumaClient {
     const result: { [monitorID: string]: Heartbeat[] } = {};
     
     for (const [monitorID, heartbeats] of Object.entries(this.heartbeatListCache)) {
-      result[monitorID] = heartbeats.slice(0, maxHeartbeats);
+      result[monitorID] = heartbeats.slice(0, maxHeartbeats).map(UptimeKumaClient.normaliseHeartbeat);
     }
     
     return result;
@@ -774,7 +787,7 @@ export class UptimeKumaClient {
       return [];
     }
     
-    return heartbeats.slice(0, maxHeartbeats);
+    return heartbeats.slice(0, maxHeartbeats).map(UptimeKumaClient.normaliseHeartbeat);
   }
 
   /**
@@ -788,7 +801,9 @@ export class UptimeKumaClient {
    */
   getLatestHeartbeat(monitorID: number): Heartbeat | undefined {
     const heartbeats = this.heartbeatListCache[monitorID.toString()];
-    return heartbeats && heartbeats.length > 0 ? heartbeats[0] : undefined;
+    return heartbeats && heartbeats.length > 0
+      ? UptimeKumaClient.normaliseHeartbeat(heartbeats[0])
+      : undefined;
   }
 
   /**
