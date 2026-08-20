@@ -11,6 +11,7 @@ export const SettingsSchema = z.object({
   entryPage: z.string().optional().describe('Entry page (dashboard/statuspage)'),
   dnsCache: z.boolean().optional().describe('DNS cache enabled'),
   keepDataPeriodDays: z.number().optional().describe('Data retention period (days)'),
+  domainExpiryNotifyDays: z.array(z.number()).optional().describe('Domain expiry notification days'),
   tlsExpiryNotifyDays: z.array(z.number()).optional().describe('TLS expiry notification days'),
   trustProxy: z.boolean().optional().describe('Trust proxy headers'),
   nscd: z.boolean().optional().describe('NSCD enabled'),

@@ -427,6 +427,17 @@ describe('UptimeKumaClient - Monitor CRUD Operations', () => {
       expect(web?.msg).toBe('OK');
     });
 
+    it('normalizes non-string heartbeat messages before returning summaries', () => {
+      injectHeartbeatListCache(client, {
+        '1': [{ monitorID: 1, status: 1, msg: 200, ping: 50, time: '2024-01-01' },
+          { monitorID: 1, status: 1, msg: ['HTTP 200', 'OK'], ping: 50, time: '2023-12-31' }],
+      });
+
+      const summary = client.getMonitorSummary()[0];
+
+      expect(summary.msg).toBe('200');
+    });
+
     it('filters by status', () => {
       const down = client.getMonitorSummary({ status: '0' });
       expect(down).toHaveLength(1);
