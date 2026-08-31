@@ -45,4 +45,25 @@ describe('tools/list schema dialect', () => {
     expect(found.has(draft07)).toBe(false);
     expect(found.has('https://json-schema.org/draft/2020-12/schema')).toBe(true);
   });
+
+  it('uses a boolean for unconstrained record values', async () => {
+    const { server } = await createServer({
+      url: 'http://localhost:3001',
+      username: undefined,
+      password: undefined,
+      token: undefined,
+      jwtToken: undefined,
+    });
+
+    const handler = (server.server as unknown as {
+      _requestHandlers: Map<string, (request: unknown, extra: unknown) => Promise<{ tools: Array<{ name: string; inputSchema?: Record<string, unknown> }> }>;
+    })._requestHandlers.get('tools/list');
+    expect(handler).toBeDefined();
+
+    const { tools } = await handler!({ method: 'tools/list', params: {} }, {});
+    const addNotification = tools.find((tool) => tool.name === 'addNotification');
+    const config = (addNotification?.inputSchema?.properties as Record<string, Record<string, unknown>> | undefined)?.config;
+
+    expect(config?.additionalProperties).toBe(true);
+  });
 });

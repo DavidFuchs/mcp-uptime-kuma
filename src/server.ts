@@ -225,12 +225,20 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     if (value && typeof value === 'object') {
       const out: Record<string, unknown> = {};
       for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
-        out[key] = key === '$schema' && val === DRAFT_07_DIALECT ? DIALECT_2020_12 : relabelDialect(val);
+        // Home Assistant rejects the valid empty-schema form Zod emits for z.record(..., z.unknown()).
+        out[key] = key === 'additionalProperties' && isEmptySchema(val)
+          ? true
+          : key === '$schema' && val === DRAFT_07_DIALECT
+            ? DIALECT_2020_12
+            : relabelDialect(val);
       }
       return out;
     }
     return value;
   };
+
+  const isEmptySchema = (value: unknown): value is Record<string, never> =>
+    Boolean(value) && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0;
 
   const setRequestHandlerUnpatched = server.server.setRequestHandler.bind(server.server) as (
     requestSchema: unknown,
