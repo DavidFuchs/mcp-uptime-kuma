@@ -55,8 +55,10 @@ describe('tools/list schema dialect', () => {
       jwtToken: undefined,
     });
 
+    type Tool = { name: string; inputSchema?: Record<string, unknown> };
+    type ToolsListHandler = (request: unknown, extra: unknown) => Promise<{ tools: Tool[] }>;
     const handler = (server.server as unknown as {
-      _requestHandlers: Map<string, (request: unknown, extra: unknown) => Promise<{ tools: Array<{ name: string; inputSchema?: Record<string, unknown> }> }>;
+      _requestHandlers: Map<string, ToolsListHandler>;
     })._requestHandlers.get('tools/list');
     expect(handler).toBeDefined();
 
