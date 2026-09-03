@@ -54,6 +54,19 @@ describe('UptimeKumaClient - Heartbeat Operations', () => {
       const result = client.getHeartbeatList(10);
       expect(result['1']).toHaveLength(1);
     });
+
+    it('normalizes numeric and array messages before returning heartbeats', () => {
+      injectHeartbeatListCache(client, {
+        '1': [
+          { monitorID: 1, status: 1, msg: 200, time: '2024-01-02' },
+          { monitorID: 1, status: 1, msg: ['HTTP 200', 'OK'], time: '2024-01-01' },
+        ],
+      });
+
+      const result = client.getHeartbeatList(2);
+
+      expect(result['1'].map((beat) => beat.msg)).toEqual(['200', 'HTTP 200, OK']);
+    });
   });
 
   describe('getHeartbeatsForMonitor', () => {

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { UptimeKumaClient } from '../../src/uptime-kuma-client.js';
+import { SettingsSchema } from '../../src/types/settings.js';
 import { createMockSocket, createDisconnectedSocket, injectSocket, injectStatusPageListCache } from './helpers.js';
 
 describe('UptimeKumaClient - Settings Operations', () => {
@@ -7,6 +8,12 @@ describe('UptimeKumaClient - Settings Operations', () => {
 
   beforeEach(() => {
     client = new UptimeKumaClient('http://localhost:3001');
+  });
+
+  it('accepts current Uptime Kuma domain expiry settings', () => {
+    const result = SettingsSchema.parse({ domainExpiryNotifyDays: [7, 14, 21] });
+
+    expect(result.domainExpiryNotifyDays).toEqual([7, 14, 21]);
   });
 
   describe('getSettings', () => {
