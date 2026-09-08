@@ -73,6 +73,76 @@ function requiredId(description: string) {
   ).describe(description);
 }
 
+const DRAFT_07_DIALECT = 'http://json-schema.org/draft-07/schema#';
+const DIALECT_2020_12 = 'https://json-schema.org/draft/2020-12/schema';
+
+// Keywords whose value is a map of schemas keyed by arbitrary names, not by JSON Schema
+// keywords. Descending into one has to stop treating its keys as keywords.
+const SCHEMA_MAP_KEYWORDS = new Set(['properties', 'patternProperties', 'definitions', '$defs', 'dependentSchemas']);
+
+// Keywords whose value is instance data rather than a schema. Nothing inside them is a schema,
+// so they are passed through untouched.
+const DATA_KEYWORDS = new Set(['const', 'default', 'enum', 'examples']);
+
+const isEmptySchema = (value: unknown): value is Record<string, never> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0;
+
+/**
+ * Normalizes the JSON Schema the SDK advertises from tools/list.
+ *
+ * Issue #83: the SDK converts every tool's input/output Zod schema to JSON Schema via
+ * zod-to-json-schema without setting a `target`, so each one is stamped
+ * "$schema": "http://json-schema.org/draft-07/schema#" — verified against both the SDK
+ * version this project pins (^1.22.0) and the current latest (1.30.0); the behavior is
+ * unchanged between them. Clients whose validator only accepts the MCP spec's default
+ * dialect (2020-12, per SEP-1613) reject every tool outright before ever calling it
+ * (see modelcontextprotocol/typescript-sdk#745, still open upstream).
+ *
+ * None of the schemas advertised here use anything that differs between the two drafts (no
+ * `dependencies`, no positional tuple items), so relabeling the declared dialect is safe —
+ * only the version stamp was wrong, not the shape.
+ *
+ * Issue #55: Home Assistant rejects the valid empty-schema form Zod emits for
+ * z.record(..., z.unknown()), so `additionalProperties: {}` is rewritten to the equivalent
+ * boolean form.
+ */
+export function normalizeAdvertisedSchema(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(normalizeAdvertisedSchema);
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+      if (key === 'additionalProperties' && isEmptySchema(val)) {
+        out[key] = true;
+      } else if (key === '$schema' && val === DRAFT_07_DIALECT) {
+        out[key] = DIALECT_2020_12;
+      } else if (DATA_KEYWORDS.has(key)) {
+        out[key] = val;
+      } else if (SCHEMA_MAP_KEYWORDS.has(key)) {
+        out[key] = normalizeSchemaMap(val);
+      } else {
+        out[key] = normalizeAdvertisedSchema(val);
+      }
+    }
+    return out;
+  }
+  return value;
+}
+
+/**
+ * Normalizes a map whose keys are names rather than JSON Schema keywords — the members of
+ * `properties`, `$defs`, and friends. Each value is a schema, but the keys are arbitrary, so a
+ * tool declaring a field called `additionalProperties` must not have it mistaken for the
+ * keyword one level up.
+ */
+function normalizeSchemaMap(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return normalizeAdvertisedSchema(value);
+  const out: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+    out[key] = normalizeAdvertisedSchema(val);
+  }
+  return out;
+}
+
 /**
  * Creates and configures the MCP server with tools, resources, and prompts
  * Note: Authentication must be done separately after connecting the transport
@@ -204,42 +274,10 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     return schema;
   }
 
-  // Issue #83: the SDK converts every tool's input/output Zod schema to JSON Schema via
-  // zod-to-json-schema without setting a `target`, so each one is stamped
-  // "$schema": "http://json-schema.org/draft-07/schema#" — verified against both the SDK
-  // version this project pins (^1.22.0) and the current latest (1.30.0); the behavior is
-  // unchanged between them. Clients whose validator only accepts the MCP spec's default
-  // dialect (2020-12, per SEP-1613) reject every tool outright before ever calling it
-  // (see modelcontextprotocol/typescript-sdk#745, still open upstream).
-  //
-  // None of the schemas below use anything that differs between the two drafts (no
-  // `dependencies`, no positional tuple items), so relabeling the declared dialect is safe —
-  // only the version stamp was wrong, not the shape. This intercepts the SDK's own
-  // `setRequestHandler(ListToolsRequestSchema, ...)` call (made lazily on first
-  // `registerTool`, below) rather than reimplementing tools/list, so it keeps working across
-  // SDK internals changing between versions.
-  const DRAFT_07_DIALECT = 'http://json-schema.org/draft-07/schema#';
-  const DIALECT_2020_12 = 'https://json-schema.org/draft/2020-12/schema';
-  const relabelDialect = (value: unknown): unknown => {
-    if (Array.isArray(value)) return value.map(relabelDialect);
-    if (value && typeof value === 'object') {
-      const out: Record<string, unknown> = {};
-      for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
-        // Home Assistant rejects the valid empty-schema form Zod emits for z.record(..., z.unknown()).
-        out[key] = key === 'additionalProperties' && isEmptySchema(val)
-          ? true
-          : key === '$schema' && val === DRAFT_07_DIALECT
-            ? DIALECT_2020_12
-            : relabelDialect(val);
-      }
-      return out;
-    }
-    return value;
-  };
-
-  const isEmptySchema = (value: unknown): value is Record<string, never> =>
-    value !== null && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0;
-
+  // Normalize the advertised JSON Schema on the way out (see normalizeAdvertisedSchema).
+  // This intercepts the SDK's own `setRequestHandler(ListToolsRequestSchema, ...)` call (made
+  // lazily on first `registerTool`, below) rather than reimplementing tools/list, so it keeps
+  // working across SDK internals changing between versions.
   const setRequestHandlerUnpatched = server.server.setRequestHandler.bind(server.server) as (
     requestSchema: unknown,
     handler: (...args: unknown[]) => unknown
@@ -249,7 +287,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     handler: (...args: unknown[]) => unknown
   ) => {
     if (requestSchema === ListToolsRequestSchema) {
-      const wrapped = async (...args: unknown[]) => relabelDialect(await handler(...args));
+      const wrapped = async (...args: unknown[]) => normalizeAdvertisedSchema(await handler(...args));
       return setRequestHandlerUnpatched(requestSchema, wrapped);
     }
     return setRequestHandlerUnpatched(requestSchema, handler);
