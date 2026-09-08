@@ -214,6 +214,7 @@ upgrading cannot break an existing deployment - the server warns at startup in t
 | `ALLOWED_ORIGIN` | `*` (no validation) | Comma-separated list of browser origins permitted to call `/mcp`. A request whose `Origin` is not listed gets `403`. Requests with no `Origin` header (every native MCP client) are always allowed. |
 | `HOST` | `0.0.0.0` | Address to bind. Set to `127.0.0.1` when running locally outside a container. |
 | `PORT` | `3000` | Port to listen on. |
+| `TRUST_PROXY` | unset (no trust) | Trust `X-Forwarded-For` from a reverse proxy in front of the server, so the rate limiter keys on the real client IP instead of the proxy's. Accepts a hop count (`1`), `true`/`false`, or an IP/subnet list - see [Express's `trust proxy` docs](https://expressjs.com/en/guide/behind-proxies.html). |
 
 `/health` is deliberately left unauthenticated so container healthchecks and load balancer
 probes keep working. It reports nothing but liveness.
@@ -268,6 +269,24 @@ clients send no `Origin` header. If you use a browser-based client, list its ori
 ```
 ALLOWED_ORIGIN=https://librechat.example.com,http://localhost:5173
 ```
+
+### Running behind a reverse proxy
+
+Without `TRUST_PROXY`, Express sees every request as coming from the proxy's IP, so the
+rate limiter puts all of your clients in one shared 100-request bucket and starts
+returning spurious `429`s once traffic from any of them adds up.
+
+Set `TRUST_PROXY` to the number of proxy hops in front of the server so it reads the
+real client IP from `X-Forwarded-For` instead:
+
+```
+TRUST_PROXY=1
+```
+
+Only set this when a proxy you control is actually there to strip and re-set that
+header. If the server is reachable directly as well, or the proxy passes through
+whatever `X-Forwarded-For` it receives, a client can forge that header to get a fresh
+rate-limit bucket on every request, defeating the limiter entirely.
 
 ## Credential Redaction
 

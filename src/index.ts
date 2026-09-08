@@ -84,6 +84,8 @@ Environment variables for the streamable HTTP transport:
   ALLOWED_ORIGIN   Comma-separated origins allowed to call /mcp. Default '*' = no validation.
   HOST             Address to bind. Default '0.0.0.0'; use '127.0.0.1' for local-only.
   PORT             Port to listen on. Default 3000.
+  TRUST_PROXY      Trust reverse-proxy headers (X-Forwarded-For) for rate limiting.
+                   Hop count ('1'), 'true'/'false', or IP/subnet list. Unset = no trust.
 `);
       process.exit(0);
     }
@@ -140,6 +142,30 @@ async function runStdio(config: UptimeKumaConfig) {
 async function runHttp(config: UptimeKumaConfig) {
   const app = express();
   app.use(express.json());
+
+  // When running behind a reverse proxy (ingress, load balancer, sidecar proxy),
+  // set TRUST_PROXY so express-rate-limit derives the real client IP from
+  // X-Forwarded-For. Without it req.ip is the proxy's address, so every client
+  // shares a single rate-limit bucket and all of them start getting 429s.
+  // (express-rate-limit also logs ERR_ERL_UNEXPECTED_X_FORWARDED_FOR in that case —
+  // its validations wrapper catches the error and console.errors it, so it is a
+  // diagnostic signal rather than the failure itself.)
+  // Accepts a hop count ("1"), "true"/"false", or an IP/subnet list.
+  // Defaults to Express's built-in behaviour (no trust) when unset — secure by default.
+  const trustProxy = process.env.TRUST_PROXY;
+  if (trustProxy !== undefined && trustProxy !== '') {
+    const numericHops = Number(trustProxy);
+    app.set(
+      'trust proxy',
+      trustProxy === 'true'
+        ? true
+        : trustProxy === 'false'
+          ? false
+          : Number.isNaN(numericHops)
+            ? trustProxy
+            : numericHops
+    );
+  }
 
   const allowedOrigins = parseAllowedOrigins(process.env.ALLOWED_ORIGIN);
   const authToken = process.env.MCP_AUTH_TOKEN;
