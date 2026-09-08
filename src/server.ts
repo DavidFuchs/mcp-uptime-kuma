@@ -238,7 +238,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
   };
 
   const isEmptySchema = (value: unknown): value is Record<string, never> =>
-    Boolean(value) && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0;
+    value !== null && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0;
 
   const setRequestHandlerUnpatched = server.server.setRequestHandler.bind(server.server) as (
     requestSchema: unknown,
