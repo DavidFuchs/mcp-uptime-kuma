@@ -15,4 +15,10 @@ export interface UptimeKumaConfig {
    * safe behaviour is the one you get by not thinking about it.
    */
   includeSecrets?: boolean;
+  /**
+   * Extra HTTP headers sent on every request to Uptime Kuma, for reaching it through an
+   * authenticating proxy such as Cloudflare Access (issue #95). Parsed from
+   * UPTIME_KUMA_HEADERS; these are credentials and must never be logged.
+   */
+  extraHeaders?: Record<string, string>;
 }

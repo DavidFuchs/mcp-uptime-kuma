@@ -199,6 +199,32 @@ docker run --rm davidfuchs/mcp-uptime-kuma:latest get-jwt http://host.docker.int
 
 **From browser:** Open Developer Tools → Storage/Application → Local Storage → find `token` key.
 
+### Behind an Authenticating Proxy (Cloudflare Access, etc.)
+
+If Uptime Kuma sits behind a proxy that demands its own credentials — a Cloudflare Zero Trust
+Access application, oauth2-proxy, an API gateway — set `UPTIME_KUMA_HEADERS` to a JSON object of
+headers to send on every request. It combines with any of the methods above, which still handle
+logging in to Uptime Kuma itself.
+
+For Cloudflare Access, create a service token, add a *Service Auth* policy to the application that
+allows it, then:
+
+```
+UPTIME_KUMA_URL=https://uptime.example.com
+UPTIME_KUMA_HEADERS={"CF-Access-Client-Id":"<client-id>.access","CF-Access-Client-Secret":"<client-secret>"}
+UPTIME_KUMA_USERNAME=your_username
+UPTIME_KUMA_PASSWORD=your_password
+```
+
+In an MCP client's JSON config the value is a string, so the inner quotes need escaping:
+
+```json
+"UPTIME_KUMA_HEADERS": "{\"CF-Access-Client-Id\":\"<client-id>.access\",\"CF-Access-Client-Secret\":\"<client-secret>\"}"
+```
+
+`mcp-uptime-kuma-get-jwt` reads the same variable. A malformed value stops the server at startup
+with an error naming the offending header; header values are never logged.
+
 ## Securing the HTTP Endpoint
 
 Applies to `-t streamable-http` only. The stdio transport has no listener to protect and

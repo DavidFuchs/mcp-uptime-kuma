@@ -8,6 +8,9 @@ services:
 #      - UPTIME_KUMA_USERNAME=${UPTIME_KUMA_USERNAME} # Optional, if using username/password authentication
 #      - UPTIME_KUMA_PASSWORD=${UPTIME_KUMA_PASSWORD} # Optional, if using username/password authentication
 #      - UPTIME_KUMA_JWT_TOKEN=${UPTIME_KUMA_JWT_TOKEN} # Optional, if using JWT authentication
+      # Optional: JSON object of headers for an authenticating proxy in front of Uptime Kuma,
+      # e.g. {"CF-Access-Client-Id":"<id>.access","CF-Access-Client-Secret":"<secret>"}
+#      - UPTIME_KUMA_HEADERS=${UPTIME_KUMA_HEADERS}
 #      - PORT=3000 # Internal port. This is optional, defaults to 3000
       # Strongly recommended: without MCP_AUTH_TOKEN anyone who can reach this port has full
       # read/write control of your Uptime Kuma instance. Generate one with: openssl rand -base64 32
