@@ -80,6 +80,7 @@ function matchesParentFilter(monitor: { parent?: number | null }, parentId: numb
 export class UptimeKumaClient {
   private socket: Socket | null = null;
   private url: string;
+  private extraHeaders?: Record<string, string>;
   private monitorListCache: { [monitorID: string]: MonitorRawData } = {};
   private heartbeatListCache: HeartbeatList<true> = {};
   private uptimeCache: { [monitorID: string]: { [periodKey: string]: number } } = {};
@@ -103,11 +104,13 @@ export class UptimeKumaClient {
   constructor(
     url: string, 
     server?: { sendLoggingMessage: (params: { level: LoggingLevel; data: unknown }) => Promise<void> },
-    shouldLog?: (level: LoggingLevel) => boolean
+    shouldLog?: (level: LoggingLevel) => boolean,
+    extraHeaders?: Record<string, string>
   ) {
     this.url = url;
     this.server = server;
     this.shouldLog = shouldLog || (() => true); // Default: log everything
+    this.extraHeaders = extraHeaders;
   }
 
   /**
@@ -156,6 +159,9 @@ export class UptimeKumaClient {
         reconnection: true,
         reconnectionDelay: 1000,
         reconnectionAttempts: Infinity,
+        // Sent on the polling requests and on the WebSocket upgrade alike, so an auth proxy
+        // in front of Kuma sees them on whichever request it inspects (issue #95).
+        extraHeaders: this.extraHeaders,
       });
 
       let initialConnect = true;

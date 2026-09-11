@@ -2,6 +2,7 @@
 
 import { io, Socket } from 'socket.io-client';
 import type { LoginResponse } from './types/index.js';
+import { parseExtraHeaders } from './extra-headers.js';
 
 /**
  * Simple utility to login to Uptime Kuma and retrieve a JWT token
@@ -27,14 +28,26 @@ Examples:
   mcp-uptime-kuma-get-jwt http://localhost:3001 admin mypassword
   mcp-uptime-kuma-get-jwt http://localhost:3001 admin mypassword 123456
 
+Environment variables:
+  UPTIME_KUMA_HEADERS  JSON object of extra HTTP headers to send, for reaching Uptime Kuma
+                       through an authenticating proxy, e.g.
+                       '{"CF-Access-Client-Id":"<id>","CF-Access-Client-Secret":"<secret>"}'
+
 The JWT token will be printed to stdout on success.
 `);
 }
 
-async function getJwtToken(url: string, username: string, password: string, token?: string): Promise<string> {
+async function getJwtToken(
+  url: string,
+  username: string,
+  password: string,
+  token?: string,
+  extraHeaders?: Record<string, string>
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const socket: Socket = io(url, {
       reconnection: false,
+      extraHeaders,
     });
 
     socket.on('connect', () => {
@@ -92,7 +105,8 @@ async function main() {
   const [url, username, password, token] = args;
 
   try {
-    const jwtToken = await getJwtToken(url, username, password, token);
+    const extraHeaders = parseExtraHeaders(process.env.UPTIME_KUMA_HEADERS);
+    const jwtToken = await getJwtToken(url, username, password, token, extraHeaders);
     console.log(jwtToken);
     process.exit(0);
   } catch (error) {

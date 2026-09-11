@@ -13,6 +13,7 @@ import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import { createServer } from './server.js';
 import { parseAllowedOrigins, createOriginMiddleware, createAuthMiddleware } from './http-security.js';
+import { parseExtraHeaders } from './extra-headers.js';
 import type { UptimeKumaConfig } from './types/index.js';
 
 /**
@@ -36,6 +37,16 @@ function validateEnvironment(): UptimeKumaConfig {
     process.exit(1);
   }
 
+  // Unlike a bad JWT, malformed headers are fatal: silently dropping them would just move
+  // the failure to an opaque 403 from the proxy in front of Kuma.
+  let extraHeaders: Record<string, string> | undefined;
+  try {
+    extraHeaders = parseExtraHeaders(process.env.UPTIME_KUMA_HEADERS);
+  } catch (error) {
+    console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+  }
+
   // Fail loudly and early on a credential that cannot possibly work. Uptime Kuma rejects a
   // non-JWT with the opaque message "authInvalidToken", which is indistinguishable from an
   // expired credential — so say what is actually wrong. Reports the SHAPE only, never the value.
@@ -48,7 +59,7 @@ function validateEnvironment(): UptimeKumaConfig {
     );
   }
 
-  return { url, username, password, token, jwtToken, includeSecrets };
+  return { url, username, password, token, jwtToken, includeSecrets, extraHeaders };
 }
 
 // Parse command-line arguments

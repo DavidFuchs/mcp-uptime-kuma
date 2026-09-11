@@ -50,6 +50,13 @@
           "format": "string",
           "isSecret": true,
           "name": "UPTIME_KUMA_JWT_TOKEN"
+        },
+        {
+          "description": "JSON object of extra HTTP headers sent on every request to Uptime Kuma, for reaching it through an authenticating proxy such as Cloudflare Access (e.g. {\"CF-Access-Client-Id\":\"...\",\"CF-Access-Client-Secret\":\"...\"})",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true,
+          "name": "UPTIME_KUMA_HEADERS"
         }
       ]
     }

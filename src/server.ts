@@ -310,7 +310,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     return logLevels.indexOf(level) >= logLevels.indexOf(currentLogLevel);
   };
   
-  const client = new UptimeKumaClient(config.url, server, shouldLog);
+  const client = new UptimeKumaClient(config.url, server, shouldLog, config.extraHeaders);
 
   // Issue #59: read tools withhold credentials by default. Captured here because the
   // registerTool wrapper above shadows `config` with the per-tool registration object.
