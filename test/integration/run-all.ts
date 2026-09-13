@@ -15,6 +15,7 @@ import { dockerHostTests } from './docker-hosts.test.js';
 import { statusPageTests } from './status-pages.test.js';
 import { strictSchemaTests } from './strict-schema.test.js';
 import { redactionTests } from './redaction.test.js';
+import { startupTests } from './startup.test.js';
 
 /**
  * Unified integration test runner.
@@ -39,6 +40,7 @@ const ALL_SUITES: Record<string, { name: string; tests: Array<{ name: string; fn
   'status-pages': { name: 'Status Pages', tests: statusPageTests },
   'strict-schema': { name: 'Strict Input Schemas', tests: strictSchemaTests },
   redaction: { name: 'Credential Redaction', tests: redactionTests },
+  startup: { name: 'Fresh Server Startup', tests: startupTests },
 };
 
 async function main() {
