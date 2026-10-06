@@ -953,6 +953,10 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         (typeof wanted === 'number' && typeof stored === 'number' && Math.round(wanted) === stored),
       hint: 'timeout is stored in SECONDS, and a stored 0 is not "no timeout": Uptime Kuma\'s runtime fallback turns it into ~13 hours, so the monitor can never report DOWN against a black-holed endpoint.',
     },
+    type: {
+      read: asText,
+      hint: 'Uptime Kuma validates the monitor against its new type, so pass that type\'s required fields (e.g. url, jsonPath, jsonPathOperator and expectedValue for json-query) in the same call.',
+    },
     jsonPath: { read: asText, hint: 'See #60.' },
     jsonPathOperator: { read: asText, hint: 'See #60.' },
     expectedValue: { read: asText, hint: 'See #60 — the threshold is stored as a string.' },
@@ -1214,8 +1218,12 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         parentID: numeric(z.number().int()).nullable().optional().describe('Alias for parent. Prefer parent.'),
         parent_id: numeric(z.number().int()).nullable().optional().describe('Alias for parent. Prefer parent.'),
         description: z.string().nullable().optional().describe('Free-text description shown on the monitor page'),
+        // Without `type` the only way to turn e.g. an http check into a json-query one was to
+        // delete and recreate the monitor, losing its id, heartbeat history and uptime stats.
+        // Uptime Kuma's editMonitor already assigns `bean.type = monitor.type`.
+        type: z.string().optional().describe('Change the monitor type in place (e.g. http -> json-query), keeping its id, history and notifications. Pass the new type\'s required fields in the same call. A group cannot be converted. Use listMonitorTypes for all options.'),
         resendInterval: numeric(z.number()).optional().describe('Resend notification every N checks while down (0 = disabled)'),
-        timeout: numeric(z.number()).nullable().optional().describe('Request timeout in SECONDS. Avoid 0 — Uptime Kuma\'s runtime fallback for a stored 0 yields a ~13 hour timeout, so the monitor can never report DOWN against a black-holed endpoint.'),
+        timeout: numeric(z.number()).nullable().optional().describe('Request timeout in SECONDS. Avoid 0 —Uptime Kuma\'s runtime fallback for a stored 0 yields a ~13 hour timeout, so the monitor can never report DOWN against a black-holed endpoint.'),
         jsonPath: z.string().optional().describe('JSONata expression for json-query monitors. Must resolve to a primitive.'),
         json_path: z.string().optional().describe('Alias for jsonPath (the database column name). Prefer jsonPath.'),
         jsonPathOperator: z.enum(['>', '>=', '<', '<=', '==', '!=', 'contains']).optional().describe('Comparison operator for json-query monitors.'),
@@ -1265,6 +1273,12 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         const existing = client.getMonitor(monitorID, true);
         if (!existing) {
           throw new Error(`Monitor ${monitorID} not found`);
+        }
+        // Uptime Kuma accepts a group -> non-group edit and silently detaches every child
+        // monitor (`removeGroupChildren` in its editMonitor handler). Too destructive to
+        // allow as a side effect of a field update.
+        if (rest.type !== undefined && existing.type === 'group' && rest.type !== 'group') {
+          throw new Error(`Monitor ${monitorID} is a group; changing its type would detach all of its child monitors. Move the children out first, or delete and recreate the group.`);
         }
         // Strip undefined values so existing config is preserved for omitted fields
         const defined = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined));
