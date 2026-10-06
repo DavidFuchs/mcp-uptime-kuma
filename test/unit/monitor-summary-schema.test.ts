@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { MonitorSummarySchema } from '../../src/types/monitor-base.js';
+import { MonitorBaseSchema, MonitorSummarySchema } from '../../src/types/monitor-base.js';
+
+describe('MonitorBaseSchema interval', () => {
+  const base = { name: 'Monthly push', type: 'push', retryInterval: 60 };
+
+  it('accepts an interval above the pre-2.5.0 24-day cap', () => {
+    expect(MonitorBaseSchema.parse({ ...base, interval: 3024000 }).interval).toBe(3024000);
+  });
+
+  it('still rejects an interval below the minimum', () => {
+    expect(() => MonitorBaseSchema.parse({ ...base, interval: 19 })).toThrow();
+  });
+});
 
 describe('MonitorSummarySchema status messages', () => {
   const summary = {
