@@ -48,6 +48,20 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+      - name: Wait for package to appear on npm registry
+        run: |
+          PKG=$(jq -r .name package.json)
+          for i in $(seq 1 30); do
+            if npm view "$PKG@${{ steps.version.outputs.VERSION }}" version --prefer-online >/dev/null 2>&1; then
+              echo "Found $PKG@${{ steps.version.outputs.VERSION }}"
+              exit 0
+            fi
+            echo "Attempt $i: not yet available, retrying in 10s..."
+            sleep 10
+          done
+          echo "Timed out waiting for $PKG@${{ steps.version.outputs.VERSION }}" >&2
+          exit 1
+
       - name: Install mcp-publisher
         run: |
           curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
