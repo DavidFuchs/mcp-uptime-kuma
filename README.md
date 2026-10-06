@@ -31,7 +31,7 @@ Add this to your MCP client configuration:
   "mcpServers": {
     "uptime-kuma": {
       "command": "npx",
-      "args": ["-y", "@davidfuchs/mcp-uptime-kuma"],
+      "args": ["-y", "@davidfuchs/mcp-uptime-kuma@latest"],
       "env": {
         "UPTIME_KUMA_URL": "http://your-uptime-kuma-instance:3001",
         "UPTIME_KUMA_USERNAME": "your_username",
@@ -41,6 +41,8 @@ Add this to your MCP client configuration:
   }
 }
 ```
+
+Keep the `@latest` suffix. Without it, npx reuses whatever version it cached the first time it ran and never picks up new releases.
 
 ### Using Docker (streamable HTTP transport)
 
@@ -189,7 +191,7 @@ UPTIME_KUMA_JWT_TOKEN=your_jwt_token
 
 **Using the CLI utility (recommended):**
 ```bash
-npx -p @davidfuchs/mcp-uptime-kuma mcp-uptime-kuma-get-jwt http://localhost:3001 admin mypassword
+npx -p @davidfuchs/mcp-uptime-kuma@latest mcp-uptime-kuma-get-jwt http://localhost:3001 admin mypassword
 ```
 
 **Using Docker:**
@@ -377,7 +379,7 @@ body, and on the stdio transport those log notifications reach the client.
 mcpServers:
   uptime-kuma:
     command: npx
-    args: ["-y", "@davidfuchs/mcp-uptime-kuma"]
+    args: ["-y", "@davidfuchs/mcp-uptime-kuma@latest"]
     env:
       UPTIME_KUMA_URL: "http://your-instance:3001"
       UPTIME_KUMA_USERNAME: "your_username"

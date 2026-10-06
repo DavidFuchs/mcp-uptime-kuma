@@ -33,8 +33,14 @@ export interface TestContext {
 
 /**
  * Creates and connects an MCP client for integration testing.
+ *
+ * `settleMs` pauses between initialize and the first request. Pass 0 to call tools the
+ * instant the server is up, the way stateless launchers like MCP Jungle do (issue #98).
  */
-export async function createTestClient(config: TestConfig): Promise<{ client: Client; transport: StdioClientTransport }> {
+export async function createTestClient(
+  config: TestConfig,
+  { settleMs = 2000 }: { settleMs?: number } = {},
+): Promise<{ client: Client; transport: StdioClientTransport }> {
   const client = new Client(
     { name: 'mcp-uptime-kuma-integration-test', version: '1.0.0' },
     { capabilities: {} }
@@ -61,7 +67,7 @@ export async function createTestClient(config: TestConfig): Promise<{ client: Cl
   });
 
   await client.connect(transport);
-  await new Promise(resolve => setTimeout(resolve, 2000));
+  if (settleMs > 0) await new Promise(resolve => setTimeout(resolve, settleMs));
   await client.listTools();
 
   return { client, transport };
