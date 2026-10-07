@@ -1526,6 +1526,195 @@ export class UptimeKumaClient {
     });
   }
 
+  /**
+   * Update an existing maintenance window.
+   *
+   * Uptime Kuma's editMaintenance handler rebuilds the row from the object it is given
+   * (Maintenance.jsonToBean), so this must be the FULL window — a partial object either
+   * throws on the missing dateRange or writes NULL over every omitted column.
+   *
+   * @param maintenanceData - The complete maintenance window, including its id
+   * @returns Promise resolving to the API response
+   */
+  editMaintenance(maintenanceData: Record<string, unknown>): Promise<ApiResponse & { maintenanceID?: number }> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      this.socket.emit('editMaintenance', maintenanceData, (response: ApiResponse & { maintenanceID?: number }) => {
+        if (response.ok) {
+          this.safeLog('info', `Successfully updated maintenance window ${maintenanceData.id}`);
+          resolve(response);
+        } else {
+          reject(new Error(response.msg || `Failed to update maintenance window ${maintenanceData.id}`));
+        }
+      });
+    });
+  }
+
+  /**
+   * Read a maintenance window back from the SERVER, bypassing the cache.
+   *
+   * Same reasoning as fetchMonitor(): `maintenanceListCache` is refreshed by pushed events,
+   * so it is not proof that a write landed. Uptime Kuma's `getMaintenance` handler reads the
+   * database. Bounded by the same timeout, since it sits on the success path of every
+   * maintenance write.
+   *
+   * @param maintenanceID - The ID of the maintenance window to fetch
+   * @returns Promise resolving to the window exactly as stored server-side
+   */
+  fetchMaintenance(maintenanceID: number): Promise<Record<string, unknown>> {
+    return this.emitWithTimeout<{ maintenance?: Record<string, unknown> }>(
+      'getMaintenance',
+      [maintenanceID],
+      `maintenance window ${maintenanceID}`
+    ).then((response) => {
+      if (!response.maintenance) {
+        throw new Error(`Failed to fetch maintenance window ${maintenanceID}`);
+      }
+      return response.maintenance;
+    });
+  }
+
+  /**
+   * Get the IDs of the monitors a maintenance window applies to.
+   *
+   * @param maintenanceID - The ID of the maintenance window
+   * @returns Promise resolving to the monitor IDs, read from the database
+   */
+  getMonitorMaintenance(maintenanceID: number): Promise<number[]> {
+    return this.emitWithTimeout<{ monitors?: Array<{ id: number }> }>(
+      'getMonitorMaintenance',
+      [maintenanceID],
+      `the monitors of maintenance window ${maintenanceID}`
+    ).then((response) => (response.monitors ?? []).map((m) => m.id));
+  }
+
+  /**
+   * Set the monitors a maintenance window applies to.
+   *
+   * This is a full replace: Uptime Kuma deletes every existing monitor link for the window
+   * before inserting the new ones, so pass the complete list. An empty list detaches all
+   * monitors.
+   *
+   * @param maintenanceID - The ID of the maintenance window
+   * @param monitorIDs - The complete list of monitor IDs the window should cover
+   * @returns Promise resolving to the API response
+   */
+  setMonitorMaintenance(maintenanceID: number, monitorIDs: number[]): Promise<ApiResponse> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      const monitors = monitorIDs.map((id) => ({ id }));
+      this.socket.emit('addMonitorMaintenance', maintenanceID, monitors, (response: ApiResponse) => {
+        if (response.ok) {
+          this.safeLog('info', `Set ${monitorIDs.length} monitor(s) on maintenance window ${maintenanceID}`);
+          resolve(response);
+        } else {
+          reject(new Error(response.msg || `Failed to set monitors on maintenance window ${maintenanceID}`));
+        }
+      });
+    });
+  }
+
+  /**
+   * Pause a maintenance window (sets it inactive and stops its schedule)
+   *
+   * @param maintenanceID - The ID of the maintenance window to pause
+   * @returns Promise resolving to the API response
+   */
+  pauseMaintenance(maintenanceID: number): Promise<ApiResponse> {
+    return this.emitMaintenanceAction('pauseMaintenance', maintenanceID, 'pause');
+  }
+
+  /**
+   * Resume a paused maintenance window (sets it active and restarts its schedule)
+   *
+   * @param maintenanceID - The ID of the maintenance window to resume
+   * @returns Promise resolving to the API response
+   */
+  resumeMaintenance(maintenanceID: number): Promise<ApiResponse> {
+    return this.emitMaintenanceAction('resumeMaintenance', maintenanceID, 'resume');
+  }
+
+  /**
+   * Delete a maintenance window.
+   *
+   * Uptime Kuma answers `ok: true` for an ID that does not exist, so callers that need to
+   * know a window was really removed must check for it before and after.
+   *
+   * @param maintenanceID - The ID of the maintenance window to delete
+   * @returns Promise resolving to the API response
+   */
+  deleteMaintenance(maintenanceID: number): Promise<ApiResponse> {
+    return this.emitMaintenanceAction('deleteMaintenance', maintenanceID, 'delete');
+  }
+
+  /**
+   * Re-fetch the maintenance window list from the server and return it.
+   *
+   * Uptime Kuma's getMaintenanceList handler pushes a fresh `maintenanceList` event and only
+   * then acknowledges, and socket.io delivers the two in order, so the cache is current by the
+   * time this resolves.
+   */
+  refreshMaintenanceList(): Promise<Maintenance[]> {
+    return this.emitWithTimeout('getMaintenanceList', [], 'the maintenance window list').then(() =>
+      this.getMaintenanceList()
+    );
+  }
+
+  private emitMaintenanceAction(event: string, maintenanceID: number, verb: string): Promise<ApiResponse> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      this.socket.emit(event, maintenanceID, (response: ApiResponse) => {
+        if (response.ok) {
+          this.safeLog('info', `Successfully ran ${verb} on maintenance window ${maintenanceID}`);
+          resolve(response);
+        } else {
+          reject(new Error(response.msg || `Failed to ${verb} maintenance window ${maintenanceID}`));
+        }
+      });
+    });
+  }
+
+  /**
+   * Emit a read event and wait for its acknowledgement, bounded by the same timeout as
+   * fetchMonitor() — a disconnect between emit and ack leaves a callback that never fires.
+   */
+  private emitWithTimeout<T extends object>(event: string, args: unknown[], what: string): Promise<ApiResponse & T> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      let settled = false;
+      const timer = setTimeout(() => {
+        settled = true;
+        reject(new Error(`Timed out after ${FETCH_MONITOR_TIMEOUT_MS}ms waiting for the server to return ${what}`));
+      }, FETCH_MONITOR_TIMEOUT_MS);
+
+      this.socket.emit(event, ...args, (response: ApiResponse & T) => {
+        if (settled) return;
+        clearTimeout(timer);
+        if (response && response.ok) {
+          resolve(response);
+        } else {
+          reject(new Error((response && response.msg) || `Failed to fetch ${what}`));
+        }
+      });
+    });
+  }
+
   // ─── Status page operations ─────────────────────────────────────────────────
 
   /**
