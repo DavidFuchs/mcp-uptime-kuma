@@ -19,6 +19,7 @@ export const MaintenanceSchema = z.object({
   weekdays: z.array(z.number()).optional().describe('Days of week (0=Sunday, 6=Saturday)'),
   daysOfMonth: z.array(z.number()).optional().describe('Days of month (1-31)'),
   intervalDay: z.number().nullable().optional().describe('Interval in days for recurring-interval strategy'),
+  monitorIDs: z.array(z.number()).optional().describe('IDs of the monitors this window suppresses'),
 }).passthrough();
 
 export type Maintenance = z.infer<typeof MaintenanceSchema>;
