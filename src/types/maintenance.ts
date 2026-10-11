@@ -7,7 +7,7 @@ export const MaintenanceSchema = z.object({
   id: z.number().optional().describe('Maintenance ID (assigned by server)'),
   title: z.string().describe('Title of the maintenance window'),
   description: z.string().optional().describe('Description of the maintenance'),
-  strategy: z.enum(['single', 'recurring-interval', 'recurring-weekday', 'recurring-day-of-month', 'manual']).optional()
+  strategy: z.enum(['single', 'recurring-interval', 'recurring-weekday', 'recurring-day-of-month', 'cron', 'manual']).optional()
     .describe('Scheduling strategy'),
   active: z.boolean().optional().describe('Whether the maintenance window is active'),
   timezone: z.string().optional().describe('Timezone for the maintenance window'),
@@ -19,6 +19,7 @@ export const MaintenanceSchema = z.object({
   weekdays: z.array(z.number()).optional().describe('Days of week (0=Sunday, 6=Saturday)'),
   daysOfMonth: z.array(z.number()).optional().describe('Days of month (1-31)'),
   intervalDay: z.number().nullable().optional().describe('Interval in days for recurring-interval strategy'),
+  monitorIDs: z.array(z.number()).optional().describe('IDs of the monitors this window suppresses'),
 }).passthrough();
 
 export type Maintenance = z.infer<typeof MaintenanceSchema>;

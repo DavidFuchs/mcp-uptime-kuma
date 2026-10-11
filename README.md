@@ -134,8 +134,12 @@ See [Authentication Methods](#authentication-methods) for JWT token and anonymou
 
 | Tool | Purpose |
 |------|---------|
-| `getMaintenanceWindows` | List all scheduled maintenance windows. |
-| `createMaintenance` | Schedule a new maintenance window. |
+| `getMaintenanceWindows` | List all maintenance windows, with the monitors each one covers. |
+| `createMaintenance` | Schedule a new maintenance window and attach the monitors it suppresses. |
+| `updateMaintenance` | Change a maintenance window's schedule, details, or monitor list. |
+| `pauseMaintenance` | Switch a maintenance window off (ends a manual window). |
+| `resumeMaintenance` | Switch a paused maintenance window back on (starts a manual window). |
+| `deleteMaintenance` | Permanently delete a maintenance window. |
 
 ### Status Pages & Settings
 

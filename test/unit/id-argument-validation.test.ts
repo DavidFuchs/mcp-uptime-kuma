@@ -124,7 +124,9 @@ describe('required ID arguments (#65)', () => {
         const missingIssue = missing.success
           ? undefined
           : missing.error.issues.find((i) => i.path[0] === field);
-        if (missingIssue && /nan/i.test(JSON.stringify(missingIssue))) {
+        // Word-bounded: the complaint is "received nan", and a bare /nan/ also matches the
+        // description of every maintenanceID ("mainte-nan-ce").
+        if (missingIssue && /\bnan\b/i.test(JSON.stringify(missingIssue))) {
           offenders.push(`${toolName}.${field} reports NaN when omitted`);
         }
       }
