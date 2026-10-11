@@ -153,11 +153,29 @@ describe('maintenance tools', () => {
       expect(result.structuredContent).toMatchObject({ maintenanceID: 4 });
     });
 
+    it('sends cron and durationMinutes for a cron window', async () => {
+      fetchMaintenance.mockResolvedValue({ id: 4, title: 'Nightly', strategy: 'cron', active: true, cron: '30 3 * * *', durationMinutes: 45 } as never);
+      const { client } = await connectServer();
+
+      const result = await client.callTool({
+        name: 'createMaintenance',
+        arguments: { title: 'Nightly', strategy: 'cron', cron: '30 3 * * *', durationMinutes: 45 },
+      }) as CallToolResult;
+
+      expect(result.isError).toBeFalsy();
+      expect(createMaintenance).toHaveBeenCalledWith(expect.objectContaining({
+        strategy: 'cron',
+        cron: '30 3 * * *',
+        durationMinutes: 45,
+      }));
+    });
+
     it.each([
       [{ title: 'x', strategy: 'single' }, /single maintenance window needs dateRange/],
       [{ title: 'x', strategy: 'recurring-weekday', weekdays: [1] }, /needs timeRange/],
       [{ title: 'x', strategy: 'recurring-weekday', timeRange: [{ hours: 1, minutes: 0 }, { hours: 2, minutes: 0 }] }, /needs at least one entry in weekdays/],
       [{ title: 'x', strategy: 'recurring-interval', timeRange: [{ hours: 1, minutes: 0 }, { hours: 2, minutes: 0 }] }, /needs intervalDay/],
+      [{ title: 'x', strategy: 'cron', durationMinutes: 60 }, /cron maintenance window needs cron and durationMinutes/],
     ])('refuses an incomplete schedule before calling Uptime Kuma: %j', async (args, message) => {
       const { client } = await connectServer();
 
@@ -196,6 +214,28 @@ describe('maintenance tools', () => {
         timezoneOption: null,
       });
       expect(setMonitorMaintenance).not.toHaveBeenCalled();
+    });
+
+    it('keeps the cron expression and duration of a cron window', async () => {
+      // jsonToBean reads both for a cron window; leaving them out made every edit fail.
+      const cronWindow = { ...STORED_WINDOW, strategy: 'cron', cron: '30 3 * * *', durationMinutes: 45, weekdays: [] };
+      fetchMaintenance
+        .mockResolvedValueOnce({ ...cronWindow } as never)
+        .mockResolvedValueOnce({ ...cronWindow, title: 'Renamed' } as never);
+      const { client } = await connectServer();
+
+      const result = await client.callTool({
+        name: 'updateMaintenance',
+        arguments: { maintenanceID: 4, title: 'Renamed' },
+      }) as CallToolResult;
+
+      expect(result.isError).toBeFalsy();
+      expect(editMaintenance.mock.calls[0][0]).toMatchObject({
+        title: 'Renamed',
+        strategy: 'cron',
+        cron: '30 3 * * *',
+        durationMinutes: 45,
+      });
     });
 
     it('fails the call when a field is acknowledged but not stored', async () => {

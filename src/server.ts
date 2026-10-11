@@ -1849,7 +1849,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
 
   // ─── Maintenance tools ────────────────────────────────────────────────────
 
-  const MAINTENANCE_STRATEGIES = ['single', 'recurring-interval', 'recurring-weekday', 'recurring-day-of-month', 'manual'] as const;
+  const MAINTENANCE_STRATEGIES = ['single', 'recurring-interval', 'recurring-weekday', 'recurring-day-of-month', 'cron', 'manual'] as const;
 
   // The schedule fields shared by createMaintenance and updateMaintenance. Each tool applies
   // its own optionality: create requires title and strategy, update requires neither.
@@ -1865,6 +1865,10 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       .describe('Days of month (1-31) for recurring-day-of-month strategy'),
     intervalDay: numeric(z.number().int().positive()).optional()
       .describe('Interval in days for recurring-interval strategy'),
+    cron: z.string().optional()
+      .describe('Cron expression for when the window starts, e.g. "30 3 * * *" (03:30 daily), for the cron strategy'),
+    durationMinutes: numeric(z.number().int().positive()).optional()
+      .describe('How long each window lasts, in minutes, for the cron strategy'),
     monitorIDs: z.array(numeric(z.number().int().nonnegative())).optional()
       .describe('IDs of the monitors this window suppresses. A window with no monitors suppresses nothing. On update this REPLACES the current list; pass [] to detach all.'),
   };
@@ -1902,6 +1906,9 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     if (strategy === 'recurring-interval' && !fields.intervalDay) {
       throw new Error('A recurring-interval maintenance window needs intervalDay.');
     }
+    if (strategy === 'cron' && !(fields.cron && fields.durationMinutes)) {
+      throw new Error('A cron maintenance window needs cron and durationMinutes.');
+    }
 
     const out: Record<string, unknown> = {
       title: fields.title,
@@ -1915,6 +1922,12 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       timezoneOption: fields.timezone ?? null,
     };
     if (timeRange) out.timeRange = timeRange;
+    // jsonToBean reads these only for the cron strategy, and then unconditionally: a missing
+    // cron fails validation and a missing durationMinutes stores a NaN duration.
+    if (strategy === 'cron') {
+      out.cron = fields.cron;
+      out.durationMinutes = fields.durationMinutes;
+    }
     if (fields.id !== undefined) out.id = fields.id;
     return out;
   };
@@ -1964,6 +1977,10 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       }
       if ('weekdays' in requested) check('weekdays', requested.weekdays, fresh.weekdays);
       if ('daysOfMonth' in requested) check('daysOfMonth', requested.daysOfMonth, fresh.daysOfMonth);
+    }
+    if (fresh.strategy === 'cron') {
+      if ('cron' in requested) check('cron', requested.cron, fresh.cron);
+      if ('durationMinutes' in requested) check('durationMinutes', requested.durationMinutes, fresh.durationMinutes);
     }
 
     if (mismatches.length === 0) return null;
@@ -2065,7 +2082,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       inputSchema: {
         title: z.string().describe('Title of the maintenance window'),
         strategy: z.enum(MAINTENANCE_STRATEGIES)
-          .describe('Scheduling strategy: single=one-time, recurring-interval=every N days, recurring-weekday=specific weekdays, recurring-day-of-month=specific dates, manual=on whenever active'),
+          .describe('Scheduling strategy: single=one-time, recurring-interval=every N days, recurring-weekday=specific weekdays, recurring-day-of-month=specific dates, cron=starts on a cron expression and lasts durationMinutes, manual=on whenever active'),
         active: z.boolean().optional().describe('Whether the window is active (default: true). For a manual window, active means in maintenance right now.'),
         ...maintenanceScheduleFields,
       },
@@ -2166,6 +2183,8 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
             timeRange: existing.timeRange,
             weekdays: existing.weekdays,
             daysOfMonth: existing.daysOfMonth,
+            cron: existing.cron,
+            durationMinutes: existing.durationMinutes,
             timezone: existing.timezoneOption ?? undefined,
           };
           const response = await client.editMaintenance(toKumaMaintenance({ ...current, ...defined }));

@@ -1,6 +1,7 @@
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { TestFn, extractText, extractID } from './helpers.js';
+import { UptimeKumaClient } from '../../src/uptime-kuma-client.js';
 
 /**
  * Integration tests for maintenance window operations.
@@ -236,6 +237,73 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
           await client.callTool({ name: 'deleteMonitor', arguments: { monitorID } });
         }
       }
+    },
+  },
+  {
+    name: 'updateMaintenance keeps the schedule of a cron window',
+    fn: async ({ client, config }) => {
+      // createMaintenance cannot make a cron window, so create one the way Kuma's own UI does.
+      const kuma = new UptimeKumaClient(config.url);
+      await kuma.connect();
+      let maintenanceID: number | undefined;
+      try {
+        await kuma.login(config.username, config.password, undefined, config.jwtToken);
+        const created = await kuma.createMaintenance({
+          title: 'Integration Test - Cron',
+          description: '',
+          strategy: 'cron',
+          active: true,
+          intervalDay: 1,
+          dateRange: [],
+          timeRange: [{ hours: 2, minutes: 0 }, { hours: 3, minutes: 0 }],
+          weekdays: [],
+          daysOfMonth: [],
+          cron: '30 3 * * *',
+          durationMinutes: 45,
+          timezoneOption: null,
+        });
+        maintenanceID = created.maintenanceID!;
+
+        // A cron window used to fail getMaintenanceWindows' output schema, breaking the listing.
+        const listed = await findWindow(client, maintenanceID);
+        if (listed.strategy !== 'cron') throw new Error(`Listed with strategy ${listed.strategy}`);
+
+        const result = await client.callTool({
+          name: 'updateMaintenance',
+          arguments: { maintenanceID, title: 'Integration Test - Cron (edited)' },
+        }) as CallToolResult;
+        extractText(result, 'updateMaintenance');
+
+        const stored = await kuma.fetchMaintenance(maintenanceID);
+        if (stored.title !== 'Integration Test - Cron (edited)') throw new Error(`Title not updated: ${stored.title}`);
+        if (stored.strategy !== 'cron') throw new Error(`Strategy changed: ${stored.strategy}`);
+        if (stored.cron !== '30 3 * * *') throw new Error(`cron not kept: ${JSON.stringify(stored.cron)}`);
+        if (stored.durationMinutes !== 45) throw new Error(`durationMinutes not kept: ${JSON.stringify(stored.durationMinutes)}`);
+        console.log('  ✓ updateMaintenance on a cron window keeps cron and durationMinutes');
+      } finally {
+        if (maintenanceID !== undefined) await kuma.deleteMaintenance(maintenanceID);
+        kuma.disconnect();
+      }
+    },
+  },
+  {
+    name: 'createMaintenance accepts the cron strategy',
+    fn: async ({ client }) => {
+      const result = await client.callTool({
+        name: 'createMaintenance',
+        arguments: { title: 'Integration Test - Cron Create', strategy: 'cron', cron: '30 3 * * *', durationMinutes: 45 },
+      }) as CallToolResult;
+      const maintenanceID = extractID(result, 'createMaintenance', 'maintenanceID');
+      try {
+        extractText(result, 'createMaintenance');
+        const found = await findWindow(client, maintenanceID);
+        if (found.cron !== '30 3 * * *' || found.durationMinutes !== 45) {
+          throw new Error(`Schedule not stored: cron ${JSON.stringify(found.cron)}, durationMinutes ${JSON.stringify(found.durationMinutes)}`);
+        }
+      } finally {
+        await deleteWindow(client, maintenanceID);
+      }
+      console.log('  ✓ createMaintenance with strategy cron');
     },
   },
   {
