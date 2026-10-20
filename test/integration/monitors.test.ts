@@ -305,6 +305,97 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
     },
   },
   {
+    name: '#106: database monitors are configurable and keep their credentials',
+    fn: async ({ client }) => {
+      const connectionString = 'postgres://kuma:integration-pw@db.invalid:5432/app';
+      const createResult = await client.callTool({
+        name: 'createMonitor',
+        arguments: {
+          name: 'Integration Test - Issue 106 postgres',
+          type: 'postgres',
+          interval: 300,
+          active: false,
+          databaseConnectionString: connectionString,
+          databaseQuery: 'SELECT 1',
+        },
+      }) as CallToolResult;
+      const monitorID = extractID(createResult, 'createMonitor', 'monitorID');
+
+      const read = async (includeSecrets: boolean) => JSON.parse(extractText(
+        await client.callTool({
+          name: 'getMonitor',
+          arguments: { monitorID, includeTypeSpecificFields: true, includeSecrets },
+        }) as CallToolResult,
+        'getMonitor'
+      ));
+
+      try {
+        const m = await read(true);
+        if (m.databaseConnectionString !== connectionString) throw new Error('databaseConnectionString not persisted');
+        if (m.databaseQuery !== 'SELECT 1') throw new Error(`databaseQuery not persisted: ${JSON.stringify(m.databaseQuery)}`);
+        if ((await read(false)).databaseConnectionString !== '***') throw new Error('databaseConnectionString was not redacted');
+
+        // The read-edit-write loop: "***" comes back and must not overwrite the credential.
+        await client.callTool({
+          name: 'updateMonitor',
+          arguments: { monitorID, databaseConnectionString: '***', database_query: 'SELECT 2' },
+        });
+        const m2 = await read(true);
+        if (m2.databaseConnectionString !== connectionString) throw new Error('"***" overwrote databaseConnectionString');
+        if (m2.databaseQuery !== 'SELECT 2') throw new Error('database_query alias was not normalised onto databaseQuery');
+        console.log('  ✓ #106: connection string and query persist, redact, and survive a "***" round trip');
+      } finally {
+        await client.callTool({ name: 'deleteMonitor', arguments: { monitorID } });
+      }
+    },
+  },
+  {
+    name: '#106: mysql databasePassword lands in radiusPassword',
+    fn: async ({ client }) => {
+      // Uptime Kuma's mysql monitor reads its password from radiusPassword. This proves the
+      // server actually stores that column for a mysql monitor, which no unit test can.
+      const createResult = await client.callTool({
+        name: 'createMonitor',
+        arguments: {
+          name: 'Integration Test - Issue 106 mysql',
+          type: 'mysql',
+          interval: 300,
+          active: false,
+          databaseConnectionString: 'mysql://kuma@db.invalid:3306/app',
+          databasePassword: 'integration-mysql-pw',
+        },
+      }) as CallToolResult;
+      const monitorID = extractID(createResult, 'createMonitor', 'monitorID');
+
+      const read = async (includeSecrets: boolean) => JSON.parse(extractText(
+        await client.callTool({
+          name: 'getMonitor',
+          arguments: { monitorID, includeTypeSpecificFields: true, includeSecrets },
+        }) as CallToolResult,
+        'getMonitor'
+      ));
+
+      try {
+        if ((await read(true)).radiusPassword !== 'integration-mysql-pw') {
+          throw new Error('databasePassword was not stored as radiusPassword');
+        }
+        if ((await read(false)).radiusPassword !== '***') throw new Error('radiusPassword was not redacted');
+
+        // "***" back through the alias must keep the stored password, not overwrite it.
+        await client.callTool({ name: 'updateMonitor', arguments: { monitorID, databasePassword: '***' } });
+        if ((await read(true)).radiusPassword !== 'integration-mysql-pw') {
+          throw new Error('"***" overwrote radiusPassword');
+        }
+
+        await client.callTool({ name: 'updateMonitor', arguments: { monitorID, databasePassword: 'rotated-pw' } });
+        if ((await read(true)).radiusPassword !== 'rotated-pw') throw new Error('databasePassword update did not persist');
+        console.log('  ✓ #106: mysql password stored as radiusPassword, redacted, kept on "***", updatable');
+      } finally {
+        await client.callTool({ name: 'deleteMonitor', arguments: { monitorID } });
+      }
+    },
+  },
+  {
     name: '#60: push monitors are created with a usable token and ping URL',
     fn: async ({ client }) => {
       const createResult = await client.callTool({
