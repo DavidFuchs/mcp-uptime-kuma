@@ -873,6 +873,29 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     json_path_operator: 'jsonPathOperator',
     expected_value: 'expectedValue',
     push_token: 'pushToken',
+    database_connection_string: 'databaseConnectionString',
+    database_query: 'databaseQuery',
+    // Uptime Kuma's mysql monitor reads its password from the RADIUS column
+    // (server/monitor-types/mysql.js: `monitor.radiusPassword`); nobody would guess that name.
+    databasePassword: 'radiusPassword',
+  };
+
+  // Types whose check is a connection to databaseConnectionString (#106). Without one, Uptime
+  // Kuma creates the monitor and then fails every check against an empty connection string.
+  const DATABASE_MONITOR_TYPES = new Set(['mysql', 'postgres', 'mongodb', 'redis', 'sqlserver']);
+
+  // A mongodb monitor's databaseQuery is a JSON command that Uptime Kuma JSON.parses on every
+  // check, so a malformed one is accepted on save and then fails every beat.
+  const assertMongoQueryIsJson = (type: unknown, query: unknown): void => {
+    if (type !== 'mongodb' || query === undefined || query === null || query === '') return;
+    try {
+      const parsed = JSON.parse(String(query));
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('not an object');
+    } catch {
+      throw new Error(
+        'A mongodb databaseQuery must be a JSON command object, e.g. {"ping": 1} — Uptime Kuma JSON.parses it on every check.'
+      );
+    }
   };
 
   const normaliseMonitorAliases = (fields: Record<string, unknown>): Record<string, unknown> => {
@@ -962,6 +985,13 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       secret: true,
       hint: 'See #60 — a push monitor with no token has no ping URL and can never report, while looking identical to one merely awaiting its first beat.',
     },
+    databaseConnectionString: {
+      read: asText,
+      secret: true,
+      hint: 'See #106 — a database monitor with no connection string fails every check.',
+    },
+    databaseQuery: { read: asText, hint: 'See #106.' },
+    radiusPassword: { read: asText, secret: true, hint: 'See #106 — the mysql monitor reads its password from this field.' },
   };
 
   /**
@@ -1031,7 +1061,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     'createMonitor',
     {
       title: 'Create Monitor',
-      description: 'Creates a new monitor in Uptime Kuma. Requires at minimum a name and type. Use listMonitorTypes to see supported types. For HTTP monitors include url; for TCP/port monitors include hostname and port; for json-query include url, jsonPath, jsonPathOperator and expectedValue. A push monitor is given a generated push token (Uptime Kuma only generates one in its own web UI) and the resulting ping URL is returned. timeout defaults to 0.8 x interval seconds for polled types.',
+      description: 'Creates a new monitor in Uptime Kuma. Requires at minimum a name and type. Use listMonitorTypes to see supported types. For HTTP monitors include url; for TCP/port monitors include hostname and port; for json-query include url, jsonPath, jsonPathOperator and expectedValue; for database types (mysql, postgres, mongodb, redis, sqlserver) include databaseConnectionString. A push monitor is given a generated push token (Uptime Kuma only generates one in its own web UI) and the resulting ping URL is returned. timeout defaults to 0.8 x interval seconds for polled types.',
       inputSchema: {
         name: z.string().describe('Display name for the monitor'),
         type: z.string().describe('Monitor type (e.g. http, port, ping, dns, push, keyword). Use listMonitorTypes for all options.'),
@@ -1073,6 +1103,12 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         docker_host: numeric(z.number()).optional().describe('Docker host ID (required for docker type). Use listDockerHosts to find available IDs.'),
         dns_resolve_server: z.string().optional().describe('DNS server to use for resolution (required for dns type, default: 1.1.1.1)'),
         dns_resolve_type: z.enum(['A', 'AAAA', 'CNAME', 'MX', 'NS', 'PTR', 'SOA', 'SRV', 'TXT', 'CAA']).optional().describe('DNS record type to query (required for dns type, default: A)'),
+        databaseConnectionString: z.string().optional().describe('Connection string for mysql, postgres, mongodb, redis and sqlserver monitors (required for those types). A credential: read tools return it as "***" unless includeSecrets is set.'),
+        database_connection_string: z.string().optional().describe('Alias for databaseConnectionString (the database column name). Prefer databaseConnectionString.'),
+        databaseQuery: z.string().optional().describe('Query for database monitors. SQL for mysql, postgres and sqlserver (default: SELECT 1); a JSON command object for mongodb (default: {"ping": 1}).'),
+        database_query: z.string().optional().describe('Alias for databaseQuery (the database column name). Prefer databaseQuery.'),
+        databasePassword: z.string().optional().describe('Password for mysql monitors, if not inline in the connection string. Stored by Uptime Kuma as radiusPassword. A credential: read tools return it as "***".'),
+        radiusPassword: z.string().optional().describe('The column databasePassword is stored in; also the RADIUS password. Prefer databasePassword for mysql.'),
       },
       outputSchema: {
         ok: z.boolean(),
@@ -1122,6 +1158,13 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
             );
           }
         }
+
+        if (DATABASE_MONITOR_TYPES.has(requested.type as string) && !requested.databaseConnectionString) {
+          throw new Error(
+            `A ${requested.type} monitor needs databaseConnectionString. Without it Uptime Kuma creates the monitor and then fails every check.`
+          );
+        }
+        assertMongoQueryIsJson(requested.type, requested.databaseQuery);
 
         // Uptime Kuma generates push tokens in the browser only (src/pages/EditMonitor.vue,
         // genSecret(32)); the server has no such code path. Without this an API-created push
@@ -1252,6 +1295,12 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         docker_host: numeric(z.number()).optional().describe('Docker host ID (required for docker type). Use listDockerHosts to find available IDs.'),
         dns_resolve_server: z.string().optional().describe('DNS server to use for resolution (for dns type)'),
         dns_resolve_type: z.enum(['A', 'AAAA', 'CNAME', 'MX', 'NS', 'PTR', 'SOA', 'SRV', 'TXT', 'CAA']).optional().describe('DNS record type to query (for dns type)'),
+        databaseConnectionString: z.string().optional().describe('Connection string for mysql, postgres, mongodb, redis and sqlserver monitors. A credential: read tools return "***", and sending "***" back keeps the stored value.'),
+        database_connection_string: z.string().optional().describe('Alias for databaseConnectionString (the database column name). Prefer databaseConnectionString.'),
+        databaseQuery: z.string().optional().describe('Query for database monitors. SQL for mysql, postgres and sqlserver; a JSON command object for mongodb.'),
+        database_query: z.string().optional().describe('Alias for databaseQuery (the database column name). Prefer databaseQuery.'),
+        databasePassword: z.string().optional().describe('Password for mysql monitors, stored by Uptime Kuma as radiusPassword. Sending "***" back keeps the stored value.'),
+        radiusPassword: z.string().optional().describe('The column databasePassword is stored in; also the RADIUS password. Prefer databasePassword for mysql.'),
       },
       outputSchema: {
         ok: z.boolean(),
@@ -1282,6 +1331,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
           }
         }
         normaliseMonitorAliases(defined);
+        assertMongoQueryIsJson(defined.type ?? existing.type, defined.databaseQuery);
 
         // Issue #59: a caller that read this monitor back holds "***" where a credential
         // was, and the natural edit-one-field-and-write-it-back loop would then persist
