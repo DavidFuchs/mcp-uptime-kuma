@@ -192,6 +192,61 @@ describe('post-write read-back verification', () => {
     expect(result.isError).toBe(true);
     expect(JSON.stringify(result.content)).toContain('created');
   });
+
+  describe('changing the monitor type', () => {
+    const JSON_QUERY = {
+      type: 'json-query',
+      url: 'https://example.com/health',
+      jsonPath: 'status',
+      jsonPathOperator: '==',
+      expectedValue: 'healthy',
+    };
+
+    it('sends the new type to Uptime Kuma instead of dropping it', async () => {
+      fetchMonitor.mockResolvedValue({ ...EXISTING_MONITOR, ...JSON_QUERY } as never);
+      const { client } = await connectServer();
+
+      const result = await client.callTool({
+        name: 'updateMonitor',
+        arguments: { monitorID: 7, ...JSON_QUERY },
+      });
+
+      expect(result.isError).toBeFalsy();
+      const sent = vi.mocked(UptimeKumaClient.prototype.updateMonitor).mock.calls[0][0];
+      expect(sent).toMatchObject({ id: 7, ...JSON_QUERY });
+    });
+
+    it('fails the call when the type change is acknowledged but not stored', async () => {
+      fetchMonitor.mockResolvedValue({ ...EXISTING_MONITOR, ...JSON_QUERY, type: 'http' } as never);
+      const { client } = await connectServer();
+
+      const result = await client.callTool({
+        name: 'updateMonitor',
+        arguments: { monitorID: 7, ...JSON_QUERY },
+      });
+
+      expect(result.isError).toBe(true);
+      const text = JSON.stringify(result.content);
+      expect(text).toContain('type');
+      expect(text).toContain('did NOT persist');
+    });
+
+    it('refuses to convert a group, which would detach its children', async () => {
+      vi.mocked(UptimeKumaClient.prototype.getMonitor).mockReturnValue(
+        { ...EXISTING_MONITOR, type: 'group' } as never
+      );
+      const { client } = await connectServer();
+
+      const result = await client.callTool({
+        name: 'updateMonitor',
+        arguments: { monitorID: 7, type: 'http' },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(JSON.stringify(result.content)).toContain('child monitors');
+      expect(UptimeKumaClient.prototype.updateMonitor).not.toHaveBeenCalled();
+    });
+  });
 });
 
 /**
