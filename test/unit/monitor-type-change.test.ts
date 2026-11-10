@@ -13,7 +13,7 @@ import { UptimeKumaClient } from '../../src/uptime-kuma-client.js';
  * monitor that can never report.
  */
 
-process.setMaxListeners(50);
+process.setMaxListeners(100);
 
 const HTTP_MONITOR = {
   id: 7,
