@@ -967,8 +967,12 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     ...Object.fromEntries([...DATABASE_MONITOR_TYPES].map((t) => [t, ['databaseConnectionString']])),
   };
 
-  const pushURLFor = (token: unknown): string =>
-    `${config.url.replace(/\/+$/, '')}/api/push/${token}?status=up&msg=OK&ping=`;
+  const pushURLFor = (token: unknown): string => {
+    // A loop, not /\/+$/: that pattern backtracks quadratically on a long run of slashes.
+    let end = config.url.length;
+    while (end > 0 && config.url[end - 1] === '/') end--;
+    return `${config.url.slice(0, end)}/api/push/${token}?status=up&msg=OK&ping=`;
+  };
 
   /**
    * What a monitor must satisfy to be of its type, for a create and for a type change alike.

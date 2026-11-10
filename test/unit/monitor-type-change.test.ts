@@ -37,9 +37,9 @@ const PING_MONITOR = {
   hostname: 'app.example.com',
 };
 
-async function connectServer() {
+async function connectServer(url = 'http://localhost:3001') {
   const { server } = await createServer({
-    url: 'http://localhost:3001',
+    url,
     username: undefined,
     password: undefined,
     token: undefined,
@@ -205,6 +205,15 @@ describe('monitor type rules shared by createMonitor and updateMonitor', () => {
       const structured = result.structuredContent as Record<string, unknown>;
       expect(structured.pushToken).toBe(token);
       expect(structured.pushURL).toBe(`http://localhost:3001/api/push/${token}?status=up&msg=OK&ping=`);
+    });
+
+    it('builds the ping URL without doubling slashes when the configured URL ends in some', async () => {
+      const { client } = await connectServer('http://localhost:3001///');
+
+      const result = await client.callTool({ name: 'updateMonitor', arguments: { monitorID: 7, type: 'push' } });
+
+      const { pushToken, pushURL } = result.structuredContent as Record<string, string>;
+      expect(pushURL).toBe(`http://localhost:3001/api/push/${pushToken}?status=up&msg=OK&ping=`);
     });
 
     it('keeps a push token the monitor already stores', async () => {
