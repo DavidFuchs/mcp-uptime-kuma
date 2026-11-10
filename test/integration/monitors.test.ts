@@ -557,6 +557,35 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
     },
   },
   {
+    name: '#110: createMonitor sets the expiry notification toggles',
+    fn: async ({ client }) => {
+      const monitorID = extractID(await client.callTool({
+        name: 'createMonitor',
+        arguments: {
+          name: 'Integration Test - Issue 110 create toggles',
+          type: 'http',
+          url: 'https://example.com',
+          expiryNotification: true,
+          domainExpiryNotification: true,
+          active: false,
+        },
+      }) as CallToolResult, 'createMonitor', 'monitorID');
+
+      try {
+        const m = JSON.parse(extractText(
+          await client.callTool({ name: 'getMonitor', arguments: { monitorID, includeTypeSpecificFields: true } }) as CallToolResult,
+          'getMonitor'
+        ));
+        if (m.expiryNotification !== true || m.domainExpiryNotification !== true) {
+          throw new Error(`expiry toggles not persisted on create: ${JSON.stringify({ expiryNotification: m.expiryNotification, domainExpiryNotification: m.domainExpiryNotification })}`);
+        }
+        console.log('  ✓ #110: expiry toggles persist on create');
+      } finally {
+        await client.callTool({ name: 'deleteMonitor', arguments: { monitorID } });
+      }
+    },
+  },
+  {
     name: '#110: converting a group is refused and its children stay attached',
     fn: async ({ client }) => {
       const groupID = extractID(await client.callTool({
