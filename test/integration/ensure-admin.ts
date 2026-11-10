@@ -87,7 +87,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   ensureAdmin(config).then(
     (result) => {
       console.log(result === 'created'
-        ? `✅ Created admin account "${config.username}" on the fresh Uptime Kuma instance`
+        ? '✅ Created the admin account from .env.test on the fresh Uptime Kuma instance'
         : '✅ Credentials in .env.test work');
       process.exit(0);
     },
