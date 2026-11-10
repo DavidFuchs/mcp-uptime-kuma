@@ -100,7 +100,7 @@ See [Authentication Methods](#authentication-methods) for JWT token and anonymou
 | `listMonitors` | Get the full list of all monitors with configurations. Supports filtering. |
 | `listMonitorTypes` | Get all available monitor types supported by Uptime Kuma. |
 | `getMonitor` | Get detailed configuration for a specific monitor by ID. |
-| `createMonitor` | Create a new monitor (requires name and type at minimum). |
+| `createMonitor` | Create a new monitor (requires name, type, and whatever that type checks, e.g. `url` for http or `hostname` for ping). |
 | `updateMonitor` | Update an existing monitor's configuration, including changing its type in place (keeps the ID and history). |
 | `deleteMonitor` | Permanently delete a monitor and all its heartbeat history. |
 | `pauseMonitor` | Pause a monitor to stop performing checks. |
@@ -365,6 +365,11 @@ matters most for `updateNotification`: Uptime Kuma replaces the notification row
 merging it, so without this a read-edit-write round trip would replace a working password
 with three asterisks. If there is no stored value to restore, the call fails rather than
 writing a credential that looks set and cannot work.
+
+**Push tokens are returned by the call that sets them up.** `createMonitor` returns the
+token and ping URL of a new push monitor, and `updateMonitor` does the same when it changes
+a monitor's type to push, because the sender cannot be wired up without them. Later reads
+redact the token like any other secret.
 
 `updateDockerHost` gets the same protection for the credentials embedded in a `dockerDaemon`
 URL: a `http://***:***@host:2375` read back from `listDockerHosts` has its userinfo restored
