@@ -5,10 +5,9 @@ There are two kinds of tests:
 | Kind | Where | Needs | Run with |
 |---|---|---|---|
 | Unit | `test/unit/` | Nothing | `npm test` |
-| Integration | `test/integration/` | Docker and a test Uptime Kuma account | `npm run test:integration` |
+| Integration | `test/integration/` | Docker | `npm run test:integration` |
 
-Pull requests run the unit tests in CI. The integration tests are run by hand, because the
-test instance needs an admin account created in its web UI.
+Pull requests run the unit tests and the short integration suites in CI.
 
 ## Unit tests
 
@@ -28,23 +27,29 @@ and call its tools against a real Uptime Kuma instance.
 **The tests create, edit and delete monitors, tags, maintenance windows and more. Only ever
 point them at a dedicated test instance.**
 
-### First-time setup
+### Running them
 
-1. Copy the configuration template:
-   ```bash
-   cp test/integration/.env.test.example test/integration/.env.test
-   ```
-2. Start the runner:
-   ```bash
-   npm run test:integration
-   ```
-   It starts Uptime Kuma in Docker on port 3001 and then waits at a prompt.
-3. Open http://localhost:3001 and create the admin account.
-4. Put the same username and password in `test/integration/.env.test`.
-5. Press Enter at the prompt to run the tests.
+```bash
+npm run test:integration
+```
+
+The runner needs no input, so it can be run by a script, an agent or CI. It:
+
+1. Creates `test/integration/.env.test` from `.env.test.example` if there is none.
+2. Starts Uptime Kuma in Docker on port 3001.
+3. Checks that the credentials in `.env.test` can log in. On a fresh instance it first
+   creates the admin account from them.
+4. Runs the tests and stops the container.
 
 The admin account lives in a Docker volume that the runner leaves in place, so later runs
-only need Enter at the prompt.
+reuse it.
+
+To use your own username and password, edit `.env.test` before the first run. Uptime Kuma
+wants a password of at least 6 characters with both letters and numbers.
+
+If the instance already has an account that `.env.test` does not match, the runner says so.
+In a terminal it waits for you to fix the file and press Enter. Without a terminal it exits
+with an error.
 
 ### Short and long suites
 
@@ -102,7 +107,7 @@ pointed at your real instance by accident. To test against a different instance,
 file.
 
 `test/integration/verify-credentials.sh` checks that the credentials in `.env.test` can log
-in, without running any tests. Run it from `test/integration/`.
+in, without running any tests. On a fresh instance it creates the admin account from them.
 
 ### Adding tests
 
@@ -122,8 +127,8 @@ in, without running any tests. Run it from `test/integration/`.
 - Uptime Kuma can take 30 seconds or more to start.
 
 ### Authentication failures ("authInvalidToken")
-- Check that the credentials in `.env.test` match the admin account created at
-  http://localhost:3001.
+- Check that the credentials in `.env.test` match the admin account of the test instance.
+  If you no longer know them, start again from a clean instance (below).
 - The tests run the server with `MCP_TEST_MODE=1`, which stops it loading the root `.env`
   file.
 
@@ -132,7 +137,8 @@ in, without running any tests. Run it from `test/integration/`.
   `UPTIME_KUMA_URL` in `.env.test` to match.
 
 ### Starting again from a clean instance
-- Remove the container and its data volume, then repeat the first-time setup:
+- Remove the container and its data volume. The next run creates the admin account again
+  from `.env.test`:
   ```bash
   docker-compose -f test/integration/docker-compose.test.yml down -v
   ```
