@@ -514,7 +514,7 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
       }) as CallToolResult, 'createMonitor', 'monitorID');
 
       const read = async () => JSON.parse(extractText(
-        await client.callTool({ name: 'getMonitor', arguments: { monitorID } }) as CallToolResult,
+        await client.callTool({ name: 'getMonitor', arguments: { monitorID, includeTypeSpecificFields: true } }) as CallToolResult,
         'getMonitor'
       ));
 
