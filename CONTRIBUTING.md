@@ -81,6 +81,14 @@ npm run inspector
 
 For HTTP transport testing, start the HTTP server first (`npm run dev:http`), then run `npm run inspector` and connect to `http://localhost:3000/mcp`.
 
+### Unit Tests
+
+```bash
+npm test
+```
+
+These need no Uptime Kuma instance, and they run in CI on every pull request.
+
 ### Integration Tests
 
 Run the short integration test suite (recommended):
@@ -96,18 +104,15 @@ to run real checks:
 npm run test:integration:long
 ```
 
-This uses the `run-tests.sh` script which automatically spins up an Uptime Kuma instance via Docker, runs the tests, and cleans up afterwards.
+Both use the `run-tests.sh` script, which starts an Uptime Kuma instance in Docker, runs the tests, and stops it afterwards. The first run asks you to create an admin account in the test instance and put its credentials in `test/integration/.env.test`.
 
-**Running tests against your own instance:**
-
-If you already have an Uptime Kuma instance running, you can run the tests directly:
+**Running tests against an instance that is already up:**
 
 ```bash
-export UPTIME_KUMA_URL=http://localhost:3001
-export UPTIME_KUMA_USERNAME=admin
-export UPTIME_KUMA_PASSWORD=your_password
 npm run test:integration:direct
 ```
+
+This skips Docker and runs the tests against the instance configured in `test/integration/.env.test`. That file overrides any `UPTIME_KUMA_*` variables in your shell. The tests create and delete monitors, so only point it at a test instance.
 
 See [test/TESTING.md](test/TESTING.md) for detailed testing documentation.
 
