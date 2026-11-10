@@ -943,6 +943,9 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
   const asNumber = (v: unknown): number | null =>
     v === null || v === undefined || v === '' ? null : Number(v);
 
+  // Uptime Kuma answers a boolean column as true/false from toJSON() and 0/1 from a raw row.
+  const asFlag = (v: unknown): number => (v ? 1 : 0);
+
   interface VerifiedField {
     read: (v: unknown) => string | number | null;
     equals?: (wanted: string | number | null, stored: string | number | null) => boolean;
@@ -992,6 +995,11 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     },
     databaseQuery: { read: asText, hint: 'See #106.' },
     radiusPassword: { read: asText, secret: true, hint: 'See #106 — the mysql monitor reads its password from this field.' },
+    expiryNotification: { read: asFlag, hint: 'See #110.' },
+    domainExpiryNotification: {
+      read: asFlag,
+      hint: 'See #110 — domain expiry monitoring needs Uptime Kuma 2.1 or later.',
+    },
   };
 
   /**
@@ -1098,6 +1106,8 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         ignoreTls: z.boolean().optional().describe('Ignore TLS/SSL errors'),
         maxredirects: numeric(z.number()).optional().describe('Max HTTP redirects (default: 10)'),
         upsideDown: z.boolean().optional().describe('Invert status — treat up as down'),
+        expiryNotification: z.boolean().optional().describe('Notify before the TLS certificate expires (HTTP-based types)'),
+        domainExpiryNotification: z.boolean().optional().describe('Notify before the domain registration expires. Needs Uptime Kuma 2.1 or later.'),
         parent: numeric(z.number()).nullable().optional().describe('Parent group monitor ID'),
         docker_container: z.string().optional().describe('Docker container name (required for docker type)'),
         docker_host: numeric(z.number()).optional().describe('Docker host ID (required for docker type). Use listDockerHosts to find available IDs.'),
@@ -1290,6 +1300,8 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         ignoreTls: z.boolean().optional().describe('Ignore TLS/SSL errors'),
         maxredirects: numeric(z.number()).optional().describe('Max HTTP redirects'),
         upsideDown: z.boolean().optional().describe('Invert status'),
+        expiryNotification: z.boolean().optional().describe('Notify before the TLS certificate expires (HTTP-based types)'),
+        domainExpiryNotification: z.boolean().optional().describe('Notify before the domain registration expires. Needs Uptime Kuma 2.1 or later.'),
         active: z.boolean().optional().describe('Whether the monitor is active'),
         docker_container: z.string().optional().describe('Docker container name (required for docker type)'),
         docker_host: numeric(z.number()).optional().describe('Docker host ID (required for docker type). Use listDockerHosts to find available IDs.'),
