@@ -16,6 +16,7 @@ import { statusPageTests } from './status-pages.test.js';
 import { strictSchemaTests } from './strict-schema.test.js';
 import { redactionTests } from './redaction.test.js';
 import { startupTests } from './startup.test.js';
+import { monitorHistoryTests } from './monitor-history.long.test.js';
 
 /**
  * Unified integration test runner.
@@ -23,13 +24,19 @@ import { startupTests } from './startup.test.js';
  * Runs all domain test suites against a live Uptime Kuma instance.
  * Requires .env.test to be configured with connection credentials.
  *
+ * The short suites run by default. The long suites wait for Uptime Kuma to run real checks,
+ * so they only run when asked for, after the short ones.
+ *
  * Usage:
- *   npx tsx test/integration/run-all.ts
+ *   npx tsx test/integration/run-all.ts                  (short suites)
+ *   npx tsx test/integration/run-all.ts --long           (short suites, then long suites)
  *   npx tsx test/integration/run-all.ts --suite monitors
- *   npx tsx test/integration/run-all.ts --suite tags --suite maintenance
+ *   npx tsx test/integration/run-all.ts --suite tags --suite monitor-history
  */
 
-const ALL_SUITES: Record<string, { name: string; tests: Array<{ name: string; fn: any }> }> = {
+type Suite = { name: string; tests: Array<{ name: string; fn: any }> };
+
+const SHORT_SUITES: Record<string, Suite> = {
   settings: { name: 'Settings & Discovery', tests: settingsTests },
   monitors: { name: 'Monitors', tests: monitorTests },
   heartbeats: { name: 'Heartbeats', tests: heartbeatTests },
@@ -42,6 +49,12 @@ const ALL_SUITES: Record<string, { name: string; tests: Array<{ name: string; fn
   redaction: { name: 'Credential Redaction', tests: redactionTests },
   startup: { name: 'Fresh Server Startup', tests: startupTests },
 };
+
+const LONG_SUITES: Record<string, Suite> = {
+  'monitor-history': { name: 'Monitor History (long)', tests: monitorHistoryTests },
+};
+
+const ALL_SUITES: Record<string, Suite> = { ...SHORT_SUITES, ...LONG_SUITES };
 
 async function main() {
   const config = loadTestConfig();
@@ -56,9 +69,10 @@ async function main() {
     }
   }
 
+  const defaultSuites = args.includes('--long') ? ALL_SUITES : SHORT_SUITES;
   const suitesToRun = selectedSuites.length > 0
     ? selectedSuites.filter(s => ALL_SUITES[s])
-    : Object.keys(ALL_SUITES);
+    : Object.keys(defaultSuites);
 
   if (selectedSuites.length > 0) {
     const invalid = selectedSuites.filter(s => !ALL_SUITES[s]);

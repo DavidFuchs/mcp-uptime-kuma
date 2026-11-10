@@ -1,162 +1,138 @@
-# Integration Testing for MCP Uptime Kuma
+# Testing MCP Uptime Kuma
 
-## Overview
+There are two kinds of tests:
 
-This integration test suite verifies that the MCP Uptime Kuma server works correctly with real MCP clients and a real Uptime Kuma instance.
+| Kind | Where | Needs | Run with |
+|---|---|---|---|
+| Unit | `test/unit/` | Nothing | `npm test` |
+| Integration | `test/integration/` | Docker and a test Uptime Kuma account | `npm run test:integration` |
 
-## Test Structure
+Pull requests run the unit tests in CI. The integration tests are run by hand, because the
+test instance needs an admin account created in its web UI.
 
-```
-test/integration/
-├── docker-compose.test.yml    # Test infrastructure (Uptime Kuma instance)
-├── integration.test.ts        # Basic integration tests (read-only)
-├── advanced.test.ts           # Advanced tests (pause/resume, filters)
-├── run-tests.sh              # Automated test runner
-├── .env.test.example         # Template for test configuration
-└── README.md                 # Documentation
-```
-
-## Quick Start
+## Unit tests
 
 ```bash
-# Make test runner executable
-chmod +x test/integration/run-tests.sh
-
-# Run all tests
-npm run test:integration
+npm test              # run once
+npm run test:watch    # re-run on change
 ```
 
-## What Gets Tested
+These use Vitest. Each test builds the MCP server in-process and replaces the Uptime Kuma
+client with mocks, so no Uptime Kuma instance is involved.
 
-### Basic Tests (`integration.test.ts`)
-- ✅ MCP server connection and authentication
-- ✅ Tool discovery (all expected tools present)
-- ✅ `getMonitorSummary` - Status overview
-- ✅ `listMonitors` - List all monitors
-- ✅ `getMonitor` - Get specific monitor
-- ✅ `getHeartbeats` - Get heartbeat history
-- ✅ `listHeartbeats` - Get heartbeats for all monitors
-- ✅ `getSettings` - Get server settings
+## Integration tests
 
-### Advanced Tests (`advanced.test.ts`)
-- ✅ `pauseMonitor` / `resumeMonitor` - State management
-- ✅ Filter by monitor type
-- ✅ Filter by tags
+These start the MCP server as a child process over stdio, the same way an MCP client does,
+and call its tools against a real Uptime Kuma instance.
 
-## Test Infrastructure
+**The tests create, edit and delete monitors, tags, maintenance windows and more. Only ever
+point them at a dedicated test instance.**
 
-The test suite uses Docker Compose to spin up a real Uptime Kuma instance:
-- Runs on port 3001 (to avoid conflicts)
-- Uses a separate data volume for isolation
-- Includes health checks
-- Automatically cleaned up after tests
+### First-time setup
 
-## Configuration
+1. Copy the configuration template:
+   ```bash
+   cp test/integration/.env.test.example test/integration/.env.test
+   ```
+2. Start the runner:
+   ```bash
+   npm run test:integration
+   ```
+   It starts Uptime Kuma in Docker on port 3001 and then waits at a prompt.
+3. Open http://localhost:3001 and create the admin account.
+4. Put the same username and password in `test/integration/.env.test`.
+5. Press Enter at the prompt to run the tests.
 
-Create `test/integration/.env.test`:
+The admin account lives in a Docker volume that the runner leaves in place, so later runs
+only need Enter at the prompt.
+
+### Short and long suites
+
 ```bash
-UPTIME_KUMA_URL=http://localhost:3001
-UPTIME_KUMA_USERNAME=admin
-UPTIME_KUMA_PASSWORD=your_test_password
+npm run test:integration         # short suites
+npm run test:integration:long    # short suites, then long suites
 ```
 
-## Running Tests
+The long suites hold the tests that wait for Uptime Kuma to run real checks, for example
+confirming that heartbeat history survives a monitor type change. The short suites never
+wait on a check.
 
-### Automated (Recommended)
+### Suites
+
+| Suite | File | Kind |
+|---|---|---|
+| `settings` | `settings.test.ts` | short |
+| `monitors` | `monitors.test.ts` | short |
+| `heartbeats` | `heartbeats.test.ts` | short |
+| `tags` | `tags.test.ts` | short |
+| `maintenance` | `maintenance.test.ts` | short |
+| `notifications` | `notifications.test.ts` | short |
+| `docker-hosts` | `docker-hosts.test.ts` | short |
+| `status-pages` | `status-pages.test.ts` | short |
+| `strict-schema` | `strict-schema.test.ts` | short |
+| `redaction` | `redaction.test.ts` | short |
+| `startup` | `startup.test.ts` | short |
+| `monitor-history` | `monitor-history.long.test.ts` | long |
+
+Run chosen suites by name, short or long:
+
 ```bash
-npm run test:integration
+npm run test:integration -- --suite monitors
+npm run test:integration -- --suite tags --suite monitor-history
 ```
 
-The script will:
-1. Start Uptime Kuma test instance
-2. Wait for it to be ready
-3. Prompt you to set up credentials
-4. Run all tests
-5. Clean up resources
+### Running against an instance that is already up
 
-### Manual
+`npm run test:integration` starts and stops the Docker container around every run. To skip
+that, start the instance yourself and run the tests directly:
+
 ```bash
-# Start test infrastructure
-cd test/integration
-docker-compose -f docker-compose.test.yml up -d
+docker-compose -f test/integration/docker-compose.test.yml up -d
 
-# Set up Uptime Kuma
-# 1. Open http://localhost:3001
-# 2. Create admin account
-# 3. Add monitors (optional, but recommended)
+npm run test:integration:direct                         # short suites
+npm run test:integration:direct -- --long               # short suites, then long suites
+npm run test:integration:direct -- --suite monitors
 
-# Set environment variables
-export UPTIME_KUMA_URL=http://localhost:3001
-export UPTIME_KUMA_USERNAME=admin
-export UPTIME_KUMA_PASSWORD=your_password
-
-# Run tests
-npx tsx test/integration/integration.test.ts
-npx tsx test/integration/advanced.test.ts
-
-# Clean up
-docker-compose -f docker-compose.test.yml down
+docker-compose -f test/integration/docker-compose.test.yml down
 ```
 
-## Best Practices
+The tests always read the URL and credentials from `test/integration/.env.test`. Values in
+that file override any `UPTIME_KUMA_*` variables in your shell, so the tests cannot be
+pointed at your real instance by accident. To test against a different instance, edit the
+file.
 
-### For Comprehensive Testing
-1. **Create monitors** in Uptime Kuma before running tests
-   - At least one HTTP monitor
-   - Monitors with different types (http, ping, etc.)
-   - Monitors with tags
-   
-2. **Let monitors run** for a few minutes to accumulate heartbeat data
+`test/integration/verify-credentials.sh` checks that the credentials in `.env.test` can log
+in, without running any tests. Run it from `test/integration/`.
 
-3. **Use a dedicated test instance** - never run against production
+### Adding tests
 
-### CI/CD Integration
-```yaml
-# GitHub Actions example
-- name: Run Integration Tests
-  env:
-    UPTIME_KUMA_USERNAME: admin
-    UPTIME_KUMA_PASSWORD: ${{ secrets.TEST_PASSWORD }}
-  run: |
-    chmod +x test/integration/run-tests.sh
-    ./test/integration/run-tests.sh
-```
+- Add a case to the matching `*.test.ts` file. Each case is a `{ name, fn }` entry, and `fn`
+  throws to fail.
+- Clean up what the test creates in a `finally` block, so a failure does not leave monitors
+  behind.
+- `getMonitor` returns type-specific fields such as `url` only when called with
+  `includeTypeSpecificFields: true`.
+- A new suite is registered in `run-all.ts`, under `SHORT_SUITES` or `LONG_SUITES`. A test
+  that waits for Uptime Kuma to run a check belongs in a long suite.
 
 ## Troubleshooting
 
 ### "Connection refused"
-- Ensure Docker is running
-- Check if Uptime Kuma started: `docker ps | grep uptime-kuma`
-- Wait longer for startup (can take 30+ seconds)
+- Check that Docker is running and the container is up: `docker ps | grep uptime-kuma-test`.
+- Uptime Kuma can take 30 seconds or more to start.
 
-### "No monitors found" warnings
-- Tests will skip monitor-specific scenarios
-- Create monitors in the UI for full test coverage
+### Authentication failures ("authInvalidToken")
+- Check that the credentials in `.env.test` match the admin account created at
+  http://localhost:3001.
+- The tests run the server with `MCP_TEST_MODE=1`, which stops it loading the root `.env`
+  file.
 
-### Authentication failures
-- Verify credentials in `.env.test`
-- Check that you've set up the admin account at http://localhost:3001
+### Port 3001 is already in use
+- Change the port mapping in `test/integration/docker-compose.test.yml` and
+  `UPTIME_KUMA_URL` in `.env.test` to match.
 
-### Port conflicts
-- If port 3001 is in use, modify `docker-compose.test.yml`
-- Update `UPTIME_KUMA_URL` in `.env.test` accordingly
-
-## Test Architecture
-
-The tests use the MCP SDK Client to:
-1. Spawn the MCP server as a child process
-2. Connect via stdio transport (same as production)
-3. Call tools and verify responses
-4. Check structured responses match expected schemas
-
-This approach ensures tests verify the actual MCP protocol implementation, not just internal functions.
-
-## Future Enhancements
-
-Potential additions:
-- [ ] Test monitor creation/modification (would need API support)
-- [ ] Test notification settings
-- [ ] Test with multiple concurrent clients
-- [ ] Performance/load testing
-- [ ] Test JWT authentication path
-- [ ] Test HTTP transport in addition to stdio
+### Starting again from a clean instance
+- Remove the container and its data volume, then repeat the first-time setup:
+  ```bash
+  docker-compose -f test/integration/docker-compose.test.yml down -v
+  ```

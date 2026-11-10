@@ -27,6 +27,7 @@ export const HttpMonitorSchema = MonitorBaseSchema.extend({
   tlsCert: z.string().optional().describe('TLS client certificate'),
   tlsKey: z.string().optional().describe('TLS client key'),
   expiryNotification: z.boolean().default(false).describe('Certificate expiry notifications'),
+  domainExpiryNotification: z.boolean().optional().describe('Domain registration expiry notifications (Uptime Kuma 2.1 or later)'),
 
   // Advanced
   maxredirects: z.number().default(10).describe('Maximum HTTP redirects'),

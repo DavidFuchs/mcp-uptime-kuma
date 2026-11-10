@@ -505,4 +505,167 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
       }
     },
   },
+  {
+    name: '#110: updateMonitor changes the type in place and toggles expiry notifications',
+    fn: async ({ client }) => {
+      const monitorID = extractID(await client.callTool({
+        name: 'createMonitor',
+        arguments: { name: 'Integration Test - Issue 110', type: 'ping', hostname: 'example.com', active: false },
+      }) as CallToolResult, 'createMonitor', 'monitorID');
+
+      const read = async () => JSON.parse(extractText(
+        await client.callTool({ name: 'getMonitor', arguments: { monitorID, includeTypeSpecificFields: true } }) as CallToolResult,
+        'getMonitor'
+      ));
+
+      try {
+        // Uptime Kuma itself would save this and leave an http monitor with nothing to request.
+        const refused = await client.callTool({
+          name: 'updateMonitor',
+          arguments: { monitorID, type: 'http' },
+        }) as CallToolResult;
+        if (!refused.isError) throw new Error('ping -> http without a url was not refused');
+        if ((await read()).type !== 'ping') throw new Error('a refused type change still changed the type');
+
+        extractText(await client.callTool({
+          name: 'updateMonitor',
+          arguments: { monitorID, type: 'http', url: 'https://example.com', expiryNotification: true, domainExpiryNotification: true },
+        }) as CallToolResult, 'updateMonitor');
+        const http = await read();
+        if (http.id !== monitorID || http.type !== 'http' || http.url !== 'https://example.com') {
+          throw new Error(`ping -> http did not land: ${JSON.stringify({ id: http.id, type: http.type, url: http.url })}`);
+        }
+        if (http.expiryNotification !== true || http.domainExpiryNotification !== true) {
+          throw new Error(`expiry toggles not persisted: ${JSON.stringify({ expiryNotification: http.expiryNotification, domainExpiryNotification: http.domainExpiryNotification })}`);
+        }
+
+        const pushed = await client.callTool({
+          name: 'updateMonitor',
+          arguments: { monitorID, type: 'push' },
+        }) as CallToolResult;
+        extractText(pushed, 'updateMonitor');
+        const { pushToken, pushURL } = (pushed.structuredContent ?? {}) as { pushToken?: string; pushURL?: string };
+        if (!pushToken || !pushURL?.includes(pushToken)) {
+          throw new Error('http -> push did not return a generated push token and URL');
+        }
+        if ((await read()).type !== 'push') throw new Error('http -> push did not land');
+
+        console.log('  ✓ #110: ping -> http -> push in place with the same ID; expiry toggles persist');
+      } finally {
+        await client.callTool({ name: 'deleteMonitor', arguments: { monitorID } });
+      }
+    },
+  },
+  {
+    name: '#110: createMonitor sets the expiry notification toggles',
+    fn: async ({ client }) => {
+      const monitorID = extractID(await client.callTool({
+        name: 'createMonitor',
+        arguments: {
+          name: 'Integration Test - Issue 110 create toggles',
+          type: 'http',
+          url: 'https://example.com',
+          expiryNotification: true,
+          domainExpiryNotification: true,
+          active: false,
+        },
+      }) as CallToolResult, 'createMonitor', 'monitorID');
+
+      try {
+        const m = JSON.parse(extractText(
+          await client.callTool({ name: 'getMonitor', arguments: { monitorID, includeTypeSpecificFields: true } }) as CallToolResult,
+          'getMonitor'
+        ));
+        if (m.expiryNotification !== true || m.domainExpiryNotification !== true) {
+          throw new Error(`expiry toggles not persisted on create: ${JSON.stringify({ expiryNotification: m.expiryNotification, domainExpiryNotification: m.domainExpiryNotification })}`);
+        }
+        console.log('  ✓ #110: expiry toggles persist on create');
+      } finally {
+        await client.callTool({ name: 'deleteMonitor', arguments: { monitorID } });
+      }
+    },
+  },
+  {
+    name: '#110: converting a group is refused and its children stay attached',
+    fn: async ({ client }) => {
+      const groupID = extractID(await client.callTool({
+        name: 'createMonitor',
+        arguments: { name: 'Integration Test - Issue 110 group', type: 'group', interval: 300, active: false },
+      }) as CallToolResult, 'createMonitor', 'monitorID');
+      const childID = extractID(await client.callTool({
+        name: 'createMonitor',
+        arguments: { name: 'Integration Test - Issue 110 child', type: 'http', url: 'https://example.com', parent: groupID, active: false },
+      }) as CallToolResult, 'createMonitor', 'monitorID');
+
+      const read = async (monitorID: number) => JSON.parse(extractText(
+        await client.callTool({ name: 'getMonitor', arguments: { monitorID } }) as CallToolResult,
+        'getMonitor'
+      ));
+
+      try {
+        const refused = await client.callTool({
+          name: 'updateMonitor',
+          arguments: { monitorID: groupID, type: 'http', url: 'https://example.com' },
+        }) as CallToolResult;
+        if (!refused.isError) throw new Error('group -> http was not refused');
+        if ((await read(groupID)).type !== 'group') throw new Error('a refused conversion still changed the group\'s type');
+        if ((await read(childID)).parent !== groupID) throw new Error('the child was detached from its group');
+
+        // The read-edit-write loop sends the group's own type back.
+        extractText(await client.callTool({
+          name: 'updateMonitor',
+          arguments: { monitorID: groupID, type: 'group', name: 'Integration Test - Issue 110 group renamed' },
+        }) as CallToolResult, 'updateMonitor');
+        if ((await read(childID)).parent !== groupID) throw new Error('renaming the group detached its child');
+
+        console.log('  ✓ #110: group conversion refused, child still attached; group -> group allowed');
+      } finally {
+        await client.callTool({ name: 'deleteMonitor', arguments: { monitorID: childID } });
+        await client.callTool({ name: 'deleteMonitor', arguments: { monitorID: groupID } });
+      }
+    },
+  },
+  {
+    name: '#110: a type change stores a timeout Uptime Kuma can use',
+    fn: async ({ client }) => {
+      const pushID = extractID(await client.callTool({
+        name: 'createMonitor',
+        arguments: { name: 'Integration Test - Issue 110 push', type: 'push', interval: 60, active: false },
+      }) as CallToolResult, 'createMonitor', 'monitorID');
+      const httpID = extractID(await client.callTool({
+        name: 'createMonitor',
+        arguments: { name: 'Integration Test - Issue 110 slow http', type: 'http', url: 'https://example.com', interval: 600, active: false },
+      }) as CallToolResult, 'createMonitor', 'monitorID');
+
+      const timeoutOf = async (monitorID: number) => Number(JSON.parse(extractText(
+        await client.callTool({ name: 'getMonitor', arguments: { monitorID } }) as CallToolResult,
+        'getMonitor'
+      )).timeout);
+
+      try {
+        // A push monitor stores no timeout; carried over, Uptime Kuma would treat it as ~13 hours.
+        extractText(await client.callTool({
+          name: 'updateMonitor',
+          arguments: { monitorID: pushID, type: 'http', url: 'https://example.com' },
+        }) as CallToolResult, 'updateMonitor');
+        const fromPush = await timeoutOf(pushID);
+        if (fromPush !== 48) throw new Error(`push -> http: expected timeout 48 (0.8 x 60), got ${fromPush}`);
+
+        // 0.8 x 600 = 480, which Monitor.validate() rejects for ping (1..300).
+        const before = await timeoutOf(httpID);
+        if (before !== 480) throw new Error(`expected the http monitor to start with timeout 480, got ${before}`);
+        extractText(await client.callTool({
+          name: 'updateMonitor',
+          arguments: { monitorID: httpID, type: 'ping', hostname: 'example.com' },
+        }) as CallToolResult, 'updateMonitor');
+        const asPing = await timeoutOf(httpID);
+        if (asPing !== 300) throw new Error(`http -> ping: expected timeout 300, got ${asPing}`);
+
+        console.log('  ✓ #110: push -> http defaults timeout to 48s; http -> ping brings 480s down to 300s');
+      } finally {
+        await client.callTool({ name: 'deleteMonitor', arguments: { monitorID: pushID } });
+        await client.callTool({ name: 'deleteMonitor', arguments: { monitorID: httpID } });
+      }
+    },
+  },
 ];
