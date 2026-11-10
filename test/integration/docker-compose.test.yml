@@ -8,6 +8,9 @@ services:
       - uptime-kuma-test-data:/app/data
     environment:
       - UPTIME_KUMA_PORT=3001
+      # Picks the database up front, so a fresh instance skips the "choose a database" page
+      # and goes straight to the admin account setup that the runner automates.
+      - UPTIME_KUMA_DB_TYPE=sqlite
     healthcheck:
       # The image ships its own probe; it has no wget, so a wget-based check always fails.
       test: ["CMD", "extra/healthcheck"]

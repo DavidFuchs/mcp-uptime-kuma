@@ -4,10 +4,17 @@ set -e
 
 # Ensure containers are torn down on exit (success, failure, or interrupt)
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Compose v2 ships as a docker plugin ("docker compose"); fall back to the standalone binary.
+if docker compose version > /dev/null 2>&1; then
+    COMPOSE=(docker compose)
+else
+    COMPOSE=(docker-compose)
+fi
+
 cleanup() {
     echo ""
     echo "🧹 Cleaning up..."
-    docker-compose -f "$SCRIPT_DIR/docker-compose.test.yml" down --remove-orphans 2>/dev/null || true
+    "${COMPOSE[@]}" -f "$SCRIPT_DIR/docker-compose.test.yml" down --remove-orphans 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
@@ -30,20 +37,11 @@ fi
 # Navigate to test directory
 cd "$(dirname "$0")"
 
-# Check if .env file exists
+# A clean checkout has no .env.test. The template's credentials are valid for a fresh test
+# instance, so copy it and carry on.
 if [ ! -f ".env.test" ]; then
-    echo -e "${YELLOW}⚠️  Warning: .env.test file not found${NC}"
-    echo "Creating template .env.test file..."
-    cat > .env.test << 'EOF'
-# Uptime Kuma test instance configuration
-UPTIME_KUMA_URL=http://localhost:3001
-UPTIME_KUMA_USERNAME=admin
-UPTIME_KUMA_PASSWORD=your_password_here
-# UPTIME_KUMA_JWT_TOKEN=your_jwt_token_here
-EOF
-    echo ""
-    echo -e "${YELLOW}Please edit .env.test with your test credentials and run again${NC}"
-    exit 1
+    echo "📄 No .env.test found, creating it from .env.test.example"
+    cp .env.test.example .env.test
 fi
 
 # Function to check if Uptime Kuma is ready
@@ -68,36 +66,40 @@ wait_for_uptime_kuma() {
 
 # Start test infrastructure
 echo "🐳 Starting test infrastructure..."
-docker-compose -f docker-compose.test.yml up -d
+"${COMPOSE[@]}" -f docker-compose.test.yml up -d
 
 # Wait for Uptime Kuma to be ready
 if ! wait_for_uptime_kuma; then
     echo -e "${RED}❌ Failed to start test infrastructure${NC}"
-    docker-compose -f docker-compose.test.yml logs
+    "${COMPOSE[@]}" -f docker-compose.test.yml logs
     exit 1
 fi
 
+# Make sure the credentials in .env.test can log in. On a fresh instance this creates the
+# admin account from them, so no manual setup is needed.
+ensure_admin() {
+    (cd ../.. && npx tsx test/integration/ensure-admin.ts)
+}
+
 echo ""
-echo "📝 Setup Instructions:"
-echo "   =============================================="
-echo "   IMPORTANT: Set up Uptime Kuma BEFORE running tests!"
-echo "   =============================================="
-echo ""
-echo "   1. Open http://localhost:3001 in your browser"
-echo "   2. Create admin account (first-time setup)"
-echo "   3. Update .env.test with your credentials:"
-echo "      UPTIME_KUMA_USERNAME=<your_username>"
-echo "      UPTIME_KUMA_PASSWORD=<your_password>"
-echo "   4. (Optional) Create monitors for better test coverage"
-echo ""
-echo "   Current .env.test configuration:"
-echo "   --------------------------------"
-cat .env.test | grep -v "^#"
-echo "   --------------------------------"
-echo ""
-echo "   5. Press Enter to continue with tests..."
-echo ""
-read -r
+echo "🔑 Checking the admin account..."
+if ! ensure_admin; then
+    echo ""
+    echo "   The credentials in test/integration/.env.test could not be used (reason above)."
+    echo "   Either fix that file, or start from a clean instance and let the runner create"
+    echo "   the admin account from it:"
+    echo "     ${COMPOSE[*]} -f test/integration/docker-compose.test.yml down -v"
+    echo ""
+    # Only wait for a fix when someone is there to make it.
+    if [ ! -t 0 ]; then
+        exit 1
+    fi
+    echo "   Fix .env.test, then press Enter to try again (Ctrl+C to stop)..."
+    read -r
+    if ! ensure_admin; then
+        exit 1
+    fi
+fi
 
 echo ""
 echo "🧪 Running integration tests..."

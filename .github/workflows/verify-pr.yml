@@ -39,3 +39,23 @@ jobs:
 
       - name: Run unit tests
         run: npx vitest run test/unit/
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Starts Uptime Kuma in Docker, creates the admin account from .env.test.example
+      # and runs the short suites.
+      - name: Run integration tests
+        run: npm run test:integration
