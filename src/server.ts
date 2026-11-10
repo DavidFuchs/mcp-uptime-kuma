@@ -504,6 +504,44 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     }
   );
 
+  const MONITOR_TYPES = [
+    { type: 'http', description: 'HTTP/HTTPS monitoring with status code and response time checks' },
+    { type: 'keyword', description: 'HTTP monitoring that searches for a specific keyword in the response' },
+    { type: 'json-query', description: 'HTTP monitoring that validates JSON response using JSONPath queries' },
+    { type: 'port', description: 'TCP port connectivity check' },
+    { type: 'ping', description: 'ICMP ping check' },
+    { type: 'dns', description: 'DNS resolution check for A, AAAA, CNAME, MX, NS, PTR, SOA, SRV, TXT, or CAA records' },
+    { type: 'docker', description: 'Docker container status check' },
+    { type: 'mqtt', description: 'MQTT broker connectivity and topic monitoring' },
+    { type: 'mongodb', description: 'MongoDB database connectivity check' },
+    { type: 'redis', description: 'Redis database connectivity check' },
+    { type: 'sqlserver', description: 'SQL Server database connectivity check' },
+    { type: 'postgres', description: 'PostgreSQL database connectivity check' },
+    { type: 'mysql', description: 'MySQL/MariaDB database connectivity check' },
+    { type: 'grpc-keyword', description: 'gRPC service health check with keyword validation' },
+    { type: 'kafka-producer', description: 'Kafka producer connectivity and message publishing check' },
+    { type: 'radius', description: 'RADIUS server authentication check' },
+    { type: 'rabbitmq', description: 'RabbitMQ server connectivity check' },
+    { type: 'smtp', description: 'SMTP server connectivity check' },
+    { type: 'snmp', description: 'SNMP device monitoring with OID queries' },
+    { type: 'real-browser', description: 'Real browser-based monitoring using Chrome/Chromium' },
+    { type: 'gamedig', description: 'Game server status check using GameDig protocol' },
+    { type: 'push', description: 'Push-based monitoring (monitor receives heartbeats from external sources)' },
+    { type: 'group', description: 'Group/folder for organizing monitors (not an actual check)' },
+    { type: 'tailscale-ping', description: 'Tailscale network ping check' },
+    { type: 'manual', description: 'Manual status monitor (status set manually, not automatically checked)' },
+    { type: 'steam', description: 'Steam game server status check' },
+    { type: 'globalping', description: 'Ping, HTTP or DNS check run from Globalping probes around the world' },
+    { type: 'ntp', description: 'NTP server check with stratum and time offset thresholds' },
+    { type: 'websocket-upgrade', description: 'WebSocket upgrade handshake check' },
+    { type: 'sftp', description: 'SFTP server login and path check' },
+    { type: 'sip-options', description: 'SIP OPTIONS ping check' },
+    { type: 'oracledb', description: 'Oracle Database connectivity check' },
+    { type: 'system-service', description: 'Local system service status check (systemd or Windows service)' },
+    { type: 'pm2', description: 'PM2 process status check' }
+  ];
+  const MONITOR_TYPE_NAMES = new Set(MONITOR_TYPES.map((t) => t.type));
+
   // Register listMonitorTypes tool
   server.registerTool(
     'listMonitorTypes',
@@ -519,33 +557,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
       },
     },
     async () => {
-      const monitorTypes = [
-        { type: 'http', description: 'HTTP/HTTPS monitoring with status code and response time checks' },
-        { type: 'keyword', description: 'HTTP monitoring that searches for a specific keyword in the response' },
-        { type: 'json-query', description: 'HTTP monitoring that validates JSON response using JSONPath queries' },
-        { type: 'port', description: 'TCP port connectivity check' },
-        { type: 'ping', description: 'ICMP ping check' },
-        { type: 'dns', description: 'DNS resolution check for A, AAAA, CNAME, MX, NS, PTR, SOA, SRV, TXT, or CAA records' },
-        { type: 'docker', description: 'Docker container status check' },
-        { type: 'mqtt', description: 'MQTT broker connectivity and topic monitoring' },
-        { type: 'mongodb', description: 'MongoDB database connectivity check' },
-        { type: 'redis', description: 'Redis database connectivity check' },
-        { type: 'sqlserver', description: 'SQL Server database connectivity check' },
-        { type: 'postgres', description: 'PostgreSQL database connectivity check' },
-        { type: 'mysql', description: 'MySQL/MariaDB database connectivity check' },
-        { type: 'grpc-keyword', description: 'gRPC service health check with keyword validation' },
-        { type: 'kafka-producer', description: 'Kafka producer connectivity and message publishing check' },
-        { type: 'radius', description: 'RADIUS server authentication check' },
-        { type: 'rabbitmq', description: 'RabbitMQ server connectivity check' },
-        { type: 'smtp', description: 'SMTP server connectivity check' },
-        { type: 'snmp', description: 'SNMP device monitoring with OID queries' },
-        { type: 'real-browser', description: 'Real browser-based monitoring using Chrome/Chromium' },
-        { type: 'gamedig', description: 'Game server status check using GameDig protocol' },
-        { type: 'push', description: 'Push-based monitoring (monitor receives heartbeats from external sources)' },
-        { type: 'group', description: 'Group/folder for organizing monitors (not an actual check)' },
-        { type: 'tailscale-ping', description: 'Tailscale network ping check' },
-        { type: 'manual', description: 'Manual status monitor (status set manually, not automatically checked)' }
-      ];
+      const monitorTypes = MONITOR_TYPES;
       
       return {
         content: [{ 
@@ -938,6 +950,75 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     return seconds;
   };
 
+  // The web UI's form stores its "https://" placeholder in url for types that never use it.
+  const isBlank = (v: unknown): boolean =>
+    v === undefined || v === null || v === '' || v === 'https://' || v === 'http://';
+
+  // Monitor.validate() checks none of these: a monitor missing one is saved and then fails
+  // every check, which looks like a broken target rather than a broken config.
+  const REQUIRED_MONITOR_FIELDS: Record<string, string[]> = {
+    http: ['url'],
+    keyword: ['url', 'keyword'],
+    'json-query': ['url', 'jsonPath', 'jsonPathOperator', 'expectedValue'],
+    port: ['hostname', 'port'],
+    ping: ['hostname'],
+    dns: ['hostname'],
+    docker: ['docker_container', 'docker_host'],
+    ...Object.fromEntries([...DATABASE_MONITOR_TYPES].map((t) => [t, ['databaseConnectionString']])),
+  };
+
+  const pushURLFor = (token: unknown): string =>
+    `${config.url.replace(/\/+$/, '')}/api/push/${token}?status=up&msg=OK&ping=`;
+
+  /**
+   * What a monitor must satisfy to be of its type, for a create and for a type change alike.
+   * Uptime Kuma applies the defaults in its web form (src/pages/EditMonitor.vue, the
+   * "monitor.type" watcher) and never on the server, so an API caller gets none of them.
+   *
+   * Sets the defaults on `monitor` and returns them, so the caller can verify they were stored.
+   */
+  const applyMonitorTypeRules = (
+    monitor: Record<string, unknown>,
+    timeoutIsCallers: boolean
+  ): Record<string, unknown> => {
+    const type = String(monitor.type);
+    if (!MONITOR_TYPE_NAMES.has(type)) {
+      throw new Error(`Unknown monitor type '${type}'. Use listMonitorTypes for the valid types.`);
+    }
+
+    const missing = (REQUIRED_MONITOR_FIELDS[type] ?? []).filter((f) => isBlank(monitor[f]));
+    if (missing.length > 0) {
+      throw new Error(
+        `A ${type} monitor needs ${missing.join(', ')}. Without ${missing.length > 1 ? 'them' : 'it'} ` +
+        'Uptime Kuma saves the monitor and then fails every check.'
+      );
+    }
+    assertMongoQueryIsJson(type, monitor.databaseQuery);
+
+    const applied: Record<string, unknown> = {};
+    // Without a token a push monitor has no ping URL and can never report, while looking
+    // identical to one that is merely awaiting its first beat.
+    if (type === 'push' && !monitor.pushToken) applied.pushToken = generatePushToken();
+    if (type === 'dns') {
+      if (isBlank(monitor.dns_resolve_server)) applied.dns_resolve_server = '1.1.1.1';
+      if (isBlank(monitor.dns_resolve_type)) applied.dns_resolve_type = 'A';
+    }
+    // Never leave timeout at 0 — see the schema description for why that is a ~13 hour
+    // timeout rather than a default.
+    if (!timeoutIsCallers && type !== 'push' && type !== 'group') {
+      const stored = Number(monitor.timeout) || 0;
+      if (!stored) {
+        applied.timeout = defaultTimeoutForInterval(type, monitor.interval as number | undefined);
+      } else if (type === 'ping') {
+        const inRange = Math.min(Math.max(Math.round(stored), 1), 300);
+        if (inRange !== stored) applied.timeout = inRange;
+      }
+    }
+
+    Object.assign(monitor, applied);
+    return applied;
+  };
+
   const asText = (v: unknown): string | null =>
     v === null || v === undefined || v === '' ? null : String(v);
   const asNumber = (v: unknown): number | null =>
@@ -982,7 +1063,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     },
     type: {
       read: asText,
-      hint: 'Uptime Kuma validates the monitor against its new type, so pass that type\'s required fields (e.g. url, jsonPath, jsonPathOperator and expectedValue for json-query) in the same call.',
+      hint: 'See #110.',
     },
     jsonPath: { read: asText, hint: 'See #60.' },
     jsonPathOperator: { read: asText, hint: 'See #60.' },
@@ -1073,7 +1154,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     'createMonitor',
     {
       title: 'Create Monitor',
-      description: 'Creates a new monitor in Uptime Kuma. Requires at minimum a name and type. Use listMonitorTypes to see supported types. For HTTP monitors include url; for TCP/port monitors include hostname and port; for json-query include url, jsonPath, jsonPathOperator and expectedValue; for database types (mysql, postgres, mongodb, redis, sqlserver) include databaseConnectionString. A push monitor is given a generated push token (Uptime Kuma only generates one in its own web UI) and the resulting ping URL is returned. timeout defaults to 0.8 x interval seconds for polled types.',
+      description: 'Creates a new monitor in Uptime Kuma. Requires at minimum a name and type. Use listMonitorTypes to see supported types. For HTTP monitors include url; for TCP/port monitors include hostname and port; for ping and dns include hostname; for json-query include url, jsonPath, jsonPathOperator and expectedValue; for database types (mysql, postgres, mongodb, redis, sqlserver) include databaseConnectionString. A push monitor is given a generated push token (Uptime Kuma only generates one in its own web UI) and the resulting ping URL is returned. timeout defaults to 0.8 x interval seconds for polled types.',
       inputSchema: {
         name: z.string().describe('Display name for the monitor'),
         type: z.string().describe('Monitor type (e.g. http, port, ping, dns, push, keyword). Use listMonitorTypes for all options.'),
@@ -1143,10 +1224,6 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
           conditions: [] as string[],
           retryInterval: 60,
         };
-        if (input.type === 'dns') {
-          defaults.dns_resolve_server = '1.1.1.1';
-          defaults.dns_resolve_type = 'A';
-        }
 
         const requested = normaliseMonitorAliases({ ...input } as Record<string, unknown>);
 
@@ -1160,46 +1237,9 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
           );
         }
 
-        // A json-query monitor without a query is accepted by Uptime Kuma and then fails
-        // every single check, which looks like a broken target rather than a broken config.
-        if (requested.type === 'json-query') {
-          const missing = ['jsonPath', 'jsonPathOperator', 'expectedValue'].filter(
-            (f) => requested[f] === undefined || requested[f] === ''
-          );
-          if (missing.length > 0) {
-            throw new Error(
-              `A json-query monitor needs ${missing.join(', ')}. Without them Uptime Kuma creates the monitor and then fails every check.`
-            );
-          }
-        }
-
-        if (DATABASE_MONITOR_TYPES.has(requested.type as string) && !requested.databaseConnectionString) {
-          throw new Error(
-            `A ${requested.type} monitor needs databaseConnectionString. Without it Uptime Kuma creates the monitor and then fails every check.`
-          );
-        }
-        assertMongoQueryIsJson(requested.type, requested.databaseQuery);
-
-        // Uptime Kuma generates push tokens in the browser only (src/pages/EditMonitor.vue,
-        // genSecret(32)); the server has no such code path. Without this an API-created push
-        // monitor has an empty push_token, no ping URL, and can never report — while looking
-        // identical to one that is merely awaiting its first beat.
-        let generatedPushToken = false;
-        if (requested.type === 'push' && !requested.pushToken) {
-          requested.pushToken = generatePushToken();
-          generatedPushToken = true;
-        }
-
-        // Never leave timeout at 0 — see the schema description for why that is a ~13 hour
-        // timeout rather than a default.
-        if (requested.timeout === undefined || requested.timeout === null) {
-          const fallback = defaultTimeoutForInterval(
-            requested.type as string,
-            requested.interval as number | undefined
-          );
-          if (fallback !== undefined) requested.timeout = fallback;
-          else delete requested.timeout;
-        }
+        if (requested.timeout === null) delete requested.timeout;
+        const applied = applyMonitorTypeRules(requested, requested.timeout !== undefined);
+        const generatedPushToken = 'pushToken' in applied;
 
         const monitorData = {
           ...defaults,
@@ -1222,9 +1262,8 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
 
         let text = response.msg || `Monitor created with ID ${response.monitorID}`;
         if (requested.type === 'push' && requested.pushToken) {
-          const base = config.url.replace(/\/+$/, '');
           structuredContent.pushToken = requested.pushToken;
-          structuredContent.pushURL = `${base}/api/push/${requested.pushToken}?status=up&msg=OK&ping=`;
+          structuredContent.pushURL = pushURLFor(requested.pushToken);
           text += `\n\nPush monitor ${response.monitorID}: point the sender at (GET, not POST)\n  ${structuredContent.pushURL}\nThis URL contains a secret — treat it as a credential.${generatedPushToken ? ' The token was generated because Uptime Kuma only ever generates one in its own web UI.' : ''}`;
         }
 
@@ -1262,7 +1301,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     'updateMonitor',
     {
       title: 'Update Monitor',
-      description: 'Updates an existing monitor configuration. You must include the monitorID. Only the fields you provide will be changed (the server merges your changes with the existing config). Use getMonitor first to get the current config.',
+      description: 'Updates an existing monitor configuration. You must include the monitorID. Only the fields you provide will be changed (the server merges your changes with the existing config). Use getMonitor first to get the current config. Passing a different type converts the monitor in place, keeping its ID and history: the new type must have the fields it needs, passed here or already stored (e.g. url for http, hostname for ping), and a monitor becoming push is given a push token if it has none.',
       inputSchema: {
         monitorID: requiredId('The ID of the monitor to update'),
         // `parent` was declared on createMonitor but not here, so an existing monitor could
@@ -1272,12 +1311,10 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         parentID: numeric(z.number().int()).nullable().optional().describe('Alias for parent. Prefer parent.'),
         parent_id: numeric(z.number().int()).nullable().optional().describe('Alias for parent. Prefer parent.'),
         description: z.string().nullable().optional().describe('Free-text description shown on the monitor page'),
-        // Without `type` the only way to turn e.g. an http check into a json-query one was to
-        // delete and recreate the monitor, losing its id, heartbeat history and uptime stats.
-        // Uptime Kuma's editMonitor already assigns `bean.type = monitor.type`.
-        type: z.string().optional().describe('Change the monitor type in place (e.g. http -> json-query), keeping its id, history and notifications. Pass the new type\'s required fields in the same call. A group cannot be converted. Use listMonitorTypes for all options.'),
+        // editMonitor assigns bean.type = monitor.type.
+        type: z.string().optional().describe('Change the monitor type in place (e.g. ping -> http), keeping its ID, history and notifications. Pass the fields the new type needs in the same call (e.g. url for http). A group cannot be converted. Use listMonitorTypes for all options.'),
         resendInterval: numeric(z.number()).optional().describe('Resend notification every N checks while down (0 = disabled)'),
-        timeout: numeric(z.number()).nullable().optional().describe('Request timeout in SECONDS. Avoid 0 —Uptime Kuma\'s runtime fallback for a stored 0 yields a ~13 hour timeout, so the monitor can never report DOWN against a black-holed endpoint.'),
+        timeout: numeric(z.number()).nullable().optional().describe('Request timeout in SECONDS. Avoid 0 — Uptime Kuma\'s runtime fallback for a stored 0 yields a ~13 hour timeout, so the monitor can never report DOWN against a black-holed endpoint.'),
         jsonPath: z.string().optional().describe('JSONata expression for json-query monitors. Must resolve to a primitive.'),
         json_path: z.string().optional().describe('Alias for jsonPath (the database column name). Prefer jsonPath.'),
         jsonPathOperator: z.enum(['>', '>=', '<', '<=', '==', '!=', 'contains']).optional().describe('Comparison operator for json-query monitors.'),
@@ -1326,6 +1363,8 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         ok: z.boolean(),
         monitorID: z.number().optional(),
         msg: z.string().optional(),
+        pushToken: z.string().optional().describe('Only when the type was changed to push. The token, generated if the monitor had none.'),
+        pushURL: z.string().optional().describe('Only when the type was changed to push. The URL the sender should GET.'),
       },
     },
     async ({ monitorID, ...rest }) => {
@@ -1336,9 +1375,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         if (!existing) {
           throw new Error(`Monitor ${monitorID} not found`);
         }
-        // Uptime Kuma accepts a group -> non-group edit and silently detaches every child
-        // monitor (`removeGroupChildren` in its editMonitor handler). Too destructive to
-        // allow as a side effect of a field update.
+        // editMonitor detaches every child of a group that changes type (removeGroupChildren).
         if (rest.type !== undefined && existing.type === 'group' && rest.type !== 'group') {
           throw new Error(`Monitor ${monitorID} is a group; changing its type would detach all of its child monitors. Move the children out first, or delete and recreate the group.`);
         }
@@ -1376,6 +1413,17 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         }
 
         const merged = { ...existing, ...defined, id: monitorID };
+        // A type sent back unchanged is the read-edit-write loop, not a conversion: it must
+        // not make an already-incomplete monitor impossible to edit.
+        const typeChanged = defined.type !== undefined && defined.type !== existing.type;
+        if (typeChanged) {
+          const applied = applyMonitorTypeRules(
+            merged as unknown as Record<string, unknown>,
+            defined.timeout !== undefined && defined.timeout !== null
+          );
+          // So the read-back below proves the defaults landed too.
+          Object.assign(defined, applied);
+        }
         // Ensure retryInterval is valid — Kuma rejects values < 1 on edit even if
         // it stored 0 during creation (pre-existing monitors or older defaults)
         if (!merged.retryInterval || (merged as any).retryInterval < 1) {
@@ -1393,7 +1441,17 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
           text += `\n\nKept the existing value for ${preserved.join(', ')} — "***" was sent, which is the redaction marker, not a credential.`;
         }
 
-        const structuredContent = { ok: response.ok, monitorID: response.monitorID ?? monitorID, msg: response.msg };
+        const structuredContent: Record<string, unknown> = {
+          ok: response.ok,
+          monitorID: response.monitorID ?? monitorID,
+          msg: response.msg,
+        };
+        const pushToken = (merged as unknown as Record<string, unknown>).pushToken;
+        if (typeChanged && defined.type === 'push' && pushToken) {
+          structuredContent.pushToken = pushToken;
+          structuredContent.pushURL = pushURLFor(pushToken);
+          text += `\n\nMonitor ${monitorID} is now a push monitor: point the sender at (GET, not POST)\n  ${structuredContent.pushURL}\nThis URL contains a secret — treat it as a credential.`;
+        }
 
         if (verifyProblem) {
           return {

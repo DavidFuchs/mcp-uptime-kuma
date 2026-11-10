@@ -505,4 +505,55 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
       }
     },
   },
+  {
+    name: '#110: updateMonitor changes the type in place and toggles expiry notifications',
+    fn: async ({ client }) => {
+      const monitorID = extractID(await client.callTool({
+        name: 'createMonitor',
+        arguments: { name: 'Integration Test - Issue 110', type: 'ping', hostname: 'example.com', active: false },
+      }) as CallToolResult, 'createMonitor', 'monitorID');
+
+      const read = async () => JSON.parse(extractText(
+        await client.callTool({ name: 'getMonitor', arguments: { monitorID } }) as CallToolResult,
+        'getMonitor'
+      ));
+
+      try {
+        // Uptime Kuma itself would save this and leave an http monitor with nothing to request.
+        const refused = await client.callTool({
+          name: 'updateMonitor',
+          arguments: { monitorID, type: 'http' },
+        }) as CallToolResult;
+        if (!refused.isError) throw new Error('ping -> http without a url was not refused');
+        if ((await read()).type !== 'ping') throw new Error('a refused type change still changed the type');
+
+        extractText(await client.callTool({
+          name: 'updateMonitor',
+          arguments: { monitorID, type: 'http', url: 'https://example.com', expiryNotification: true, domainExpiryNotification: true },
+        }) as CallToolResult, 'updateMonitor');
+        const http = await read();
+        if (http.id !== monitorID || http.type !== 'http' || http.url !== 'https://example.com') {
+          throw new Error(`ping -> http did not land: ${JSON.stringify({ id: http.id, type: http.type, url: http.url })}`);
+        }
+        if (http.expiryNotification !== true || http.domainExpiryNotification !== true) {
+          throw new Error(`expiry toggles not persisted: ${JSON.stringify({ expiryNotification: http.expiryNotification, domainExpiryNotification: http.domainExpiryNotification })}`);
+        }
+
+        const pushed = await client.callTool({
+          name: 'updateMonitor',
+          arguments: { monitorID, type: 'push' },
+        }) as CallToolResult;
+        extractText(pushed, 'updateMonitor');
+        const { pushToken, pushURL } = (pushed.structuredContent ?? {}) as { pushToken?: string; pushURL?: string };
+        if (!pushToken || !pushURL?.includes(pushToken)) {
+          throw new Error('http -> push did not return a generated push token and URL');
+        }
+        if ((await read()).type !== 'push') throw new Error('http -> push did not land');
+
+        console.log('  ✓ #110: ping -> http -> push in place with the same ID; expiry toggles persist');
+      } finally {
+        await client.callTool({ name: 'deleteMonitor', arguments: { monitorID } });
+      }
+    },
+  },
 ];

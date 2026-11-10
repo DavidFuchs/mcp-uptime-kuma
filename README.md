@@ -101,7 +101,7 @@ See [Authentication Methods](#authentication-methods) for JWT token and anonymou
 | `listMonitorTypes` | Get all available monitor types supported by Uptime Kuma. |
 | `getMonitor` | Get detailed configuration for a specific monitor by ID. |
 | `createMonitor` | Create a new monitor (requires name and type at minimum). |
-| `updateMonitor` | Update an existing monitor's configuration. |
+| `updateMonitor` | Update an existing monitor's configuration, including changing its type in place (keeps the ID and history). |
 | `deleteMonitor` | Permanently delete a monitor and all its heartbeat history. |
 | `pauseMonitor` | Pause a monitor to stop performing checks. |
 | `resumeMonitor` | Resume a paused monitor to restart checks. |
