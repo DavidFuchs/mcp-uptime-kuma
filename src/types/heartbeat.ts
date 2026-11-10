@@ -9,7 +9,7 @@ export const HeartbeatSchema = z.object({
   status: z.number().describe('0=DOWN 1=UP 2=PENDING 3=MAINT'),
   time: z.string().describe('Timestamp, in UTC as "YYYY-MM-DD HH:mm:ss.SSS". Uptime Kuma sends no zone marker, so compare against the current UTC time, not local time.'),
   msg: z.preprocess(normaliseMsg, z.string()).describe('Status message'),
-  important: z.union([z.boolean(), z.number()]).transform(val => Boolean(val)).describe('Status change flag'),
+  important: z.union([z.boolean(), z.number()]).describe('Status change flag'),
   // Optional fields
   id: z.number().optional().describe('Heartbeat ID'),
   monitor_id: z.number().optional().describe('Monitor ID'),

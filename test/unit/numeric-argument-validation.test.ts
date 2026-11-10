@@ -33,10 +33,10 @@ beforeAll(async () => {
 });
 
 /**
- * Unwraps optional/nullable/default/effect layers to ask what a field really is.
+ * Unwraps optional/nullable/default/preprocess layers to ask what a field really is.
  *
  * Deliberately recognises numeric fields in BOTH spellings — the old `z.coerce.number()`
- * (a bare ZodNumber) and the new preprocess wrapper (ZodEffects around a ZodNumber) — so the
+ * (a bare ZodNumber) and the new preprocess wrapper (a ZodPipe ending in a ZodNumber) — so the
  * sweep below finds the same fields before and after the fix. A detector that only matched the
  * new shape would find nothing in the old code and pass vacuously.
  */
@@ -54,8 +54,8 @@ function classify(schema: z.ZodTypeAny): { numeric: boolean; nullable: boolean }
       current = current.removeDefault() as z.ZodTypeAny;
       continue;
     }
-    if (current instanceof z.ZodEffects) {
-      current = current.innerType() as z.ZodTypeAny;
+    if (current instanceof z.ZodPipe) {
+      current = current.out as z.ZodTypeAny;
       continue;
     }
     break;
