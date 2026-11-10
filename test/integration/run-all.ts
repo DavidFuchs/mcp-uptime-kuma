@@ -25,12 +25,11 @@ import { monitorHistoryTests } from './monitor-history.long.test.js';
  * Requires .env.test to be configured with connection credentials.
  *
  * The short suites run by default. The long suites wait for Uptime Kuma to run real checks,
- * so they only run when asked for.
+ * so they only run when asked for, after the short ones.
  *
  * Usage:
  *   npx tsx test/integration/run-all.ts                  (short suites)
- *   npx tsx test/integration/run-all.ts --long           (long suites)
- *   npx tsx test/integration/run-all.ts --all            (both)
+ *   npx tsx test/integration/run-all.ts --long           (short suites, then long suites)
  *   npx tsx test/integration/run-all.ts --suite monitors
  *   npx tsx test/integration/run-all.ts --suite tags --suite monitor-history
  */
@@ -70,7 +69,7 @@ async function main() {
     }
   }
 
-  const defaultSuites = args.includes('--all') ? ALL_SUITES : args.includes('--long') ? LONG_SUITES : SHORT_SUITES;
+  const defaultSuites = args.includes('--long') ? ALL_SUITES : SHORT_SUITES;
   const suitesToRun = selectedSuites.length > 0
     ? selectedSuites.filter(s => ALL_SUITES[s])
     : Object.keys(defaultSuites);

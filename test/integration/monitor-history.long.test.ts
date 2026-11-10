@@ -3,7 +3,7 @@ import { TestFn, extractText, extractID } from './helpers.js';
 
 /**
  * Long-running monitor tests: these wait for Uptime Kuma to actually run checks.
- * Run with `npm run test:integration:long`.
+ * Run with `npm run test:integration:long`, which runs the short suites first.
  *
  * The targets are Uptime Kuma's own port, which is reachable from inside its container
  * without any outside network.

@@ -89,12 +89,11 @@ Run the short integration test suite (recommended):
 npm run test:integration
 ```
 
-The long suite holds the tests that wait for Uptime Kuma to run real checks, so it takes
-longer. Run it on its own, or together with the short suite:
+The long suite runs everything in the short suite, plus the tests that wait for Uptime Kuma
+to run real checks:
 
 ```bash
 npm run test:integration:long
-npm run test:integration:all
 ```
 
 This uses the `run-tests.sh` script which automatically spins up an Uptime Kuma instance via Docker, runs the tests, and cleans up afterwards.

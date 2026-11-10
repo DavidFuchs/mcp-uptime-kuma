@@ -26,7 +26,6 @@
     "inspector": "npx @modelcontextprotocol/inspector tsx src/index.ts",
     "test:integration": "cd test/integration && ./run-tests.sh",
     "test:integration:long": "cd test/integration && ./run-tests.sh --long",
-    "test:integration:all": "cd test/integration && ./run-tests.sh --all",
     "test:integration:direct": "tsx test/integration/integration.test.ts",
     "test": "vitest run",
     "test:watch": "vitest"
