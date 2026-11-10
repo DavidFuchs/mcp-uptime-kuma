@@ -157,6 +157,23 @@ describe('monitor type rules shared by createMonitor and updateMonitor', () => {
       expect(updateMonitor).not.toHaveBeenCalled();
     });
 
+    it('accepts the snake_case aliases as satisfying the new type', async () => {
+      const result = await update({
+        type: 'json-query',
+        json_path: 'status',
+        json_path_operator: '==',
+        expected_value: 'healthy',
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(lastWrite).toMatchObject({
+        type: 'json-query',
+        jsonPath: 'status',
+        jsonPathOperator: '==',
+        expectedValue: 'healthy',
+      });
+    });
+
     it('accepts a field the monitor already stores as satisfying the new type', async () => {
       existingIs({ ...PING_MONITOR, port: 443 });
 
@@ -229,6 +246,12 @@ describe('monitor type rules shared by createMonitor and updateMonitor', () => {
       expect(lastWrite.timeout).toBe(300);
     });
 
+    it('treats a null timeout sent with a type change as not chosen', async () => {
+      await update({ type: 'ping', hostname: 'app.example.com', timeout: null });
+
+      expect(lastWrite.timeout).toBe(48);
+    });
+
     it('leaves a timeout the caller chose alone', async () => {
       await update({ type: 'ping', hostname: 'app.example.com', timeout: 12 });
 
@@ -273,6 +296,16 @@ describe('monitor type rules shared by createMonitor and updateMonitor', () => {
       expect(updateMonitor).not.toHaveBeenCalled();
     });
 
+    it('leaves a monitor of a type this server does not list editable', async () => {
+      // A newer Uptime Kuma can have types listMonitorTypes has not caught up with.
+      existingIs({ ...HTTP_MONITOR, type: 'from-a-newer-kuma' });
+
+      const result = await update({ type: 'from-a-newer-kuma', name: 'Renamed' });
+
+      expect(result.isError).toBeFalsy();
+      expect(lastWrite).toMatchObject({ type: 'from-a-newer-kuma', name: 'Renamed' });
+    });
+
     it('createMonitor rejects a type Uptime Kuma does not have', async () => {
       const result = await create({ type: 'json_query', url: 'https://example.com' });
 
@@ -299,6 +332,45 @@ describe('monitor type rules shared by createMonitor and updateMonitor', () => {
   });
 
   describe('createMonitor: required fields', () => {
+    it.each([
+      ['http', ['url']],
+      ['keyword', ['url', 'keyword']],
+      ['json-query', ['url', 'jsonPath', 'jsonPathOperator', 'expectedValue']],
+      ['port', ['hostname', 'port']],
+      ['ping', ['hostname']],
+      ['dns', ['hostname']],
+      ['docker', ['docker_container', 'docker_host']],
+      ['mysql', ['databaseConnectionString']],
+      ['postgres', ['databaseConnectionString']],
+      ['mongodb', ['databaseConnectionString']],
+      ['redis', ['databaseConnectionString']],
+      ['sqlserver', ['databaseConnectionString']],
+    ])('a %s monitor is refused until it has %j', async (type, fields) => {
+      const bare = await create({ type });
+
+      expect(bare.isError).toBe(true);
+      const match = /needs ([^.]+)\./.exec(JSON.stringify(bare.content));
+      expect(match?.[1].split(', ')).toEqual(fields);
+      expect(createMonitor).not.toHaveBeenCalled();
+
+      const values: Record<string, unknown> = {
+        url: 'https://example.com',
+        keyword: 'ok',
+        jsonPath: 'status',
+        jsonPathOperator: '==',
+        expectedValue: 'healthy',
+        hostname: 'example.com',
+        port: 443,
+        docker_container: 'web',
+        docker_host: 1,
+        databaseConnectionString: 'db://user:pw@db.internal/app',
+      };
+      const complete = await create({ type, ...Object.fromEntries(fields.map((f) => [f, values[f]])) });
+
+      expect(complete.isError).toBeFalsy();
+      expect(createMonitor).toHaveBeenCalledTimes(1);
+    });
+
     it('refuses an http monitor without a url', async () => {
       const result = await create({ type: 'http' });
 

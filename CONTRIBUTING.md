@@ -83,10 +83,18 @@ For HTTP transport testing, start the HTTP server first (`npm run dev:http`), th
 
 ### Integration Tests
 
-Run the full integration test suite (recommended):
+Run the short integration test suite (recommended):
 
 ```bash
 npm run test:integration
+```
+
+The long suite holds the tests that wait for Uptime Kuma to run real checks, so it takes
+longer. Run it on its own, or together with the short suite:
+
+```bash
+npm run test:integration:long
+npm run test:integration:all
 ```
 
 This uses the `run-tests.sh` script which automatically spins up an Uptime Kuma instance via Docker, runs the tests, and cleans up afterwards.
