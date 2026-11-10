@@ -62,12 +62,16 @@ function numeric<T extends z.ZodTypeAny>(schema: T) {
 /**
  * A required Uptime Kuma record ID (monitorID, notificationID, dockerHostID, tagID).
  *
- * `required_error` is what turns an absent field back into "this field is required" rather than
- * the NaN complaint of #65.
+ * The `error` function is what turns an absent field back into "this field is required" rather
+ * than the NaN complaint of #65. It answers only for an absent value, so a malformed one keeps
+ * Zod's own description of what was wrong with it.
  */
 function requiredId(description: string) {
   return numeric(
-    z.number({ required_error: `${description} — this field is required and was not provided` })
+    z.number({
+      error: (issue) =>
+        issue.input === undefined ? `${description} — this field is required and was not provided` : undefined,
+    })
       .int()
       .nonnegative()
   ).describe(description);
@@ -231,46 +235,47 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
   /**
    * Builds the strict schema, and makes an unknown key the FIRST thing the caller reads.
    *
-   * Zod appends `unrecognized_keys` after the per-field issues, which leaves the second half
-   * of #65 intact: `getMonitor {monitorId: 1}` reports BOTH "unknown key monitorId" and
-   * "monitorID: expected number, received nan" — because z.coerce.number() coerces the
-   * now-missing monitorID to NaN — and the NaN line comes first. That line is the misleading
-   * one: it points at a field the caller never got wrong. Reordering turns a message that
-   * sends you hunting for a type bug into one that says "you misspelled this key".
+   * Zod appends `unrecognized_keys` after the per-field issues, so `getMonitor {monitorId: 1}`
+   * reports the absent monitorID first and the misspelled key second. The first line is the
+   * misleading one: it points at a field the caller never got wrong. Reordering turns a
+   * message that sends you hunting for a missing argument into one that says "you misspelled
+   * this key" (#65).
+   *
+   * The message comes from the schema's own `error` option. The order has no public hook, so
+   * it is applied where every parse path meets: the SDK runs a Zod 4 schema through Zod's
+   * top-level safeParseAsync(), which calls `_zod.run` and never the schema's safeParse().
    */
   function strictInputSchema(toolName: string, shape: z.ZodRawShape) {
-    const schema = z.object(shape).strict();
     const accepted = Object.keys(shape);
 
-    const reorder = (result: z.SafeParseReturnType<unknown, unknown>) => {
-      if (result.success) return result;
-      const issues = result.error?.issues;
-      if (!Array.isArray(issues)) return result;
-      const unknown = issues.filter((i) => i.code === 'unrecognized_keys');
-      if (unknown.length === 0) return result;
-
-      const named = unknown.flatMap((i) => (i as z.ZodIssue & { keys?: string[] }).keys ?? []);
-      const lead = {
-        code: 'unrecognized_keys',
-        keys: named,
-        path: [],
-        message:
-          `Unknown field(s) for ${toolName}: ${named.map((k) => `'${k}'`).join(', ')}. ` +
+    const schema = z.strictObject(shape, {
+      error: (issue) => {
+        if (issue.code !== 'unrecognized_keys') return undefined;
+        return (
+          `Unknown field(s) for ${toolName}: ${issue.keys.map((k) => `'${k}'`).join(', ')}. ` +
           'Field names are case-sensitive — check spelling and casing first (monitorID, not monitorId). ' +
           `Accepted fields: ${accepted.join(', ')}. ` +
           'Any other issue reported below may be a knock-on effect of this one: a required field ' +
-          'that looks absent is usually the misspelled key.',
-      } as unknown as z.ZodIssue;
-      const rest = issues.filter((i) => i.code !== 'unrecognized_keys');
-      return { success: false as const, error: new z.ZodError([lead, ...rest]) };
-    };
+          'that looks absent is usually the misspelled key.'
+        );
+      },
+    });
 
-    const safeParse = schema.safeParse.bind(schema);
-    const safeParseAsync = schema.safeParseAsync.bind(schema);
-    (schema as unknown as { safeParse: unknown }).safeParse = (data: unknown, params?: unknown) =>
-      reorder(safeParse(data, params as never));
-    (schema as unknown as { safeParseAsync: unknown }).safeParseAsync = async (data: unknown, params?: unknown) =>
-      reorder(await safeParseAsync(data, params as never));
+    type Payload = { issues: Array<{ code?: string }> };
+    const unknownKeysFirst = <P extends Payload>(payload: P): P => {
+      payload.issues.sort(
+        (a, b) => Number(b.code === 'unrecognized_keys') - Number(a.code === 'unrecognized_keys')
+      );
+      return payload;
+    };
+    const internals = schema._zod as unknown as {
+      run: (payload: Payload, ctx: unknown) => Payload | Promise<Payload>;
+    };
+    const run = internals.run;
+    internals.run = (payload, ctx) => {
+      const result = run(payload, ctx);
+      return result instanceof Promise ? result.then(unknownKeysFirst) : unknownKeysFirst(result);
+    };
 
     return schema;
   }
