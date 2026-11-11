@@ -99,9 +99,9 @@ See [Authentication Methods](#authentication-methods) for JWT token and anonymou
 | `getMonitorSummary` | Get a quick overview of all monitors with their current status. Supports filtering. |
 | `listMonitors` | Get the full list of all monitors with configurations. Supports filtering. |
 | `listMonitorTypes` | Get all available monitor types supported by Uptime Kuma. |
-| `getMonitorTypeFields` | Get the required and optional fields of one monitor type, what each means and accepts, and the defaults applied. Call it before creating a monitor of a type you have not set up before. |
+| `getMonitorTypeFields` | Get the required and optional fields of one monitor type: what each means and accepts, whether it is passed at the top level or in `typeFields`, and the defaults applied. |
 | `getMonitor` | Get detailed configuration for a specific monitor by ID. |
-| `createMonitor` | Create a new monitor of any type (requires name, type, and whatever that type checks, e.g. `url` for http, `mqttTopic` for mqtt or `rabbitmqNodes` for rabbitmq). Accepts HTTP authentication: basic, bearer, OAuth2 client credentials, NTLM and mTLS. |
+| `createMonitor` | Create a new monitor of any type (requires name, type, and whatever that type checks, e.g. `url` for http or `hostname` for ping). Type-specific fields, including HTTP authentication, go in `typeFields`. |
 | `updateMonitor` | Update an existing monitor's configuration, including changing its type in place (keeps the ID and history). |
 | `deleteMonitor` | Permanently delete a monitor and all its heartbeat history. |
 | `pauseMonitor` | Pause a monitor to stop performing checks. |
@@ -148,6 +148,27 @@ See [Authentication Methods](#authentication-methods) for JWT token and anonymou
 |------|---------|
 | `listStatusPages` | List all configured status pages. |
 | `getSettings` | Get Uptime Kuma server settings. |
+
+### Type-specific monitor fields
+
+`createMonitor` and `updateMonitor` declare the fields most monitors use (`url`, `hostname`,
+`port`, `keyword`, `interval`, …) as ordinary arguments. Everything specific to one kind of
+monitor goes in a single `typeFields` object:
+
+```
+createMonitor({ name: "API", type: "http", url: "https://api.example.com/health",
+                typeFields: { bearer_token: "…" } })
+createMonitor({ name: "Broker", type: "mqtt", hostname: "mqtt://broker.example.com", port: 1883,
+                typeFields: { mqttTopic: "sensors/#" } })
+```
+
+`getMonitorTypeFields({ type })` lists what a type needs and accepts. The fields are kept out
+of the tool definitions on purpose: there are about 85 of them, and tool definitions are loaded
+into every conversation whether or not a monitor is ever created. `typeFields` is still
+validated — an unknown name or a bad value is refused, with the accepted spelling suggested.
+
+`getMonitor` returns these fields at the top level of the monitor, as Uptime Kuma stores them.
+To change one, pass it inside `typeFields`.
 
 ### Filtering
 
@@ -231,6 +252,19 @@ In an MCP client's JSON config the value is a string, so the inner quotes need e
 
 `mcp-uptime-kuma-get-jwt` reads the same variable. A malformed value stops the server at startup
 with an error naming the offending header; header values are never logged.
+
+## Read-Only Mode
+
+To expose only the tools that report, and none that create, change, pause or delete, set:
+
+```
+UPTIME_KUMA_READ_ONLY=true
+```
+
+The write tools are then not registered at all, so they cannot be called and take up no room in
+the conversation. Thirteen tools remain: the `get…` and `list…` tools, minus
+`getMonitorTypeFields`, which only serves the write tools. This limits what the MCP server
+offers; it does not change what the Uptime Kuma account itself is allowed to do.
 
 ## Securing the HTTP Endpoint
 

@@ -57,6 +57,13 @@
           "format": "string",
           "isSecret": true,
           "name": "UPTIME_KUMA_HEADERS"
+        },
+        {
+          "description": "Set to true to expose only the tools that report, and none that create, change, pause or delete",
+          "isRequired": false,
+          "format": "boolean",
+          "isSecret": false,
+          "name": "UPTIME_KUMA_READ_ONLY"
         }
       ]
     }

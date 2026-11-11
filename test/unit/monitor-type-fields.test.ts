@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { createServer } from '../../src/server.js';
+import { createServer, MONITOR_TYPE_FIELD_NAMES, READ_ONLY_TOOLS, WRITE_TOOLS } from '../../src/server.js';
 import { UptimeKumaClient } from '../../src/uptime-kuma-client.js';
 import { redactSecrets, SECRET_MARKER } from '../../src/redact.js';
 
@@ -92,8 +92,24 @@ const EXISTING_HTTP_MONITOR: Record<string, unknown> = {
   bearer_token: null,
 };
 
-async function connectServer() {
+/**
+ * Moves the type-specific fields of a flat argument list into `typeFields`, where the write
+ * tools take them. The tests below are written flat, the way Uptime Kuma's payload and
+ * getMonitor's output are; a test that cares where a field is passed builds `typeFields` itself.
+ */
+function nest(args: Record<string, unknown>): Record<string, unknown> {
+  if ('typeFields' in args) return args;
+  const out: Record<string, unknown> = {};
+  const typeFields: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(args)) {
+    (MONITOR_TYPE_FIELD_NAMES.includes(key) ? typeFields : out)[key] = value;
+  }
+  return Object.keys(typeFields).length > 0 ? { ...out, typeFields } : out;
+}
+
+async function connectServer(readOnly = false) {
   const { server } = await createServer({
+    readOnly,
     url: 'http://localhost:3001',
     username: undefined,
     password: undefined,
@@ -147,25 +163,30 @@ describe('type-specific monitor fields (#112)', () => {
 
   const create = async (args: Record<string, unknown>) => {
     const { client } = await connectServer();
-    return client.callTool({ name: 'createMonitor', arguments: { name: 'M', ...args } });
+    return client.callTool({ name: 'createMonitor', arguments: nest({ name: 'M', ...args }) });
   };
   const update = async (args: Record<string, unknown>) => {
     const { client } = await connectServer();
-    return client.callTool({ name: 'updateMonitor', arguments: { monitorID: 7, ...args } });
+    return client.callTool({ name: 'updateMonitor', arguments: nest({ monitorID: 7, ...args }) });
   };
 
   describe('schema coverage', () => {
-    it.each(['createMonitor', 'updateMonitor'])('%s accepts every field editMonitor reads', async (toolName) => {
+    it.each(['createMonitor', 'updateMonitor'])('%s accepts every field editMonitor reads, at the top level or in typeFields', async (toolName) => {
       const { client } = await connectServer();
       const { tools } = await client.listTools();
       const properties = Object.keys(
         (tools.find((t) => t.name === toolName)!.inputSchema.properties ?? {}) as Record<string, unknown>
       );
 
-      expect(FIELDS_EDIT_MONITOR_READS.filter((f) => !properties.includes(f))).toEqual([]);
+      expect(properties).toContain('typeFields');
+      expect(
+        FIELDS_EDIT_MONITOR_READS.filter((f) => !properties.includes(f) && !MONITOR_TYPE_FIELD_NAMES.includes(f))
+      ).toEqual([]);
+      // One place each: a field accepted in both would have two values to disagree.
+      expect(properties.filter((p) => MONITOR_TYPE_FIELD_NAMES.includes(p))).toEqual([]);
     });
 
-    it('declares the same type-specific fields on both tools', async () => {
+    it('declares the same fields on both tools', async () => {
       const { client } = await connectServer();
       const { tools } = await client.listTools();
       const props = (name: string) =>
@@ -173,6 +194,58 @@ describe('type-specific monitor fields (#112)', () => {
       const onlyOnUpdate = ['monitorID', 'parentID', 'parent_id'];
 
       expect(props('updateMonitor').filter((p) => !onlyOnUpdate.includes(p)).sort()).toEqual(props('createMonitor').sort());
+    });
+
+    it('stores a typeFields field in the flat payload Uptime Kuma takes', async () => {
+      const result = await create({ type: 'http', url: 'https://example.com', typeFields: { cacheBust: true, proxyId: '3' } });
+
+      expect(result.isError).toBeFalsy();
+      expect(lastWrite).toMatchObject({ url: 'https://example.com', cacheBust: true, proxyId: 3 });
+      expect(lastWrite).not.toHaveProperty('typeFields');
+    });
+
+    it('says a type-specific field passed at the top level belongs in typeFields', async () => {
+      const result = await create({ type: 'http', url: 'https://example.com', typeFields: undefined, bearer_token: 't', basicAuthUser: 'u' });
+
+      expect(result.isError).toBe(true);
+      expect(textOf(result)).toContain(
+        `'bearer_token', 'basicAuthUser' are type-specific fields and go inside typeFields: {"typeFields": {"bearer_token": …, "basic_auth_user": …}}`
+      );
+      expect(createMonitor).not.toHaveBeenCalled();
+    });
+
+    it('refuses an unknown name inside typeFields, and suggests the accepted spelling', async () => {
+      const result = await create({ type: 'http', url: 'https://example.com', typeFields: { bearerToken: 't', nonsense: 1 } });
+
+      expect(result.isError).toBe(true);
+      expect(textOf(result)).toContain("'bearerToken' is not a field — did you mean 'bearer_token'?");
+      expect(textOf(result)).toContain("'nonsense' is not a field of any monitor type");
+      expect(textOf(result)).toContain('getMonitorTypeFields');
+      expect(createMonitor).not.toHaveBeenCalled();
+    });
+
+    it('says a top-level field passed inside typeFields belongs beside it', async () => {
+      const result = await create({ type: 'http', typeFields: { url: 'https://example.com' } });
+
+      expect(result.isError).toBe(true);
+      expect(textOf(result)).toContain("'url' is a top-level field — pass it beside typeFields, not inside it");
+    });
+
+    it('validates the values inside typeFields', async () => {
+      const result = await create({ type: 'ping', hostname: 'example.com', typeFields: { ping_count: 500, authMethod: 'digest' } });
+
+      expect(result.isError).toBe(true);
+      expect(textOf(result)).toContain('typeFields.ping_count');
+      expect(textOf(result)).toContain('typeFields.authMethod');
+      expect(createMonitor).not.toHaveBeenCalled();
+    });
+
+    it('keeps stored type-specific fields when updateMonitor is given none', async () => {
+      existing = { ...existing, authMethod: 'bearer', bearer_token: 'stored' };
+
+      await update({ name: 'Renamed' });
+
+      expect(lastWrite).toMatchObject({ name: 'Renamed', authMethod: 'bearer', bearer_token: 'stored' });
     });
 
     // Tool input schemas with references are rejected by several MCP clients.
@@ -201,18 +274,10 @@ describe('type-specific monitor fields (#112)', () => {
       expect(result.isError).toBeFalsy();
       expect(lastWrite.conditions).toEqual(conditions);
     });
-
-    it('suggests the accepted spelling for a camelCase or snake_case guess', async () => {
-      const result = await create({ type: 'http', url: 'https://example.com', basicAuthUser: 'u', bearerToken: 't' });
-
-      expect(result.isError).toBe(true);
-      expect(textOf(result)).toContain("Did you mean 'basic_auth_user' for 'basicAuthUser', 'bearer_token' for 'bearerToken'?");
-      expect(createMonitor).not.toHaveBeenCalled();
-    });
   });
 
   describe('getMonitorTypeFields', () => {
-    type FieldDoc = { name: string; description: string; accepts: Record<string, unknown> };
+    type FieldDoc = { name: string; in: string; description: string; accepts: Record<string, unknown> };
     type TypeFields = { type: string; required: FieldDoc[]; optional: FieldDoc[]; notes: string[]; commonFields: string[] };
 
     const connect = async () => {
@@ -238,7 +303,9 @@ describe('type-specific monitor fields (#112)', () => {
         const fields = await describe(type);
         expect(fields.type).toBe(type);
         for (const field of [...fields.required, ...fields.optional]) {
-          expect(accepted, `${type}.${field.name}`).toContain(field.name);
+          // Each field is passed in exactly the place the tool says it is.
+          expect(field.in, `${type}.${field.name}`).toBe(MONITOR_TYPE_FIELD_NAMES.includes(field.name) ? 'typeFields' : 'top-level');
+          if (field.in === 'top-level') expect(accepted, `${type}.${field.name}`).toContain(field.name);
           expect(field.description, `${type}.${field.name}`).not.toBe('');
           expect(Object.keys(field.accepts).length, `${type}.${field.name}`).toBeGreaterThan(0);
         }
@@ -269,10 +336,14 @@ describe('type-specific monitor fields (#112)', () => {
         }
       }
       // Fields that exist for one tool's bookkeeping or as another spelling of a described field.
-      const notPerType = ['type', 'monitorID', 'parentID', 'parent_id'];
-      const undescribed = Object.entries(properties('updateMonitor'))
-        .filter(([name, schema]) => !described.has(name) && !notPerType.includes(name) && !/^Alias for /.test(schema.description ?? ''))
-        .map(([name]) => name);
+      const notPerType = ['type', 'typeFields', 'monitorID', 'parentID', 'parent_id'];
+      const aliases = ['auth_method', 'proxy_id', 'save_response', 'save_error_response', 'response_max_length', 'retry_only_on_status_code_failure'];
+      const undescribed = [
+        ...Object.entries(properties('updateMonitor'))
+          .filter(([name, schema]) => !notPerType.includes(name) && !/^Alias for /.test(schema.description ?? ''))
+          .map(([name]) => name),
+        ...MONITOR_TYPE_FIELD_NAMES.filter((name) => !aliases.includes(name)),
+      ].filter((name) => !described.has(name));
 
       expect(undescribed).toEqual([]);
     });
@@ -310,27 +381,18 @@ describe('type-specific monitor fields (#112)', () => {
   });
 
   describe('context cost of the write tools', () => {
-    // Tool definitions are loaded into every session. With a full description on each of the
-    // ~85 type-specific fields these two were 23.7 KB and 23.0 KB; the text now lives in
-    // getMonitorTypeFields. If this fails, move the new text there rather than raising the cap.
+    // Tool definitions are loaded into every session. With every type-specific field declared
+    // and described on both tools they were 23.7 KB and 23.0 KB, against about 7 KB each before
+    // #112. Those fields now go in typeFields and are described by getMonitorTypeFields. If this
+    // fails, the new field belongs in typeFields rather than the cap being raised.
     it.each([
-      ['createMonitor', 17000],
-      ['updateMonitor', 16000],
+      ['createMonitor', 9000],
+      ['updateMonitor', 8500],
     ])('%s stays under %d bytes', async (toolName, cap) => {
       const { client } = await connectServer();
       const { tools } = await client.listTools();
 
       expect(JSON.stringify(tools.find((t) => t.name === toolName)).length).toBeLessThan(cap);
-    });
-
-    it('describes a type-specific field by the types that use it', async () => {
-      const { client } = await connectServer();
-      const { tools } = await client.listTools();
-      const properties = tools.find((t) => t.name === 'createMonitor')!.inputSchema.properties as Record<string, { description: string }>;
-
-      expect(properties.mqttTopic.description).toBe('For mqtt');
-      expect(properties.authMethod.description).toBe('For HTTP types, globalping, websocket-upgrade');
-      expect(properties.save_response.description).toBe('Alias for saveResponse');
     });
 
     it('advertises no safe-integer bounds, and keeps the ones a field declares', async () => {
@@ -339,7 +401,56 @@ describe('type-specific monitor fields (#112)', () => {
 
       expect(JSON.stringify(tools)).not.toContain('9007199254740991');
       const properties = tools.find((t) => t.name === 'createMonitor')!.inputSchema.properties as Record<string, Record<string, unknown>>;
-      expect(properties.ping_count).toMatchObject({ minimum: 1, maximum: 100 });
+      expect(properties.interval).toMatchObject({ minimum: 1 });
+    });
+  });
+
+  describe('read-only mode (UPTIME_KUMA_READ_ONLY)', () => {
+    it('classifies every tool as read-only or not', async () => {
+      const { client } = await connectServer();
+      const names = (await client.listTools()).tools.map((t) => t.name);
+
+      expect(names.filter((n) => !READ_ONLY_TOOLS.has(n) && !WRITE_TOOLS.has(n))).toEqual([]);
+      expect([...READ_ONLY_TOOLS].filter((n) => WRITE_TOOLS.has(n))).toEqual([]);
+      expect([...READ_ONLY_TOOLS, ...WRITE_TOOLS].filter((n) => !names.includes(n))).toEqual([]);
+    });
+
+    it('registers only the tools that report', async () => {
+      const { client } = await connectServer(true);
+      const names = (await client.listTools()).tools.map((t) => t.name);
+
+      expect(names.sort()).toEqual([...READ_ONLY_TOOLS].sort());
+      for (const verb of ['create', 'update', 'delete', 'add', 'pause', 'resume', 'test']) {
+        expect(names.filter((n) => n.startsWith(verb)), verb).toEqual([]);
+      }
+    });
+
+    it('cannot be made to write by calling a tool it does not list', async () => {
+      const { client } = await connectServer(true);
+
+      const result = await client.callTool({ name: 'deleteMonitor', arguments: { monitorID: 7 } }).catch((error: Error) => ({
+        isError: true,
+        content: [{ text: error.message }],
+      }));
+
+      expect(result.isError).toBe(true);
+      expect(createMonitor).not.toHaveBeenCalled();
+      expect(updateMonitor).not.toHaveBeenCalled();
+    });
+
+    it('still reads, and tells the model it has no write tools', async () => {
+      const { client } = await connectServer(true);
+
+      expect((await client.callTool({ name: 'getMonitor', arguments: { monitorID: 7 } })).isError).toBeFalsy();
+      expect(client.getInstructions()).toContain('READ-ONLY');
+      expect(client.getInstructions()).not.toContain('createMonitor');
+    });
+
+    it('leaves the instructions and tools alone otherwise', async () => {
+      const { client } = await connectServer();
+
+      expect(client.getInstructions()).toContain("'createMonitor' / 'updateMonitor' / 'deleteMonitor'");
+      expect(client.getInstructions()).not.toContain('READ-ONLY');
     });
   });
 

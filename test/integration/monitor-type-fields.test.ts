@@ -1,5 +1,6 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { TestFn, extractID, extractText } from './helpers.js';
+import { MONITOR_TYPE_FIELD_NAMES } from '../../src/server.js';
 
 /**
  * Integration tests for the type-specific monitor fields (issue #112).
@@ -14,8 +15,23 @@ import { TestFn, extractID, extractText } from './helpers.js';
 
 const MARKER = '***';
 
+/**
+ * The write tools take type-specific fields inside `typeFields`. The tables below are written
+ * flat, the way getMonitor returns a monitor, so the same object says what to send and what to
+ * expect back; this is where the two shapes meet.
+ */
+function nest(args: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const typeFields: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(args)) {
+    (MONITOR_TYPE_FIELD_NAMES.includes(key) ? typeFields : out)[key] = value;
+  }
+  return Object.keys(typeFields).length > 0 ? { ...out, typeFields } : out;
+}
+
 async function call(client: any, name: string, args: Record<string, unknown>): Promise<CallToolResult> {
-  return (await client.callTool({ name, arguments: args })) as CallToolResult;
+  const writes = name === 'createMonitor' || name === 'updateMonitor';
+  return (await client.callTool({ name, arguments: writes ? nest(args) : args })) as CallToolResult;
 }
 
 async function readMonitor(client: any, monitorID: number, includeSecrets = true): Promise<Record<string, any>> {
@@ -263,8 +279,11 @@ export const monitorTypeFieldTests: Array<{ name: string; fn: TestFn }> = [
     fn: async ({ client }) => {
       const described = await call(client, 'getMonitorTypeFields', { type: 'mqtt' });
       extractText(described, 'getMonitorTypeFields');
-      const required: string[] = (described as any).structuredContent.required.map((f: any) => f.name);
+      const fields: Array<{ name: string; in: string }> = (described as any).structuredContent.required;
+      const required = fields.map((f) => f.name);
       if (required.join(',') !== 'hostname,port,mqttTopic') throw new Error(`mqtt required: ${required.join(',')}`);
+      const where = fields.map((f) => f.in).join(',');
+      if (where !== 'top-level,top-level,typeFields') throw new Error(`mqtt fields are passed in: ${where}`);
 
       // Exactly the required fields, nothing else, is a monitor Uptime Kuma accepts.
       const values: Record<string, unknown> = { hostname: 'mqtt://broker.invalid', port: 1883, mqttTopic: 'zz/#' };

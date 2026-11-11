@@ -21,4 +21,9 @@ export interface UptimeKumaConfig {
    * UPTIME_KUMA_HEADERS; these are credentials and must never be logged.
    */
   extraHeaders?: Record<string, string>;
+  /**
+   * Register only the tools that report, and none that create, change or delete. Parsed from
+   * UPTIME_KUMA_READ_ONLY. Optional and defaults to false.
+   */
+  readOnly?: boolean;
 }

@@ -470,38 +470,74 @@ const COMMON_MONITOR_FIELDS = [
   'upsideDown', 'notificationIDList', 'tags',
 ];
 
-/** Declared aliases of type-specific fields, and the field each stands for. */
-const TYPE_SPECIFIC_FIELD_ALIASES: Record<string, string> = {
-  auth_method: 'authMethod',
-  proxy_id: 'proxyId',
-  save_response: 'saveResponse',
-  save_error_response: 'saveErrorResponse',
-  response_max_length: 'responseMaxLength',
-  retry_only_on_status_code_failure: 'retryOnlyOnStatusCodeFailure',
-};
+/**
+ * The tools that remain when UPTIME_KUMA_READ_ONLY is set: the ones that only report.
+ *
+ * An allowlist, so a tool added later is left out of read-only mode until someone decides it
+ * belongs — the safe way to be wrong. A test fails if a registered tool is in neither this set
+ * nor WRITE_TOOLS, so that decision cannot be skipped.
+ *
+ * testDockerHost changes nothing but makes Uptime Kuma connect to an address of the caller's
+ * choosing, and getMonitorTypeFields only serves the write tools, so neither is here.
+ */
+export const READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
+  'getMonitor', 'listMonitors', 'listMonitorTypes', 'getMonitorSummary', 'getHeartbeats', 'listHeartbeats',
+  'getSettings', 'listNotifications', 'listDockerHosts', 'listTags', 'getMaintenanceWindows', 'listStatusPages',
+  'getStatusPage',
+]);
 
-/** The monitor types that use a field, in MONITOR_TYPE_FIELDS order. */
-const monitorTypesUsing = (field: string): string[] =>
-  Object.keys(MONITOR_TYPE_FIELDS).filter((type) => MONITOR_TYPE_FIELDS[type].includes(field));
+/** Every other tool. Left out of read-only mode. */
+export const WRITE_TOOLS: ReadonlySet<string> = new Set([
+  'getMonitorTypeFields', 'createMonitor', 'updateMonitor', 'deleteMonitor', 'pauseMonitor', 'resumeMonitor',
+  'addNotification', 'updateNotification', 'deleteNotification',
+  'addDockerHost', 'updateDockerHost', 'deleteDockerHost', 'testDockerHost',
+  'addTag', 'deleteTag',
+  'createMaintenance', 'updateMaintenance', 'deleteMaintenance', 'pauseMaintenance', 'resumeMaintenance',
+  'createStatusPage', 'updateStatusPage', 'deleteStatusPage',
+]);
+
+/** The names accepted inside `typeFields`, for tests and tooling. */
+export const MONITOR_TYPE_FIELD_NAMES: readonly string[] = Object.keys(TYPE_SPECIFIC_MONITOR_FIELD_SCHEMAS);
 
 /**
- * The type-specific fields as the write tools advertise them: the schema, plus a few words
- * saying which types the field belongs to. That is enough to pick the field out of the list
- * and to know which type to ask getMonitorTypeFields about; the full text is in
- * MONITOR_FIELD_DOCS.
+ * Validates `typeFields` against the schemas above, as strictly as a top-level field would be.
+ *
+ * `typeFields` is advertised as a free-form object so the ~85 fields in it cost nothing in the
+ * tool list; this is where the checking the advertised schema no longer does happens. An
+ * unknown key is refused by name rather than dropped, for the reason every other tool here is
+ * strict: a dropped field is refilled with its old value and Uptime Kuma answers "Saved.".
+ *
+ * `topLevel` is the tool's own field names, to say so when one of them was nested by mistake.
  */
-const TYPE_SPECIFIC_MONITOR_FIELDS = Object.fromEntries(
-  Object.entries(TYPE_SPECIFIC_MONITOR_FIELD_SCHEMAS).map(([field, schema]) => {
-    const alias = TYPE_SPECIFIC_FIELD_ALIASES[field];
-    if (alias) return [field, schema.describe(`Alias for ${alias}`)];
-    const types = monitorTypesUsing(field);
-    const http = ['http', 'keyword', 'json-query'];
-    const label = http.every((t) => types.includes(t))
-      ? ['HTTP types', ...types.filter((t) => !http.includes(t))]
-      : types;
-    return [field, schema.describe(`For ${label.join(', ')}`)];
-  })
-) as typeof TYPE_SPECIFIC_MONITOR_FIELD_SCHEMAS;
+const TypeFieldsSchema = z.strictObject(TYPE_SPECIFIC_MONITOR_FIELD_SCHEMAS);
+const looseFieldName = (key: string): string => key.toLowerCase().replace(/[_-]/g, '');
+function parseTypeFields(raw: unknown, topLevel: string[]): Record<string, unknown> {
+  if (raw === undefined || raw === null) return {};
+  const parsed = TypeFieldsSchema.safeParse(raw);
+  if (parsed.success) {
+    return Object.fromEntries(Object.entries(parsed.data).filter(([, v]) => v !== undefined));
+  }
+  const problems = parsed.error.issues.flatMap((issue) => {
+    if (issue.code !== 'unrecognized_keys') {
+      return [`typeFields.${issue.path.join('.')}: ${issue.message}`];
+    }
+    return issue.keys.map((key) => {
+      if (topLevel.includes(key)) return `'${key}' is a top-level field — pass it beside typeFields, not inside it`;
+      const match = [...MONITOR_TYPE_FIELD_NAMES, ...topLevel].find((name) => looseFieldName(name) === looseFieldName(key));
+      return match
+        ? `'${key}' is not a field — did you mean '${match}'?`
+        : `'${key}' is not a field of any monitor type`;
+    });
+  });
+  throw new Error(
+    `Invalid typeFields: ${problems.join('; ')}. getMonitorTypeFields lists the fields a monitor type accepts and what each takes.`
+  );
+}
+
+const TYPE_FIELDS_DESCRIPTION =
+  'Fields specific to the monitor type, e.g. {"mqttTopic": "sensors/#"} for mqtt or {"bearer_token": "…"} for an HTTP monitor behind authentication. ' +
+  'Call getMonitorTypeFields with the type for the names, meanings and allowed values — they are validated, and an unknown name is refused. ' +
+  'getMonitor returns these fields at the top level of the monitor; to change one, pass it here.';
 
 const DRAFT_07_DIALECT = 'http://json-schema.org/draft-07/schema#';
 const DIALECT_2020_12 = 'https://json-schema.org/draft/2020-12/schema';
@@ -592,6 +628,26 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
   // Track current logging level (default: info)
   let currentLogLevel: LoggingLevel = 'info';
 
+  // UPTIME_KUMA_READ_ONLY: the write tools are not registered (see the registerTool wrapper
+  // below), so the instructions must not send a model looking for them.
+  const readOnlyMode = config.readOnly === true;
+  const writeInstructions = readOnlyMode
+    ? `        This server is running READ-ONLY (UPTIME_KUMA_READ_ONLY): it has no tools that create,
+        change, pause or delete anything. Say so if asked to make a change.
+`
+    : `        WRITE operations:
+        - Use 'createMonitor' / 'updateMonitor' / 'deleteMonitor' to manage monitors.
+        - Call 'getMonitorTypeFields' before creating or reconfiguring a monitor: it names the fields a type needs. Type-specific fields go in the typeFields argument.
+        - Use 'addNotification' / 'updateNotification' / 'deleteNotification' to manage notification channels.
+        - Use 'addTag' / 'deleteTag' to manage tags.
+        - Use 'createMaintenance' / 'updateMaintenance' / 'deleteMaintenance' to manage maintenance windows. Pass monitorIDs — a window with no monitors suppresses nothing.
+        - Use 'pauseMaintenance' / 'resumeMaintenance' to switch a maintenance window off and on.
+        - Use 'addDockerHost' / 'updateDockerHost' / 'deleteDockerHost' to manage docker daemon connections.
+        - Use 'testDockerHost' to verify a docker daemon is reachable before saving.
+        - Use 'createStatusPage' / 'updateStatusPage' / 'deleteStatusPage' to manage status pages. Creating returns an empty page — follow up with updateStatusPage to set groups and monitors.
+        - Use 'pauseMonitor' / 'resumeMonitor' to temporarily stop/start checks.
+`;
+
   const server = new McpServer(
     {
       name: 'mcp-uptime-kuma',
@@ -611,25 +667,15 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         - Use 'listStatusPages' to see status page configurations, or 'getStatusPage' for one page's full details (groups + monitors).
         - Use 'listDockerHosts' to see configured docker daemons (used by docker container monitors).
 
-        WRITE operations:
-        - Use 'createMonitor' / 'updateMonitor' / 'deleteMonitor' to manage monitors.
-        - Use 'addNotification' / 'updateNotification' / 'deleteNotification' to manage notification channels.
-        - Use 'addTag' / 'deleteTag' to manage tags.
-        - Use 'createMaintenance' / 'updateMaintenance' / 'deleteMaintenance' to manage maintenance windows. Pass monitorIDs — a window with no monitors suppresses nothing.
-        - Use 'pauseMaintenance' / 'resumeMaintenance' to switch a maintenance window off and on.
-        - Use 'addDockerHost' / 'updateDockerHost' / 'deleteDockerHost' to manage docker daemon connections.
-        - Use 'testDockerHost' to verify a docker daemon is reachable before saving.
-        - Use 'createStatusPage' / 'updateStatusPage' / 'deleteStatusPage' to manage status pages. Creating returns an empty page — follow up with updateStatusPage to set groups and monitors.
-        - Use 'pauseMonitor' / 'resumeMonitor' to temporarily stop/start checks.
-
+${writeInstructions}
         CREDENTIALS:
         - Read tools return "***" in place of passwords, tokens, API keys and HTTP headers.
           To attach a notification channel to a monitor you only need its id, so the common
           workflows never need the real values.
         - Pass includeSecrets: true (or set UPTIME_KUMA_INCLUDE_SECRETS=true) only when the
           value itself is needed. It will be written to this conversation's transcript.
-        - "***" sent back to updateMonitor / updateNotification restores the stored value
-          rather than overwriting it, so a read-edit-write round trip is safe.
+${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotification restores the stored value
+          rather than overwriting it, so a read-edit-write round trip is safe.`}
       `,
       capabilities: {
         logging: {}
@@ -655,12 +701,15 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
   //
   // Done by wrapping the method once rather than editing ~31 schemas by hand: one seam, no
   // chance of missing one, and it covers any tool added later.
+  const readOnly = readOnlyMode;
   const registerToolUnstrict = server.registerTool.bind(server);
   (server as unknown as { registerTool: typeof server.registerTool }).registerTool = ((
     name: string,
     config: Record<string, unknown>,
     cb: unknown
   ) => {
+    // Read-only mode: a tool that is not registered cannot be called, listed, or cost context.
+    if (readOnly && !READ_ONLY_TOOLS.has(name)) return undefined;
     const shape = config?.inputSchema as Record<string, unknown> | undefined;
     // Only upgrade raw shapes; anything already a Zod schema is left alone.
     if (shape && typeof shape === 'object' && !('_def' in shape) && !('_zod' in shape)) {
@@ -697,8 +746,15 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
           .map((k) => [k, byLooseName.get(looseName(k))])
           .filter(([, match]) => match !== undefined)
           .map(([k, match]) => `'${match}' for '${k}'`);
+        // The fields that live in typeFields are the likeliest thing to be passed here instead.
+        const typeFieldFor = (k: string) => MONITOR_TYPE_FIELD_NAMES.find((name) => looseFieldName(name) === looseFieldName(k));
+        const nested = 'typeFields' in shape ? issue.keys.filter((k) => typeFieldFor(k) !== undefined) : [];
         return (
           `Unknown field(s) for ${toolName}: ${issue.keys.map((k) => `'${k}'`).join(', ')}. ` +
+          (nested.length > 0
+            ? `${nested.map((k) => `'${k}'`).join(', ')} ${nested.length > 1 ? 'are type-specific fields and go' : 'is a type-specific field and goes'} ` +
+              `inside typeFields: {"typeFields": {${nested.map((k) => `"${typeFieldFor(k)}": …`).join(', ')}}}. `
+            : '') +
           (suggestions.length > 0 ? `Did you mean ${suggestions.join(', ')}? ` : '') +
           'Field names are case-sensitive — check spelling and casing first (monitorID, not monitorId). ' +
           `Accepted fields: ${accepted.join(', ')}. ` +
@@ -1950,8 +2006,8 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     databaseQuery: z.string().optional().describe('Query for database monitors. SQL for mysql, postgres and sqlserver (default: SELECT 1); a JSON command object for mongodb (default: {"ping": 1}).'),
     database_query: z.string().optional().describe('Alias for databaseQuery (the database column name). Prefer databaseQuery.'),
     databasePassword: z.string().optional().describe('Password for mysql monitors, if not inline in the connection string. Stored by Uptime Kuma as radiusPassword. A credential: read tools return it as "***".'),
-    radiusPassword: z.string().optional().describe('The RADIUS password (required for radius). Also the column databasePassword and snmpCommunity are stored in — prefer those names for mysql and snmp.'),
-    ...TYPE_SPECIFIC_MONITOR_FIELDS,
+    radiusPassword: z.string().optional().describe('The RADIUS password (required for radius). Also the column databasePassword and typeFields.snmpCommunity are stored in — prefer those names for mysql and snmp.'),
+    typeFields: z.record(z.string(), z.unknown()).optional().describe(TYPE_FIELDS_DESCRIPTION),
   };
 
   // Which defaults this server fills in, and which fields depend on another field's value.
@@ -1986,7 +2042,10 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
   };
 
   const describeMonitorField = (name: string) => {
-    const schema = (createMonitorShape as Record<string, z.ZodTypeAny>)[name];
+    const inTypeFields = MONITOR_TYPE_FIELD_NAMES.includes(name);
+    const schema = inTypeFields
+      ? (TYPE_SPECIFIC_MONITOR_FIELD_SCHEMAS as Record<string, z.ZodTypeAny>)[name]
+      : (createMonitorShape as Record<string, z.ZodTypeAny>)[name];
     const description =
       (MONITOR_FIELD_DOCS as Record<string, string>)[name] ?? schema?.description ?? '';
     // Type and allowed values, without the description the entry already carries.
@@ -2000,11 +2059,12 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     } catch {
       // Described in words only.
     }
-    return { name, description, accepts };
+    return { name, in: inTypeFields ? 'typeFields' : 'top-level', description, accepts };
   };
 
   const MonitorFieldDescription = z.object({
     name: z.string(),
+    in: z.enum(['top-level', 'typeFields']).describe('Where to pass it: as an argument of createMonitor / updateMonitor, or inside their typeFields object'),
     description: z.string(),
     accepts: z.record(z.string(), z.unknown()).describe('JSON Schema of the value: its type and any allowed values'),
   });
@@ -2013,7 +2073,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     'getMonitorTypeFields',
     {
       title: 'Get Monitor Type Fields',
-      description: 'Describes the fields one monitor type uses: which are required, which are optional, what each means and accepts, and the defaults applied when they are omitted. Call this before createMonitor, or before updateMonitor changes a type or sets type-specific fields — the field descriptions on those two tools are deliberately brief.',
+      description: 'Describes the fields one monitor type uses: which are required, which are optional, what each means and accepts, and the defaults applied when they are omitted. Call this before createMonitor, or before updateMonitor changes a type or sets type-specific fields: most of them go in the typeFields argument of those tools, which is not described there.',
       inputSchema: {
         type: z.string().describe('The monitor type, e.g. http, mqtt, snmp. Use listMonitorTypes for all options.'),
       },
@@ -2072,7 +2132,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     'createMonitor',
     {
       title: 'Create Monitor',
-      description: 'Creates a new monitor in Uptime Kuma. Requires at minimum a name and type. Use listMonitorTypes to see supported types. For HTTP monitors include url; for TCP/port monitors include hostname and port; for ping and dns include hostname; for json-query include url, jsonPath, jsonPathOperator and expectedValue; for database types (mysql, postgres, mongodb, redis, sqlserver, oracledb) include databaseConnectionString. For any other type, call getMonitorTypeFields first: it lists the required and optional fields of the type and what each means, which the brief "For <types>" descriptions below do not. A create without the required fields of its type is refused rather than saved as a monitor that fails every check. For an HTTP monitor behind authentication pass the credentials (basic_auth_user and basic_auth_pass, or bearer_token) and authMethod is set to match. Never pass "***" for a credential. A push monitor is given a generated push token (Uptime Kuma only generates one in its own web UI) and the resulting ping URL is returned. timeout defaults to 0.8 x interval seconds for polled types.',
+      description: 'Creates a new monitor in Uptime Kuma. Requires at minimum a name and type. Use listMonitorTypes to see supported types. For HTTP monitors include url; for TCP/port monitors include hostname and port; for ping and dns include hostname; for json-query include url, jsonPath, jsonPathOperator and expectedValue; for database types (mysql, postgres, mongodb, redis, sqlserver, oracledb) include databaseConnectionString. For any other type, and for anything type-specific such as HTTP authentication, call getMonitorTypeFields first: it lists the required and optional fields of the type, what each means, and whether it is passed at the top level or inside typeFields. A create without the required fields of its type is refused rather than saved as a monitor that fails every check. For an HTTP monitor behind authentication pass the credentials in typeFields (basic_auth_user and basic_auth_pass, or bearer_token) and authMethod is set to match. Never pass "***" for a credential. A push monitor is given a generated push token (Uptime Kuma only generates one in its own web UI) and the resulting ping URL is returned. timeout defaults to 0.8 x interval seconds for polled types.',
       inputSchema: createMonitorShape,
       outputSchema: {
         ok: z.boolean(),
@@ -2095,7 +2155,12 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
           retryInterval: 60,
         };
 
-        const requested = normaliseMonitorAliases({ ...input } as Record<string, unknown>);
+        // typeFields is flattened into the monitor here: Uptime Kuma's payload is one flat object.
+        const { typeFields, ...topLevel } = input as Record<string, unknown>;
+        const requested = normaliseMonitorAliases({
+          ...topLevel,
+          ...parseTypeFields(typeFields, Object.keys(createMonitorShape)),
+        });
 
         // Issue #59: nothing to restore on a create, so the redaction marker must be refused
         // rather than persisted — writing "***" produces a credential that looks set and can
@@ -2180,7 +2245,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     'updateMonitor',
     {
       title: 'Update Monitor',
-      description: 'Updates an existing monitor configuration. You must include the monitorID. Only the fields you provide will be changed (the server merges your changes with the existing config). Use getMonitor first to get the current config. Passing a different type converts the monitor in place, keeping its ID and history: the new type must have the fields it needs, passed here or already stored (e.g. url for http, hostname for ping), and a monitor becoming push is given a push token if it has none. Call getMonitorTypeFields for what the fields of a type mean — the "For <types>" descriptions below only say which types use them. Credentials read back as "***"; sending "***" keeps the stored value.',
+      description: 'Updates an existing monitor configuration. You must include the monitorID. Only the fields you provide will be changed (the server merges your changes with the existing config). Use getMonitor first to get the current config. Passing a different type converts the monitor in place, keeping its ID and history: the new type must have the fields it needs, passed here or already stored (e.g. url for http, hostname for ping), and a monitor becoming push is given a push token if it has none. Type-specific fields go in typeFields; call getMonitorTypeFields for their names and meanings. Credentials read back as "***"; sending "***" keeps the stored value.',
       inputSchema: {
         monitorID: requiredId('The ID of the monitor to update'),
         // `parent` was declared on createMonitor but not here, so an existing monitor could
@@ -2236,8 +2301,8 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         databaseQuery: z.string().optional().describe('Query for database monitors. SQL for mysql, postgres and sqlserver; a JSON command object for mongodb.'),
         database_query: z.string().optional().describe('Alias for databaseQuery (the database column name). Prefer databaseQuery.'),
         databasePassword: z.string().optional().describe('Password for mysql monitors, stored by Uptime Kuma as radiusPassword. Sending "***" back keeps the stored value.'),
-        radiusPassword: z.string().optional().describe('The RADIUS password (required for radius). Also the column databasePassword and snmpCommunity are stored in — prefer those names for mysql and snmp.'),
-        ...TYPE_SPECIFIC_MONITOR_FIELDS,
+        radiusPassword: z.string().optional().describe('The RADIUS password (required for radius). Also the column databasePassword and typeFields.snmpCommunity are stored in — prefer those names for mysql and snmp.'),
+        typeFields: z.record(z.string(), z.unknown()).optional().describe(TYPE_FIELDS_DESCRIPTION),
       },
       outputSchema: {
         ok: z.boolean(),
@@ -2260,8 +2325,13 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         if (rest.type !== undefined && existing.type === 'group' && rest.type !== 'group') {
           throw new Error(`Monitor ${monitorID} is a group; changing its type would detach all of its child monitors. Move the children out first, or delete and recreate the group.`);
         }
-        // Strip undefined values so existing config is preserved for omitted fields
-        const defined = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined));
+        // Strip undefined values so existing config is preserved for omitted fields, and flatten
+        // typeFields in beside them: Uptime Kuma's payload is one flat object.
+        const { typeFields, ...topLevel } = rest as Record<string, unknown>;
+        const defined: Record<string, unknown> = {
+          ...Object.fromEntries(Object.entries(topLevel).filter(([, v]) => v !== undefined)),
+          ...parseTypeFields(typeFields, ['monitorID', ...Object.keys(topLevel)]),
+        };
         // Fold `parentID` / `parent_id` onto the single field Uptime Kuma's editMonitor
         // handler reads (`bean.parent = monitor.parent`), along with the snake_case
         // type-specific aliases, so a reasonable guess at a name cannot become a silent no-op.
