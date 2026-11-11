@@ -679,6 +679,103 @@ describe('type-specific monitor fields (#112)', () => {
     });
   });
 
+  describe('credentials inline in a url', () => {
+    beforeEach(() => {
+      existing = { ...existing, url: 'https://probe:stored-pw@api.internal/health' };
+    });
+
+    it('restores them when a redacted url is written back', async () => {
+      const result = await update({ url: 'https://***:***@api.internal/v2/health' });
+
+      expect(result.isError).toBeFalsy();
+      expect(lastWrite.url).toBe('https://probe:stored-pw@api.internal/v2/health');
+      expect(textOf(result)).toContain('Kept the existing value for the credentials in url');
+      expect(textOf(result)).not.toContain('stored-pw');
+    });
+
+    it.each(['https://***:***@other.internal/health', 'https://***:***@api.internal:8443/health'])(
+      'does not send them to a different host or port (%s)',
+      async (url) => {
+        const result = await update({ url });
+
+        expect(result.isError).toBe(true);
+        expect(textOf(result)).toContain('belong to a different host or port');
+        expect(textOf(result)).not.toContain('stored-pw');
+        expect(updateMonitor).not.toHaveBeenCalled();
+      }
+    );
+
+    it('refuses the marker when the stored url has no credentials', async () => {
+      existing = { ...existing, url: 'https://api.internal/health' };
+
+      const result = await update({ url: 'https://***:***@api.internal/health' });
+
+      expect(result.isError).toBe(true);
+      expect(textOf(result)).toContain('redaction marker');
+      expect(updateMonitor).not.toHaveBeenCalled();
+    });
+
+    it('refuses the marker on create', async () => {
+      const result = await create({ type: 'http', url: 'https://***:***@api.internal/health' });
+
+      expect(result.isError).toBe(true);
+      expect(textOf(result)).toContain('redaction marker');
+      expect(createMonitor).not.toHaveBeenCalled();
+    });
+
+    it('leaves a url with real or no credentials alone', async () => {
+      await update({ url: 'https://new:creds@other.internal/health' });
+      expect(lastWrite.url).toBe('https://new:creds@other.internal/health');
+
+      await update({ url: 'https://other.internal/health' });
+      expect(lastWrite.url).toBe('https://other.internal/health');
+    });
+  });
+
+  describe('updateDockerHost', () => {
+    let addDockerHost: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      vi.spyOn(UptimeKumaClient.prototype, 'getDockerHostList').mockReturnValue([
+        { id: 3, name: 'remote', dockerType: 'tcp', dockerDaemon: 'http://admin:stored-pw@dockerd.internal:2375' },
+      ] as never);
+      addDockerHost = vi
+        .spyOn(UptimeKumaClient.prototype, 'addDockerHost')
+        .mockResolvedValue({ ok: true, id: 3, msg: 'Saved.' } as never);
+    });
+
+    const updateHost = async (dockerDaemon: string) => {
+      const { client } = await connectServer();
+      return client.callTool({ name: 'updateDockerHost', arguments: { dockerHostID: 3, dockerDaemon } });
+    };
+
+    it('restores the stored credentials onto the same host', async () => {
+      const result = await updateHost('https://***:***@dockerd.internal:2375');
+
+      expect(result.isError).toBeFalsy();
+      expect(addDockerHost.mock.calls[0][0]).toMatchObject({ dockerDaemon: 'https://admin:stored-pw@dockerd.internal:2375/' });
+    });
+
+    it.each(['http://***:***@elsewhere.internal:2375', 'http://***:***@dockerd.internal:2376'])(
+      'does not send them to a different host or port (%s)',
+      async (dockerDaemon) => {
+        const result = await updateHost(dockerDaemon);
+
+        expect(result.isError).toBe(true);
+        expect(textOf(result)).toContain('belong to a different host or port');
+        expect(textOf(result)).not.toContain('stored-pw');
+        expect(addDockerHost).not.toHaveBeenCalled();
+      }
+    );
+
+    it('still moves the host when real credentials are passed', async () => {
+      const result = await updateHost('http://admin:new-pw@elsewhere.internal:2375');
+
+      expect(result.isError).toBeFalsy();
+      expect(addDockerHost.mock.calls[0][0]).toMatchObject({ dockerDaemon: 'http://admin:new-pw@elsewhere.internal:2375' });
+    });
+  });
+
   describe('read-back verification', () => {
     it('reports a credential that did not persist without printing it', async () => {
       fetchMonitor.mockImplementation((async () => ({ ...lastWrite, bearer_token: null })) as never);

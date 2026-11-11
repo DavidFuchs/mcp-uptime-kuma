@@ -371,10 +371,15 @@ token and ping URL of a new push monitor, and `updateMonitor` does the same when
 a monitor's type to push, because the sender cannot be wired up without them. Later reads
 redact the token like any other secret.
 
-`updateDockerHost` gets the same protection for the credentials embedded in a `dockerDaemon`
-URL: a `http://***:***@host:2375` read back from `listDockerHosts` has its userinfo restored
-from the stored URL rather than persisted verbatim, so repointing a host without re-entering
-its credentials does not wipe them.
+Credentials written inline in a URL get the same protection: the `url` of a monitor, the
+entries of `rabbitmqNodes`, and the `dockerDaemon` of a docker host. A `http://***:***@host:2375`
+read back from a read tool has its userinfo restored from the stored URL rather than persisted
+verbatim, so editing the path or scheme without re-entering the credentials does not wipe them.
+
+**Stored credentials are only restored onto the host and port they were stored for.** Sending
+`http://***:***@another-host` is refused rather than restored, because that would hand a
+password you were never shown to an address of the caller's choosing. To point a monitor or
+docker host at a new address, pass the real credentials along with it.
 
 The MCP logging channel gets the same rule. The debug log for a live heartbeat reports the
 monitored service's status message by length only (`msgLength=...`), never its content, since

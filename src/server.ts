@@ -77,6 +77,15 @@ function requiredId(description: string) {
   ).describe(description);
 }
 
+/**
+ * The refusal for a redacted URL sent back pointing at a different host. Stored credentials
+ * are only ever restored onto the host they were stored for — see rehydrateUrlCredentials.
+ */
+const HOST_CHANGED_MARKER_ERROR = (field: string, howToRead: string): string =>
+  `"***" in ${field} is the redaction marker, and the stored credentials belong to a different host or port, ` +
+  'so they were not restored — that would send a credential you were not shown to a new address. ' +
+  `Pass the real credentials for the new address, or ${howToRead} to read the current ones.`;
+
 /** A credential field's shared wording, so every one of them describes the round trip. */
 const SECRET_NOTE = 'A credential: read tools return "***", and on updateMonitor sending "***" back keeps the stored value.';
 
@@ -1301,6 +1310,32 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     return applied;
   };
 
+  /**
+   * Restores the `user:pass@` of a monitor `url` that a redacted read scrubbed.
+   *
+   * `rehydrateSecrets` only recognises a field whose whole value is "***"; here the marker sits
+   * inside the URL, so without this an agent that reads a monitor and writes its `url` back
+   * stores "***:***" as the login and the monitor starts answering 401. `stored` is undefined
+   * on a create, where there is nothing to restore and the marker is refused.
+   *
+   * Returns whether credentials were restored, so the caller can say so.
+   */
+  const rehydrateMonitorUrl = (fields: Record<string, unknown>, stored: unknown): boolean => {
+    if (typeof fields.url !== 'string') return false;
+    const restored = rehydrateUrlCredentials(fields.url, typeof stored === 'string' ? stored : undefined);
+    if (restored.hostChanged) {
+      throw new Error(HOST_CHANGED_MARKER_ERROR('url', 'call getMonitor with includeSecrets'));
+    }
+    if (restored.missing) {
+      throw new Error(
+        '"***" in the url is the redaction marker, not a credential, and the monitor has no stored url ' +
+        'credentials to restore it from. Pass the real credentials, or leave them out of the url.'
+      );
+    }
+    fields.url = restored.value;
+    return restored.preserved;
+  };
+
   const inferredAuthNote = (method: unknown): string =>
     `\n\nSet authMethod to '${method}' to match the credentials passed — Uptime Kuma only sends the credentials of the method it has stored.`;
 
@@ -1695,6 +1730,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
 
         // Same refusal for a marker inside a rabbitmqNodes URL, which the check above cannot see.
         rehydrateRabbitmqNodes(requested, undefined);
+        rehydrateMonitorUrl(requested, undefined);
 
         if (requested.timeout === null) delete requested.timeout;
         const applied = applyMonitorTypeRules(requested, requested.timeout !== undefined);
@@ -1879,6 +1915,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         }
 
         rehydrateRabbitmqNodes(defined, (existing as unknown as Record<string, unknown>).rabbitmqNodes);
+        if (rehydrateMonitorUrl(defined, (existing as unknown as Record<string, unknown>).url)) preserved.push('the credentials in url');
 
         const merged = { ...existing, ...defined, id: monitorID };
         // A type sent back unchanged is the read-edit-write loop, not a conversion: it must
@@ -2279,6 +2316,9 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         let preservedCreds = false;
         if (dockerDaemon !== undefined) {
           const restored = rehydrateUrlCredentials(dockerDaemon, existing.dockerDaemon);
+          if (restored.hostChanged) {
+            throw new Error(HOST_CHANGED_MARKER_ERROR('dockerDaemon', 'call listDockerHosts with includeSecrets'));
+          }
           if (restored.missing) {
             throw new Error(
               'Cannot write the redaction marker "***" into dockerDaemon — the docker host has no ' +

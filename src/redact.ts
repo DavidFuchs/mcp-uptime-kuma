@@ -314,24 +314,32 @@ export function rehydrateSecrets(
  * Returns the restored URL and whether a marker was restored (`preserved`) or had nothing behind
  * it (`missing` — a create, or a stored URL that never had that credential). A URL with no marker
  * in its userinfo, or a non-URL string, is returned unchanged.
+ *
+ * CREDENTIALS ARE ONLY RESTORED ONTO THE HOST THEY WERE STORED FOR. A marker on a URL whose
+ * host or port differs from the stored one is reported as `missing` with `hostChanged` set, and
+ * nothing is restored. Otherwise `http://***:***@somewhere-else` would send a password the
+ * caller was never shown to a host of the caller's choosing — the one way the "***" round trip
+ * could be used to move a secret rather than keep it. The scheme may change (http -> https on
+ * the same host is the same service); the port may not, because another port is another service.
  */
 export function rehydrateUrlCredentials(
   incoming: string,
   stored: string | undefined
-): { value: string; preserved: boolean; missing: boolean } {
+): { value: string; preserved: boolean; missing: boolean; hostChanged: boolean } {
+  const unchanged = { value: incoming, preserved: false, missing: false, hostChanged: false };
   if (typeof incoming !== 'string' || !/^[a-z][a-z0-9+.-]*:\/\//i.test(incoming)) {
-    return { value: incoming, preserved: false, missing: false };
+    return unchanged;
   }
 
   let url: URL;
   try {
     url = new URL(incoming);
   } catch {
-    return { value: incoming, preserved: false, missing: false };
+    return unchanged;
   }
 
   if (url.username !== SECRET_MARKER && url.password !== SECRET_MARKER) {
-    return { value: incoming, preserved: false, missing: false };
+    return unchanged;
   }
 
   let storedUrl: URL | undefined;
@@ -341,6 +349,11 @@ export function rehydrateUrlCredentials(
     } catch {
       storedUrl = undefined;
     }
+  }
+
+  // `host` is hostname plus any non-default port, already lower-cased by the URL parser.
+  if (storedUrl && (storedUrl.username || storedUrl.password) && storedUrl.host !== url.host) {
+    return { value: incoming, preserved: false, missing: true, hostChanged: true };
   }
 
   let preserved = false;
@@ -365,7 +378,7 @@ export function rehydrateUrlCredentials(
     }
   }
 
-  return { value: url.toString(), preserved, missing };
+  return { value: url.toString(), preserved, missing, hostChanged: false };
 }
 
 /**

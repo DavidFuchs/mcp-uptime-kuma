@@ -259,6 +259,35 @@ export const monitorTypeFieldTests: Array<{ name: string; fn: TestFn }> = [
     },
   },
   {
+    name: 'credentials inline in a monitor url survive a redacted round trip, and stay on their host',
+    fn: async ({ client }) => {
+      const created = await call(client, 'createMonitor', {
+        name: 'zz-url-creds-delete-me',
+        type: 'http',
+        url: 'https://zz-user:zz-url-pw@example.invalid/health',
+        active: false,
+      });
+      const monitorID = extractID(created, 'createMonitor', 'monitorID');
+
+      try {
+        const redacted = await readMonitor(client, monitorID, false);
+        if (String(redacted.url).includes('zz-url-pw')) throw new Error('the url password came back in cleartext');
+
+        extractText(await call(client, 'updateMonitor', { monitorID, url: redacted.url }), 'updateMonitor');
+        const after = await readMonitor(client, monitorID);
+        if (!String(after.url).includes('zz-user:zz-url-pw@')) throw new Error(`url credentials were lost: ${redacted.url}`);
+
+        const moved = await call(client, 'updateMonitor', { monitorID, url: 'https://***:***@elsewhere.invalid/health' });
+        if (!moved.isError) throw new Error('stored credentials were restored onto a different host');
+        const untouched = await readMonitor(client, monitorID);
+        if (!String(untouched.url).includes('@example.invalid')) throw new Error('the refused update still changed the url');
+        console.log('  ✓ url credentials kept across a redacted round trip, and refused for another host');
+      } finally {
+        await call(client, 'deleteMonitor', { monitorID });
+      }
+    },
+  },
+  {
     name: '#112: a type change brings the new type\'s fields with it',
     fn: async ({ client }) => {
       const created = await call(client, 'createMonitor', {
