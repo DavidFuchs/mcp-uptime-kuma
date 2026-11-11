@@ -337,12 +337,11 @@ describe('type-specific monitor fields (#112)', () => {
       }
       // Fields that exist for one tool's bookkeeping or as another spelling of a described field.
       const notPerType = ['type', 'typeFields', 'monitorID', 'parentID', 'parent_id'];
-      const aliases = ['auth_method', 'proxy_id', 'save_response', 'save_error_response', 'response_max_length', 'retry_only_on_status_code_failure'];
       const undescribed = [
         ...Object.entries(properties('updateMonitor'))
           .filter(([name, schema]) => !notPerType.includes(name) && !/^Alias for /.test(schema.description ?? ''))
           .map(([name]) => name),
-        ...MONITOR_TYPE_FIELD_NAMES.filter((name) => !aliases.includes(name)),
+        ...MONITOR_TYPE_FIELD_NAMES,
       ].filter((name) => !described.has(name));
 
       expect(undescribed).toEqual([]);
@@ -762,39 +761,24 @@ describe('type-specific monitor fields (#112)', () => {
     });
   });
 
-  describe('aliases', () => {
-    it('folds the snake_case column names onto the names editMonitor reads', async () => {
-      const result = await create({
-        type: 'http',
-        url: 'https://example.com',
-        auth_method: 'bearer',
-        bearer_token: 'tok',
-        proxy_id: '3',
-        save_response: true,
-        save_error_response: false,
-        response_max_length: 2048,
-        retry_only_on_status_code_failure: true,
-      });
-
-      expect(result.isError).toBeFalsy();
-      expect(lastWrite).toMatchObject({
-        authMethod: 'bearer',
-        proxyId: 3,
-        saveResponse: true,
-        saveErrorResponse: false,
-        responseMaxLength: 2048,
-        retryOnlyOnStatusCodeFailure: true,
-      });
-      for (const alias of ['auth_method', 'proxy_id', 'save_response', 'save_error_response', 'response_max_length']) {
-        expect(lastWrite).not.toHaveProperty(alias);
-      }
-    });
-
-    it('refuses an alias that disagrees with the field it stands for', async () => {
-      const result = await create({ type: 'http', url: 'https://example.com', saveResponse: true, save_response: false });
+  describe('names', () => {
+    // Uptime Kuma reads one name per field. A second spelling is not accepted under it; the
+    // refusal names the one that is.
+    it('refuses a snake_case spelling of a camelCase field and names the accepted one', async () => {
+      const result = await create({ type: 'http', url: 'https://example.com', typeFields: { save_response: true, auth_method: 'bearer' } });
 
       expect(result.isError).toBe(true);
-      expect(textOf(result)).toContain('Conflicting values for saveResponse');
+      expect(textOf(result)).toContain("'save_response' is not a field — did you mean 'saveResponse'?");
+      expect(textOf(result)).toContain("'auth_method' is not a field — did you mean 'authMethod'?");
+      expect(createMonitor).not.toHaveBeenCalled();
+    });
+
+    // Not a spelling: Uptime Kuma keeps the SNMP community string in the radiusPassword column.
+    it('refuses a community string that disagrees with radiusPassword', async () => {
+      const result = await create({ type: 'snmp', ...MINIMAL.snmp, radiusPassword: 'other' });
+
+      expect(result.isError).toBe(true);
+      expect(textOf(result)).toContain('Conflicting values for radiusPassword');
     });
   });
 

@@ -127,7 +127,6 @@ const MonitorConditionInputSchema = z.object(conditionFields(z.record(z.string()
 const TYPE_SPECIFIC_MONITOR_FIELD_SCHEMAS = {
   // ── HTTP authentication (http, keyword, json-query, websocket-upgrade, globalping) ──
   authMethod: z.enum(['basic', 'bearer', 'oauth2-cc', 'ntlm', 'mtls']).nullable().optional(),
-  auth_method: z.enum(['basic', 'bearer', 'oauth2-cc', 'ntlm', 'mtls']).nullable().optional(),
   basic_auth_user: z.string().optional(),
   basic_auth_pass: z.string().optional(),
   bearer_token: z.string().optional(),
@@ -148,15 +147,10 @@ const TYPE_SPECIFIC_MONITOR_FIELD_SCHEMAS = {
   ipFamily: z.enum(['ipv4', 'ipv6']).nullable().optional(),
   cacheBust: z.boolean().optional(),
   proxyId: numeric(z.number().int()).nullable().optional(),
-  proxy_id: numeric(z.number().int()).nullable().optional(),
   saveResponse: z.boolean().optional(),
-  save_response: z.boolean().optional(),
   saveErrorResponse: z.boolean().optional(),
-  save_error_response: z.boolean().optional(),
   responseMaxLength: numeric(z.number().int().min(0).max(1048576)).optional(),
-  response_max_length: numeric(z.number().int().min(0).max(1048576)).optional(),
   retryOnlyOnStatusCodeFailure: z.boolean().optional(),
-  retry_only_on_status_code_failure: z.boolean().optional(),
 
   // ── websocket-upgrade ──
   wsSubprotocol: z.string().optional(),
@@ -264,7 +258,6 @@ const TYPE_SPECIFIC_MONITOR_FIELD_SCHEMAS = {
 const MONITOR_FIELD_DOCS: Record<keyof typeof TYPE_SPECIFIC_MONITOR_FIELD_SCHEMAS, string> = {
   // ── HTTP authentication (http, keyword, json-query, websocket-upgrade, globalping) ──
   authMethod: 'HTTP authentication method. Uptime Kuma only sends the credentials of the method named here, so it is inferred when you pass one kind of credential without it. null turns authentication off.',
-  auth_method: 'Alias for authMethod (the database column name). Prefer authMethod.',
   basic_auth_user: 'Username for authMethod "basic" or "ntlm". Also the username of an oracledb monitor.',
   basic_auth_pass: `Password for authMethod "basic" or "ntlm". Also the password of an oracledb monitor. ${SECRET_NOTE}`,
   bearer_token: `Token for authMethod "bearer", sent as "Authorization: Bearer <token>". ${SECRET_NOTE}`,
@@ -285,15 +278,10 @@ const MONITOR_FIELD_DOCS: Record<keyof typeof TYPE_SPECIFIC_MONITOR_FIELD_SCHEMA
   ipFamily: 'Force IPv4 or IPv6. null lets Uptime Kuma choose.',
   cacheBust: 'Append a random query parameter to each request to defeat caches',
   proxyId: 'ID of a proxy configured in Uptime Kuma to send requests through. null for none.',
-  proxy_id: 'Alias for proxyId (the database column name). Prefer proxyId.',
   saveResponse: 'Store the response body with every heartbeat',
-  save_response: 'Alias for saveResponse (the database column name). Prefer saveResponse.',
   saveErrorResponse: 'Store the response body with failing heartbeats',
-  save_error_response: 'Alias for saveErrorResponse (the database column name). Prefer saveErrorResponse.',
   responseMaxLength: 'Maximum bytes of response body stored (default: 1024, max: 1048576)',
-  response_max_length: 'Alias for responseMaxLength (the database column name). Prefer responseMaxLength.',
   retryOnlyOnStatusCodeFailure: 'json-query only: retry when the status code is wrong, but go DOWN at once when the JSON query fails',
-  retry_only_on_status_code_failure: 'Alias for retryOnlyOnStatusCodeFailure (the database column name). Prefer retryOnlyOnStatusCodeFailure.',
 
   // ── websocket-upgrade ──
   wsSubprotocol: 'websocket-upgrade: Sec-WebSocket-Protocol to request, comma-separated for several',
@@ -1401,15 +1389,6 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
     // The snmp monitor reads its community string from the same column
     // (server/monitor-types/snmp.js: `snmp.createSession(monitor.hostname, monitor.radiusPassword, …)`).
     snmpCommunity: 'radiusPassword',
-    // Fields editMonitor reads in camelCase and stores under a snake_case bean property
-    // (`bean.save_response = monitor.saveResponse`), plus auth_method, which is the spelling
-    // Uptime Kuma's own check code uses (server/model/monitor.js: `this.auth_method`).
-    auth_method: 'authMethod',
-    proxy_id: 'proxyId',
-    save_response: 'saveResponse',
-    save_error_response: 'saveErrorResponse',
-    response_max_length: 'responseMaxLength',
-    retry_only_on_status_code_failure: 'retryOnlyOnStatusCodeFailure',
   };
 
   // Types whose check is a connection to databaseConnectionString (#106). Without one, Uptime
