@@ -157,7 +157,7 @@ describe('monitor type rules shared by createMonitor and updateMonitor', () => {
       expect(updateMonitor).not.toHaveBeenCalled();
     });
 
-    it('accepts the snake_case aliases as satisfying the new type', async () => {
+    it('refuses the snake_case spellings of the new type\'s fields and names the accepted ones', async () => {
       const result = await update({
         type: 'json-query',
         json_path: 'status',
@@ -165,13 +165,10 @@ describe('monitor type rules shared by createMonitor and updateMonitor', () => {
         expected_value: 'healthy',
       });
 
-      expect(result.isError).toBeFalsy();
-      expect(lastWrite).toMatchObject({
-        type: 'json-query',
-        jsonPath: 'status',
-        jsonPathOperator: '==',
-        expectedValue: 'healthy',
-      });
+      expect(result.isError).toBe(true);
+      expect(JSON.stringify(result.content)).toContain("'jsonPath' for 'json_path'");
+      expect(JSON.stringify(result.content)).toContain("'expectedValue' for 'expected_value'");
+      expect(updateMonitor).not.toHaveBeenCalled();
     });
 
     it('accepts a field the monitor already stores as satisfying the new type', async () => {

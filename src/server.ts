@@ -726,12 +726,16 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
     // rather than leaving the caller to find it in the list.
     const looseName = (key: string): string => key.toLowerCase().replace(/[_-]/g, '');
     const byLooseName = new Map(accepted.map((key) => [looseName(key), key]));
+    // updateMonitor accepted parentID and parent_id for `parent` until they were removed with
+    // the other second spellings. Unlike those, dropping the separators does not lead back to
+    // the accepted name, so it is spelled out.
+    const FORMER_PARENT_NAMES: Record<string, string> = { parentid: 'parent' };
 
     const schema = z.strictObject(shape, {
       error: (issue) => {
         if (issue.code !== 'unrecognized_keys') return undefined;
         const suggestions = issue.keys
-          .map((k) => [k, byLooseName.get(looseName(k))])
+          .map((k) => [k, byLooseName.get(looseName(k)) ?? (accepted.includes('parent') ? FORMER_PARENT_NAMES[looseName(k)] : undefined)])
           .filter(([, match]) => match !== undefined)
           .map(([k, match]) => `'${match}' for '${k}'`);
         // The fields that live in typeFields are the likeliest thing to be passed here instead.
@@ -1370,19 +1374,14 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
 
   // ─── Monitor write tools ──────────────────────────────────────────────────
 
-  // Uptime Kuma's editMonitor handler reads these fields under camelCase names on the wire
-  // (server/server.js: `bean.jsonPath = monitor.jsonPath`, `bean.pushToken = monitor.pushToken`,
-  // …) while the database columns are snake_case (json_path, push_token). The snake_case
-  // spellings are what the schema documentation, the database and issue #60 all use, so they
-  // are the ones callers reach for first. Accept both and normalise onto the name Kuma reads,
-  // rather than letting a reasonable guess silently do nothing.
+  // Names this server accepts for a value Uptime Kuma keeps under a name nobody would guess.
+  //
+  // These are NOT spelling variants. Uptime Kuma reads exactly one name per field, and this
+  // server used to accept a second spelling for some (json_path for jsonPath, push_token,
+  // parent_id, …) so that a reasonable guess did not silently do nothing. Unknown fields are
+  // now refused with the accepted spelling named, which does that job without a second name
+  // for the same field, so those were removed.
   const MONITOR_FIELD_ALIASES: Record<string, string> = {
-    json_path: 'jsonPath',
-    json_path_operator: 'jsonPathOperator',
-    expected_value: 'expectedValue',
-    push_token: 'pushToken',
-    database_connection_string: 'databaseConnectionString',
-    database_query: 'databaseQuery',
     // Uptime Kuma's mysql monitor reads its password from the RADIUS column
     // (server/monitor-types/mysql.js: `monitor.radiusPassword`); nobody would guess that name.
     databasePassword: 'radiusPassword',
@@ -1945,13 +1944,9 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
     resendInterval: numeric(z.number()).optional().describe('Resend notification every N checks while down (0 = disabled, the default)'),
     timeout: numeric(z.number()).nullable().optional().describe('Request timeout in SECONDS. Omit for 0.8 x interval. Avoid 0: Uptime Kuma\'s runtime fallback for a stored 0 computes interval * 1000 * 0.8 and then multiplies by 1000 again, yielding a ~13 hour timeout, so the monitor can never report DOWN against a host that accepts the connection and never answers.'),
     jsonPath: z.string().optional().describe('JSONata expression for json-query monitors. Must resolve to a primitive.'),
-    json_path: z.string().optional().describe('Alias for jsonPath (the database column name). Prefer jsonPath.'),
     jsonPathOperator: z.enum(['>', '>=', '<', '<=', '==', '!=', 'contains']).optional().describe('Comparison operator for json-query monitors. UP while value <operator> expectedValue.'),
-    json_path_operator: z.enum(['>', '>=', '<', '<=', '==', '!=', 'contains']).optional().describe('Alias for jsonPathOperator. Prefer jsonPathOperator.'),
     expectedValue: z.coerce.string().optional().describe('Threshold the json-query result is compared against. Stored as a string.'),
-    expected_value: z.coerce.string().optional().describe('Alias for expectedValue. Prefer expectedValue.'),
     pushToken: z.string().min(8).optional().describe('Push token for push monitors — the secret in the ping URL. Omit and one is generated and returned.'),
-    push_token: z.string().min(8).optional().describe('Alias for pushToken (the database column name). Prefer pushToken.'),
     url: z.string().optional().describe('URL to monitor (required for http, keyword and json-query; other types that need it are listed by getMonitorTypeFields)'),
     hostname: z.string().optional().describe('Hostname or IP address to check (required for port, ping and dns, and most non-HTTP types — see getMonitorTypeFields)'),
     port: numeric(z.number()).optional().describe('Port number (required for port; see getMonitorTypeFields for other types)'),
@@ -1981,9 +1976,7 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
     dns_resolve_server: z.string().optional().describe('DNS server to use for resolution (required for dns type, default: 1.1.1.1)'),
     dns_resolve_type: z.enum(['A', 'AAAA', 'CNAME', 'MX', 'NS', 'PTR', 'SOA', 'SRV', 'TXT', 'CAA']).optional().describe('DNS record type to query (required for dns type, default: A)'),
     databaseConnectionString: z.string().optional().describe('Connection string for mysql, postgres, mongodb, redis, sqlserver and oracledb monitors (required for those types). For oracledb the login goes in basic_auth_user and basic_auth_pass. A credential: read tools return it as "***" unless includeSecrets is set.'),
-    database_connection_string: z.string().optional().describe('Alias for databaseConnectionString (the database column name). Prefer databaseConnectionString.'),
     databaseQuery: z.string().optional().describe('Query for database monitors. SQL for mysql, postgres and sqlserver (default: SELECT 1); a JSON command object for mongodb (default: {"ping": 1}).'),
-    database_query: z.string().optional().describe('Alias for databaseQuery (the database column name). Prefer databaseQuery.'),
     databasePassword: z.string().optional().describe('Password for mysql monitors, if not inline in the connection string. Stored by Uptime Kuma as radiusPassword. A credential: read tools return it as "***".'),
     radiusPassword: z.string().optional().describe('The RADIUS password (required for radius). Also the column databasePassword and typeFields.snmpCommunity are stored in — prefer those names for mysql and snmp.'),
     typeFields: z.record(z.string(), z.unknown()).optional().describe(TYPE_FIELDS_DESCRIPTION),
@@ -2231,21 +2224,15 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
         // never be moved into or out of a group (issue #63). The merge below then folded the
         // old value back in and Uptime Kuma replied "Saved." — a no-op reported as success.
         parent: numeric(z.number().int()).nullable().optional().describe('Parent group monitor ID — re-parents this monitor into that group. Pass null to move it to the top level.'),
-        parentID: numeric(z.number().int()).nullable().optional().describe('Alias for parent. Prefer parent.'),
-        parent_id: numeric(z.number().int()).nullable().optional().describe('Alias for parent. Prefer parent.'),
         description: z.string().nullable().optional().describe('Free-text description shown on the monitor page'),
         // editMonitor assigns bean.type = monitor.type.
         type: z.string().optional().describe('Change the monitor type in place (e.g. ping -> http), keeping its ID, history and notifications. Pass the fields the new type needs in the same call (e.g. url for http). A group cannot be converted. Use listMonitorTypes for all options.'),
         resendInterval: numeric(z.number()).optional().describe('Resend notification every N checks while down (0 = disabled)'),
         timeout: numeric(z.number()).nullable().optional().describe('Request timeout in SECONDS. Avoid 0 — Uptime Kuma\'s runtime fallback for a stored 0 yields a ~13 hour timeout, so the monitor can never report DOWN against a black-holed endpoint.'),
         jsonPath: z.string().optional().describe('JSONata expression for json-query monitors. Must resolve to a primitive.'),
-        json_path: z.string().optional().describe('Alias for jsonPath (the database column name). Prefer jsonPath.'),
         jsonPathOperator: z.enum(['>', '>=', '<', '<=', '==', '!=', 'contains']).optional().describe('Comparison operator for json-query monitors.'),
-        json_path_operator: z.enum(['>', '>=', '<', '<=', '==', '!=', 'contains']).optional().describe('Alias for jsonPathOperator. Prefer jsonPathOperator.'),
         expectedValue: z.coerce.string().optional().describe('Threshold the json-query result is compared against, stored as a string.'),
-        expected_value: z.coerce.string().optional().describe('Alias for expectedValue. Prefer expectedValue.'),
         pushToken: z.string().min(8).optional().describe('Push token — the secret in the ping URL. Changing it invalidates the existing URL and any sender still using it stops beating.'),
-        push_token: z.string().min(8).optional().describe('Alias for pushToken (the database column name). Prefer pushToken.'),
         name: z.string().optional().describe('Display name'),
         url: z.string().optional().describe('URL to monitor'),
         hostname: z.string().optional().describe('Hostname'),
@@ -2276,9 +2263,7 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
         dns_resolve_server: z.string().optional().describe('DNS server to use for resolution (for dns type)'),
         dns_resolve_type: z.enum(['A', 'AAAA', 'CNAME', 'MX', 'NS', 'PTR', 'SOA', 'SRV', 'TXT', 'CAA']).optional().describe('DNS record type to query (for dns type)'),
         databaseConnectionString: z.string().optional().describe('Connection string for mysql, postgres, mongodb, redis, sqlserver and oracledb monitors. A credential: read tools return "***", and sending "***" back keeps the stored value.'),
-        database_connection_string: z.string().optional().describe('Alias for databaseConnectionString (the database column name). Prefer databaseConnectionString.'),
         databaseQuery: z.string().optional().describe('Query for database monitors. SQL for mysql, postgres and sqlserver; a JSON command object for mongodb.'),
-        database_query: z.string().optional().describe('Alias for databaseQuery (the database column name). Prefer databaseQuery.'),
         databasePassword: z.string().optional().describe('Password for mysql monitors, stored by Uptime Kuma as radiusPassword. Sending "***" back keeps the stored value.'),
         radiusPassword: z.string().optional().describe('The RADIUS password (required for radius). Also the column databasePassword and typeFields.snmpCommunity are stored in — prefer those names for mysql and snmp.'),
         typeFields: z.record(z.string(), z.unknown()).optional().describe(TYPE_FIELDS_DESCRIPTION),
@@ -2311,25 +2296,13 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
           ...Object.fromEntries(Object.entries(topLevel).filter(([, v]) => v !== undefined)),
           ...parseTypeFields(typeFields, ['monitorID', ...Object.keys(topLevel)]),
         };
-        // Fold `parentID` / `parent_id` onto the single field Uptime Kuma's editMonitor
-        // handler reads (`bean.parent = monitor.parent`), along with the snake_case
-        // type-specific aliases, so a reasonable guess at a name cannot become a silent no-op.
-        for (const alias of ['parentID', 'parent_id']) {
-          if (alias in defined) {
-            if ('parent' in defined && defined.parent !== defined[alias]) {
-              throw new Error(`Conflicting values for parent (${defined.parent}) and ${alias} (${defined[alias]}) — pass only 'parent'.`);
-            }
-            defined.parent = defined[alias];
-            delete defined[alias];
-          }
-        }
         normaliseMonitorAliases(defined);
         assertMongoQueryIsJson(defined.type ?? existing.type, defined.databaseQuery);
 
         // Issue #59: a caller that read this monitor back holds "***" where a credential
         // was, and the natural edit-one-field-and-write-it-back loop would then persist
         // the marker. Restore the stored value instead. Runs AFTER alias normalisation so
-        // `push_token: "***"` is matched against the stored `pushToken`.
+        // `databasePassword: "***"` is matched against the stored `radiusPassword`.
         //
         // `existing` is the unredacted cache row: redaction lives at the tool output
         // boundary only, precisely so this comparison still has a real value to find.

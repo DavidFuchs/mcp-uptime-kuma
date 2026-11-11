@@ -191,7 +191,7 @@ describe('type-specific monitor fields (#112)', () => {
       const { tools } = await client.listTools();
       const props = (name: string) =>
         Object.keys((tools.find((t) => t.name === name)!.inputSchema.properties ?? {}) as Record<string, unknown>);
-      const onlyOnUpdate = ['monitorID', 'parentID', 'parent_id'];
+      const onlyOnUpdate = ['monitorID'];
 
       expect(props('updateMonitor').filter((p) => !onlyOnUpdate.includes(p)).sort()).toEqual(props('createMonitor').sort());
     });
@@ -336,7 +336,7 @@ describe('type-specific monitor fields (#112)', () => {
         }
       }
       // Fields that exist for one tool's bookkeeping or as another spelling of a described field.
-      const notPerType = ['type', 'typeFields', 'monitorID', 'parentID', 'parent_id'];
+      const notPerType = ['type', 'typeFields', 'monitorID'];
       const undescribed = [
         ...Object.entries(properties('updateMonitor'))
           .filter(([name, schema]) => !notPerType.includes(name) && !/^Alias for /.test(schema.description ?? ''))
@@ -385,8 +385,8 @@ describe('type-specific monitor fields (#112)', () => {
     // #112. Those fields now go in typeFields and are described by getMonitorTypeFields. If this
     // fails, the new field belongs in typeFields rather than the cap being raised.
     it.each([
-      ['createMonitor', 9000],
-      ['updateMonitor', 8500],
+      ['createMonitor', 8500],
+      ['updateMonitor', 7500],
     ])('%s stays under %d bytes', async (toolName, cap) => {
       const { client } = await connectServer();
       const { tools } = await client.listTools();
@@ -771,6 +771,24 @@ describe('type-specific monitor fields (#112)', () => {
       expect(textOf(result)).toContain("'save_response' is not a field — did you mean 'saveResponse'?");
       expect(textOf(result)).toContain("'auth_method' is not a field — did you mean 'authMethod'?");
       expect(createMonitor).not.toHaveBeenCalled();
+    });
+
+    it.each(['parentID', 'parent_id'])('refuses %s on updateMonitor and names parent', async (name) => {
+      const result = await update({ [name]: 3 });
+
+      expect(result.isError).toBe(true);
+      expect(textOf(result)).toContain(`Did you mean 'parent' for '${name}'?`);
+      expect(updateMonitor).not.toHaveBeenCalled();
+    });
+
+    it('advertises no field described as an alias of another spelling', async () => {
+      const { client } = await connectServer();
+      const { tools } = await client.listTools();
+
+      for (const toolName of ['createMonitor', 'updateMonitor']) {
+        const properties = tools.find((t) => t.name === toolName)!.inputSchema.properties as Record<string, { description?: string }>;
+        expect(Object.entries(properties).filter(([, p]) => /^Alias for /.test(p.description ?? '')).map(([n]) => n)).toEqual([]);
+      }
     });
 
     // Not a spelling: Uptime Kuma keeps the SNMP community string in the radiusPassword column.

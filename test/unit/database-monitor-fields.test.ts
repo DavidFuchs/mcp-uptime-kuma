@@ -99,7 +99,7 @@ describe('database monitor fields (#106)', () => {
       expect(lastWrite).not.toHaveProperty('databasePassword');
     });
 
-    it('accepts the snake_case column names as aliases', async () => {
+    it('refuses the snake_case column names and names the accepted spelling', async () => {
       const { client } = await connectServer();
 
       const result = await client.callTool({
@@ -112,11 +112,11 @@ describe('database monitor fields (#106)', () => {
         },
       });
 
-      expect(result.isError).toBeFalsy();
-      expect(lastWrite.databaseConnectionString).toBe(CONNECTION_STRING);
-      expect(lastWrite.databaseQuery).toBe('SELECT 1');
-      expect(lastWrite).not.toHaveProperty('database_connection_string');
-      expect(lastWrite).not.toHaveProperty('database_query');
+      expect(result.isError).toBe(true);
+      expect(JSON.stringify(result.content)).toContain(
+        "Did you mean 'databaseConnectionString' for 'database_connection_string', 'databaseQuery' for 'database_query'?"
+      );
+      expect(createMonitor).not.toHaveBeenCalled();
     });
 
     it.each(['mysql', 'postgres', 'mongodb', 'redis', 'sqlserver'])(
