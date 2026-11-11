@@ -95,20 +95,18 @@ const SECRET_NOTE = 'A credential: read tools return "***", and on updateMonitor
  *
  * Conditions nest, but this is deliberately NOT a recursive schema: z.lazy() is advertised as
  * a `$ref` into `definitions`, and tool input schemas with references are rejected by several
- * MCP clients (the class of problem behind #55 and #83). Two levels are spelled out, which is
- * as deep as conditions are written in practice; anything deeper is passed through as given.
+ * MCP clients (the class of problem behind #55 and #83). The top level is spelled out and the
+ * children of a group are passed through as given, which also keeps the advertised schema small.
  */
 const conditionFields = <T extends z.ZodTypeAny>(children: T) => ({
-  type: z.enum(['expression', 'group']).describe('"expression" compares one variable; "group" nests children'),
-  andOr: z.enum(['and', 'or']).optional().describe('How this entry combines with the one before it (default: and)'),
-  variable: z.string().optional().describe('Expression only. The variable to test: "record" for dns; "topic", "message" or "json_value" for mqtt; "result" for database types.'),
-  operator: z.string().optional().describe('Expression only. One of equals, not_equals, contains, not_contains, starts_with, not_starts_with, ends_with, not_ends_with, and for numeric variables num_equals, num_not_equals, lt, gt, lte, gte.'),
-  value: z.string().optional().describe('Expression only. The value compared against.'),
-  children: z.array(children).optional().describe('Group only. The nested conditions, of this same shape.'),
+  type: z.enum(['expression', 'group']),
+  andOr: z.enum(['and', 'or']).optional(),
+  variable: z.string().optional(),
+  operator: z.string().optional(),
+  value: z.string().optional(),
+  children: z.array(children).optional(),
 });
-const MonitorConditionInputSchema = z.object(
-  conditionFields(z.object(conditionFields(z.record(z.string(), z.unknown()))))
-);
+const MonitorConditionInputSchema = z.object(conditionFields(z.record(z.string(), z.unknown())));
 
 /**
  * The type-specific fields createMonitor and updateMonitor share (#112).
@@ -119,139 +117,391 @@ const MonitorConditionInputSchema = z.object(
  * depend on them could be created but not configured, and then failed every check.
  *
  * One shape for both tools: the two schemas had already drifted apart once (#63).
+ *
+ * NO DESCRIPTIONS HERE, ON PURPOSE. Tool definitions are loaded into every session whether or
+ * not the caller ever touches a monitor, and describing ~85 fields on two tools cost 32 KB of
+ * every context window. Each field is advertised with a few words naming the types it belongs
+ * to (see `advertisedMonitorFields`), and what it means lives in MONITOR_FIELD_DOCS, which
+ * getMonitorTypeFields serves one type at a time.
  */
-const TYPE_SPECIFIC_MONITOR_FIELDS = {
+const TYPE_SPECIFIC_MONITOR_FIELD_SCHEMAS = {
   // ── HTTP authentication (http, keyword, json-query, websocket-upgrade, globalping) ──
-  authMethod: z.enum(['basic', 'bearer', 'oauth2-cc', 'ntlm', 'mtls']).nullable().optional().describe('HTTP authentication method. Uptime Kuma only sends the credentials of the method named here, so it is inferred when you pass one kind of credential without it. null turns authentication off.'),
-  auth_method: z.enum(['basic', 'bearer', 'oauth2-cc', 'ntlm', 'mtls']).nullable().optional().describe('Alias for authMethod (the database column name). Prefer authMethod.'),
-  basic_auth_user: z.string().optional().describe('Username for authMethod "basic" or "ntlm". Also the username of an oracledb monitor.'),
-  basic_auth_pass: z.string().optional().describe(`Password for authMethod "basic" or "ntlm". Also the password of an oracledb monitor. ${SECRET_NOTE}`),
-  bearer_token: z.string().optional().describe(`Token for authMethod "bearer", sent as "Authorization: Bearer <token>". ${SECRET_NOTE}`),
-  authDomain: z.string().optional().describe('NTLM domain (authMethod "ntlm")'),
-  authWorkstation: z.string().optional().describe('NTLM workstation (authMethod "ntlm")'),
-  oauth_token_url: z.string().optional().describe('OAuth2 token endpoint (authMethod "oauth2-cc", client credentials flow)'),
-  oauth_client_id: z.string().optional().describe(`OAuth2 client ID (authMethod "oauth2-cc"). ${SECRET_NOTE}`),
-  oauth_client_secret: z.string().optional().describe(`OAuth2 client secret (authMethod "oauth2-cc"). ${SECRET_NOTE}`),
-  oauth_scopes: z.string().optional().describe('OAuth2 scopes, space-separated (optional)'),
-  oauth_audience: z.string().optional().describe('OAuth2 audience (optional)'),
-  oauth_auth_method: z.enum(['client_secret_basic', 'client_secret_post']).optional().describe('How the client authenticates to the token endpoint (default: client_secret_basic)'),
-  tlsCert: z.string().optional().describe(`PEM client certificate for authMethod "mtls". ${SECRET_NOTE}`),
-  tlsKey: z.string().optional().describe(`PEM private key for authMethod "mtls". ${SECRET_NOTE}`),
-  tlsCa: z.string().optional().describe(`PEM CA certificate for authMethod "mtls" (optional). ${SECRET_NOTE}`),
+  authMethod: z.enum(['basic', 'bearer', 'oauth2-cc', 'ntlm', 'mtls']).nullable().optional(),
+  auth_method: z.enum(['basic', 'bearer', 'oauth2-cc', 'ntlm', 'mtls']).nullable().optional(),
+  basic_auth_user: z.string().optional(),
+  basic_auth_pass: z.string().optional(),
+  bearer_token: z.string().optional(),
+  authDomain: z.string().optional(),
+  authWorkstation: z.string().optional(),
+  oauth_token_url: z.string().optional(),
+  oauth_client_id: z.string().optional(),
+  oauth_client_secret: z.string().optional(),
+  oauth_scopes: z.string().optional(),
+  oauth_audience: z.string().optional(),
+  oauth_auth_method: z.enum(['client_secret_basic', 'client_secret_post']).optional(),
+  tlsCert: z.string().optional(),
+  tlsKey: z.string().optional(),
+  tlsCa: z.string().optional(),
 
   // ── HTTP options ──
-  httpBodyEncoding: z.enum(['json', 'form', 'xml']).optional().describe('How the request body is encoded, which sets its Content-Type (default: json)'),
-  ipFamily: z.enum(['ipv4', 'ipv6']).nullable().optional().describe('Force IPv4 or IPv6. null lets Uptime Kuma choose.'),
-  cacheBust: z.boolean().optional().describe('Append a random query parameter to each request to defeat caches'),
-  proxyId: numeric(z.number().int()).nullable().optional().describe('ID of a proxy configured in Uptime Kuma to send requests through. null for none.'),
-  proxy_id: numeric(z.number().int()).nullable().optional().describe('Alias for proxyId (the database column name). Prefer proxyId.'),
-  saveResponse: z.boolean().optional().describe('Store the response body with every heartbeat'),
-  save_response: z.boolean().optional().describe('Alias for saveResponse (the database column name). Prefer saveResponse.'),
-  saveErrorResponse: z.boolean().optional().describe('Store the response body with failing heartbeats'),
-  save_error_response: z.boolean().optional().describe('Alias for saveErrorResponse (the database column name). Prefer saveErrorResponse.'),
-  responseMaxLength: numeric(z.number().int().min(0).max(1048576)).optional().describe('Maximum bytes of response body stored (default: 1024, max: 1048576)'),
-  response_max_length: numeric(z.number().int().min(0).max(1048576)).optional().describe('Alias for responseMaxLength (the database column name). Prefer responseMaxLength.'),
-  retryOnlyOnStatusCodeFailure: z.boolean().optional().describe('json-query only: retry when the status code is wrong, but go DOWN at once when the JSON query fails'),
-  retry_only_on_status_code_failure: z.boolean().optional().describe('Alias for retryOnlyOnStatusCodeFailure (the database column name). Prefer retryOnlyOnStatusCodeFailure.'),
+  httpBodyEncoding: z.enum(['json', 'form', 'xml']).optional(),
+  ipFamily: z.enum(['ipv4', 'ipv6']).nullable().optional(),
+  cacheBust: z.boolean().optional(),
+  proxyId: numeric(z.number().int()).nullable().optional(),
+  proxy_id: numeric(z.number().int()).nullable().optional(),
+  saveResponse: z.boolean().optional(),
+  save_response: z.boolean().optional(),
+  saveErrorResponse: z.boolean().optional(),
+  save_error_response: z.boolean().optional(),
+  responseMaxLength: numeric(z.number().int().min(0).max(1048576)).optional(),
+  response_max_length: numeric(z.number().int().min(0).max(1048576)).optional(),
+  retryOnlyOnStatusCodeFailure: z.boolean().optional(),
+  retry_only_on_status_code_failure: z.boolean().optional(),
 
   // ── websocket-upgrade ──
-  wsSubprotocol: z.string().optional().describe('websocket-upgrade: Sec-WebSocket-Protocol to request, comma-separated for several'),
-  wsIgnoreSecWebsocketAcceptHeader: z.boolean().optional().describe('websocket-upgrade: do not validate the Sec-WebSocket-Accept header of the handshake'),
+  wsSubprotocol: z.string().optional(),
+  wsIgnoreSecWebsocketAcceptHeader: z.boolean().optional(),
 
   // ── mqtt (hostname takes the broker, e.g. mqtt://broker.example.com; port is required) ──
-  mqttTopic: z.string().optional().describe('MQTT topic to subscribe to (required for mqtt)'),
-  mqttUsername: z.string().optional().describe('MQTT username'),
-  mqttPassword: z.string().optional().describe(`MQTT password. ${SECRET_NOTE}`),
-  mqttCheckType: z.enum(['keyword', 'json-query']).optional().describe('How the received message is judged: "keyword" looks for mqttSuccessMessage, "json-query" applies jsonPath / jsonPathOperator / expectedValue (default: keyword)'),
-  mqttSuccessMessage: z.string().optional().describe('Text the received message must contain, for mqttCheckType "keyword". Empty accepts any message.'),
-  mqttWebsocketPath: z.string().regex(/^\/[A-Za-z0-9\-_&()*+]*$/, 'must start with "/" and contain only letters, digits and -_&()*+').optional().describe('Path for MQTT over WebSocket (ws:// or wss:// hostname), e.g. /mqtt'),
+  mqttTopic: z.string().optional(),
+  mqttUsername: z.string().optional(),
+  mqttPassword: z.string().optional(),
+  mqttCheckType: z.enum(['keyword', 'json-query']).optional(),
+  mqttSuccessMessage: z.string().optional(),
+  mqttWebsocketPath: z.string().regex(/^\/[A-Za-z0-9\-_&()*+]*$/, 'must start with "/" and contain only letters, digits and -_&()*+').optional(),
 
   // ── grpc-keyword ──
-  grpcUrl: z.string().optional().describe('gRPC server as host:port (required for grpc-keyword)'),
-  grpcProtobuf: z.string().optional().describe('The .proto definition text describing the service (required for grpc-keyword)'),
-  grpcServiceName: z.string().optional().describe('Service name from the proto (required for grpc-keyword)'),
-  grpcMethod: z.string().optional().describe('Method to call on the service (required for grpc-keyword)'),
-  grpcBody: z.string().optional().describe('Request message as a JSON string'),
-  grpcMetadata: z.string().optional().describe(`Request metadata as a JSON string. Usually carries credentials. ${SECRET_NOTE}`),
-  grpcEnableTls: z.boolean().optional().describe('Connect to the gRPC server over TLS'),
+  grpcUrl: z.string().optional(),
+  grpcProtobuf: z.string().optional(),
+  grpcServiceName: z.string().optional(),
+  grpcMethod: z.string().optional(),
+  grpcBody: z.string().optional(),
+  grpcMetadata: z.string().optional(),
+  grpcEnableTls: z.boolean().optional(),
 
   // ── kafka-producer ──
-  kafkaProducerBrokers: z.array(z.string()).optional().describe('Kafka brokers as host:port (required for kafka-producer)'),
-  kafkaProducerTopic: z.string().optional().describe('Topic the test message is produced to (required for kafka-producer)'),
-  kafkaProducerMessage: z.string().optional().describe('Message produced on every check (required for kafka-producer)'),
-  kafkaProducerSsl: z.boolean().optional().describe('Connect to the brokers over TLS'),
-  kafkaProducerAllowAutoTopicCreation: z.boolean().optional().describe('Let the broker create the topic if it does not exist'),
+  kafkaProducerBrokers: z.array(z.string()).optional(),
+  kafkaProducerTopic: z.string().optional(),
+  kafkaProducerMessage: z.string().optional(),
+  kafkaProducerSsl: z.boolean().optional(),
+  kafkaProducerAllowAutoTopicCreation: z.boolean().optional(),
   kafkaProducerSaslOptions: z.object({
-    mechanism: z.enum(['None', 'plain', 'scram-sha-256', 'scram-sha-512', 'aws']).describe('SASL mechanism. "None" disables SASL.'),
-    username: z.string().optional().describe('For plain and scram mechanisms'),
-    password: z.string().optional().describe('For plain and scram mechanisms'),
-    authorizationIdentity: z.string().optional().describe('For the aws mechanism'),
-    accessKeyId: z.string().optional().describe('For the aws mechanism'),
-    secretAccessKey: z.string().optional().describe('For the aws mechanism'),
-    sessionToken: z.string().optional().describe('For the aws mechanism'),
-  }).optional().describe('Kafka SASL authentication. Replaced as a whole object. password, secretAccessKey and sessionToken are credentials: read tools return "***", and on updateMonitor sending "***" back keeps the stored value.'),
+    mechanism: z.enum(['None', 'plain', 'scram-sha-256', 'scram-sha-512', 'aws']),
+    username: z.string().optional(),
+    password: z.string().optional(),
+    authorizationIdentity: z.string().optional(),
+    accessKeyId: z.string().optional(),
+    secretAccessKey: z.string().optional(),
+    sessionToken: z.string().optional(),
+  }).optional(),
 
   // ── radius (radiusPassword is declared by each tool) ──
-  radiusUsername: z.string().optional().describe('RADIUS username (required for radius)'),
-  radiusSecret: z.string().optional().describe(`RADIUS shared secret (required for radius). ${SECRET_NOTE}`),
-  radiusCalledStationId: z.string().optional().describe('RADIUS Called-Station-Id attribute'),
-  radiusCallingStationId: z.string().optional().describe('RADIUS Calling-Station-Id attribute'),
+  radiusUsername: z.string().optional(),
+  radiusSecret: z.string().optional(),
+  radiusCalledStationId: z.string().optional(),
+  radiusCallingStationId: z.string().optional(),
 
   // ── rabbitmq ──
-  rabbitmqNodes: z.array(z.string().regex(/^https?:\/\//i, 'must start with http:// or https://')).optional().describe('RabbitMQ management API URLs, e.g. ["https://rabbit1.example.com:15672"] (required for rabbitmq)'),
-  rabbitmqUsername: z.string().optional().describe('RabbitMQ management username'),
-  rabbitmqPassword: z.string().optional().describe(`RabbitMQ management password. ${SECRET_NOTE}`),
+  rabbitmqNodes: z.array(z.string().regex(/^https?:\/\//i, 'must start with http:// or https://')).optional(),
+  rabbitmqUsername: z.string().optional(),
+  rabbitmqPassword: z.string().optional(),
 
   // ── snmp (compares the OID's value using jsonPath / jsonPathOperator / expectedValue) ──
-  snmpOid: z.string().optional().describe('OID to query, e.g. 1.3.6.1.2.1.1.3.0 (required for snmp)'),
-  snmpVersion: z.enum(['1', '2c']).optional().describe('SNMP version (default: 2c). SNMPv3 cannot be set here: Uptime Kuma\'s edit handler does not save the v3 username.'),
-  snmpCommunity: z.string().optional().describe(`SNMP community string, e.g. "public" (required for snmp). Stored by Uptime Kuma as radiusPassword. ${SECRET_NOTE}`),
+  snmpOid: z.string().optional(),
+  snmpVersion: z.enum(['1', '2c']).optional(),
+  snmpCommunity: z.string().optional(),
 
   // ── smtp ──
-  smtpSecurity: z.enum(['secure', 'nostarttls', 'starttls']).optional().describe('smtp: "secure" for SMTPS, "starttls" to require STARTTLS, "nostarttls" to never use it. Omit to use STARTTLS when offered.'),
+  smtpSecurity: z.enum(['secure', 'nostarttls', 'starttls']).optional(),
 
   // ── gamedig ──
-  game: z.string().optional().describe('GameDig game ID, e.g. "minecraft" (required for gamedig)'),
-  gamedigGivenPortOnly: z.boolean().optional().describe('Query only the given port instead of also trying the game\'s default ports (default: true)'),
-  gamedigToken: z.string().optional().describe(`Token for games whose query needs one. ${SECRET_NOTE}`),
+  game: z.string().optional(),
+  gamedigGivenPortOnly: z.boolean().optional(),
+  gamedigToken: z.string().optional(),
 
   // ── real-browser ──
-  remote_browser: numeric(z.number().int()).nullable().optional().describe('ID of a remote browser configured in Uptime Kuma. null uses the built-in Chromium.'),
-  screenshot_delay: numeric(z.number().min(0)).optional().describe('Milliseconds to wait after page load before the screenshot. Must be under 0.5 x interval.'),
+  remote_browser: numeric(z.number().int()).nullable().optional(),
+  screenshot_delay: numeric(z.number().min(0)).optional(),
 
   // ── globalping ──
-  subtype: z.enum(['ping', 'http', 'dns']).optional().describe('globalping: the kind of measurement (default: ping). ping and dns need hostname; http needs url.'),
-  location: z.string().optional().describe('globalping: where the probe runs — a continent, country, city, ASN or cloud region, e.g. "world", "DE", "aws-us-east-1" (default: world). One location only, no commas.'),
-  protocol: z.enum(['ICMP', 'TCP', 'UDP', 'HTTP2']).nullable().optional().describe('globalping: ICMP or TCP for ping, UDP or TCP for dns, HTTP2 for http. null lets Globalping choose.'),
+  subtype: z.enum(['ping', 'http', 'dns']).optional(),
+  location: z.string().optional(),
+  protocol: z.enum(['ICMP', 'TCP', 'UDP', 'HTTP2']).nullable().optional(),
 
   // ── sftp ──
-  sshUsername: z.string().optional().describe('SSH username (required for sftp)'),
-  sshAuthMethod: z.enum(['password', 'privateKey']).optional().describe('How the sftp monitor logs in (default: password)'),
-  sshPassword: z.string().optional().describe(`SSH password, for sshAuthMethod "password". ${SECRET_NOTE}`),
-  sshPrivateKey: z.string().optional().describe(`PEM private key, for sshAuthMethod "privateKey". ${SECRET_NOTE}`),
-  sshPassphrase: z.string().optional().describe(`Passphrase of sshPrivateKey, if it has one. ${SECRET_NOTE}`),
-  sftpPath: z.string().optional().describe('Remote path that must exist for the sftp monitor to be UP (optional)'),
+  sshUsername: z.string().optional(),
+  sshAuthMethod: z.enum(['password', 'privateKey']).optional(),
+  sshPassword: z.string().optional(),
+  sshPrivateKey: z.string().optional(),
+  sshPassphrase: z.string().optional(),
+  sftpPath: z.string().optional(),
 
   // ── ping ──
-  packetSize: numeric(z.number().int().min(1).max(65500)).optional().describe('Ping packet size in bytes (default: 56). Also used by steam.'),
-  ping_count: numeric(z.number().int().min(1).max(100)).optional().describe('Echo requests sent per check (default: 1)'),
-  ping_numeric: z.boolean().optional().describe('Skip reverse DNS lookups in ping output (default: true)'),
-  ping_per_request_timeout: numeric(z.number().int().min(1).max(60)).optional().describe('Seconds to wait for each echo reply (default: 2). Must not exceed timeout.'),
+  packetSize: numeric(z.number().int().min(1).max(65500)).optional(),
+  ping_count: numeric(z.number().int().min(1).max(100)).optional(),
+  ping_numeric: z.boolean().optional(),
+  ping_per_request_timeout: numeric(z.number().int().min(1).max(60)).optional(),
 
   // ── ntp ──
-  ntpStratumThreshold: numeric(z.number().int().min(1).max(16)).optional().describe('ntp: DOWN when the server\'s stratum is above this (default: 5)'),
-  ntpTimeOffsetThreshold: numeric(z.number().min(0)).optional().describe('ntp: DOWN when the clock offset exceeds this many milliseconds (default: 1000)'),
-  ntpRootDispersionThreshold: numeric(z.number().min(0)).optional().describe('ntp: DOWN when root dispersion exceeds this many milliseconds (default: 500)'),
+  ntpStratumThreshold: numeric(z.number().int().min(1).max(16)).optional(),
+  ntpTimeOffsetThreshold: numeric(z.number().min(0)).optional(),
+  ntpRootDispersionThreshold: numeric(z.number().min(0)).optional(),
 
   // ── system-service, pm2 ──
-  system_service_name: z.string().optional().describe('Service name for system-service (the systemd unit or Windows service name, no spaces) or the process name for pm2. Required for both.'),
+  system_service_name: z.string().optional(),
 
   // ── manual ──
-  manual_status: numeric(z.number().int().min(0).max(1)).nullable().optional().describe('manual: the status to report — 1 = UP, 0 = DOWN, null = PENDING. Uptime Kuma does not return this field, so it cannot be read back.'),
+  manual_status: numeric(z.number().int().min(0).max(1)).nullable().optional(),
 
   // ── conditions (dns, mqtt, and the database types) ──
-  conditions: z.array(MonitorConditionInputSchema).optional().describe('Conditions the result must meet, for the types that support them (dns, mqtt, database types). When set on mqtt they replace mqttCheckType. Replaced as a whole; pass [] to clear.'),
+  conditions: z.array(MonitorConditionInputSchema).optional(),
 };
+
+/**
+ * What each type-specific field means, served by getMonitorTypeFields. Kept beside the schemas
+ * above and checked against them by a test, so a field cannot be added without being explained.
+ */
+const MONITOR_FIELD_DOCS: Record<keyof typeof TYPE_SPECIFIC_MONITOR_FIELD_SCHEMAS, string> = {
+  // ── HTTP authentication (http, keyword, json-query, websocket-upgrade, globalping) ──
+  authMethod: 'HTTP authentication method. Uptime Kuma only sends the credentials of the method named here, so it is inferred when you pass one kind of credential without it. null turns authentication off.',
+  auth_method: 'Alias for authMethod (the database column name). Prefer authMethod.',
+  basic_auth_user: 'Username for authMethod "basic" or "ntlm". Also the username of an oracledb monitor.',
+  basic_auth_pass: `Password for authMethod "basic" or "ntlm". Also the password of an oracledb monitor. ${SECRET_NOTE}`,
+  bearer_token: `Token for authMethod "bearer", sent as "Authorization: Bearer <token>". ${SECRET_NOTE}`,
+  authDomain: 'NTLM domain (authMethod "ntlm")',
+  authWorkstation: 'NTLM workstation (authMethod "ntlm")',
+  oauth_token_url: 'OAuth2 token endpoint (authMethod "oauth2-cc", client credentials flow)',
+  oauth_client_id: `OAuth2 client ID (authMethod "oauth2-cc"). ${SECRET_NOTE}`,
+  oauth_client_secret: `OAuth2 client secret (authMethod "oauth2-cc"). ${SECRET_NOTE}`,
+  oauth_scopes: 'OAuth2 scopes, space-separated (optional)',
+  oauth_audience: 'OAuth2 audience (optional)',
+  oauth_auth_method: 'How the client authenticates to the token endpoint (default: client_secret_basic)',
+  tlsCert: `PEM client certificate for authMethod "mtls". ${SECRET_NOTE}`,
+  tlsKey: `PEM private key for authMethod "mtls". ${SECRET_NOTE}`,
+  tlsCa: `PEM CA certificate for authMethod "mtls" (optional). ${SECRET_NOTE}`,
+
+  // ── HTTP options ──
+  httpBodyEncoding: 'How the request body is encoded, which sets its Content-Type (default: json)',
+  ipFamily: 'Force IPv4 or IPv6. null lets Uptime Kuma choose.',
+  cacheBust: 'Append a random query parameter to each request to defeat caches',
+  proxyId: 'ID of a proxy configured in Uptime Kuma to send requests through. null for none.',
+  proxy_id: 'Alias for proxyId (the database column name). Prefer proxyId.',
+  saveResponse: 'Store the response body with every heartbeat',
+  save_response: 'Alias for saveResponse (the database column name). Prefer saveResponse.',
+  saveErrorResponse: 'Store the response body with failing heartbeats',
+  save_error_response: 'Alias for saveErrorResponse (the database column name). Prefer saveErrorResponse.',
+  responseMaxLength: 'Maximum bytes of response body stored (default: 1024, max: 1048576)',
+  response_max_length: 'Alias for responseMaxLength (the database column name). Prefer responseMaxLength.',
+  retryOnlyOnStatusCodeFailure: 'json-query only: retry when the status code is wrong, but go DOWN at once when the JSON query fails',
+  retry_only_on_status_code_failure: 'Alias for retryOnlyOnStatusCodeFailure (the database column name). Prefer retryOnlyOnStatusCodeFailure.',
+
+  // ── websocket-upgrade ──
+  wsSubprotocol: 'websocket-upgrade: Sec-WebSocket-Protocol to request, comma-separated for several',
+  wsIgnoreSecWebsocketAcceptHeader: 'websocket-upgrade: do not validate the Sec-WebSocket-Accept header of the handshake',
+
+  // ── mqtt (hostname takes the broker, e.g. mqtt://broker.example.com; port is required) ──
+  mqttTopic: 'MQTT topic to subscribe to (required for mqtt)',
+  mqttUsername: 'MQTT username',
+  mqttPassword: `MQTT password. ${SECRET_NOTE}`,
+  mqttCheckType: 'How the received message is judged: "keyword" looks for mqttSuccessMessage, "json-query" applies jsonPath / jsonPathOperator / expectedValue (default: keyword)',
+  mqttSuccessMessage: 'Text the received message must contain, for mqttCheckType "keyword". Empty accepts any message.',
+  mqttWebsocketPath: 'Path for MQTT over WebSocket (ws:// or wss:// hostname), e.g. /mqtt',
+
+  // ── grpc-keyword ──
+  grpcUrl: 'gRPC server as host:port (required for grpc-keyword)',
+  grpcProtobuf: 'The .proto definition text describing the service (required for grpc-keyword)',
+  grpcServiceName: 'Service name from the proto (required for grpc-keyword)',
+  grpcMethod: 'Method to call on the service (required for grpc-keyword)',
+  grpcBody: 'Request message as a JSON string',
+  grpcMetadata: `Request metadata as a JSON string. Usually carries credentials. ${SECRET_NOTE}`,
+  grpcEnableTls: 'Connect to the gRPC server over TLS',
+
+  // ── kafka-producer ──
+  kafkaProducerBrokers: 'Kafka brokers as host:port (required for kafka-producer)',
+  kafkaProducerTopic: 'Topic the test message is produced to (required for kafka-producer)',
+  kafkaProducerMessage: 'Message produced on every check (required for kafka-producer)',
+  kafkaProducerSsl: 'Connect to the brokers over TLS',
+  kafkaProducerAllowAutoTopicCreation: 'Let the broker create the topic if it does not exist',
+  kafkaProducerSaslOptions: 'Kafka SASL authentication: { mechanism, ... }. mechanism "None" disables SASL; "plain", "scram-sha-256" and "scram-sha-512" take username and password; "aws" takes authorizationIdentity, accessKeyId, secretAccessKey and optionally sessionToken. Replaced as a whole object. password, secretAccessKey and sessionToken are credentials: read tools return "***", and on updateMonitor sending "***" back keeps the stored value.',
+
+  // ── radius (radiusPassword is declared by each tool) ──
+  radiusUsername: 'RADIUS username (required for radius)',
+  radiusSecret: `RADIUS shared secret (required for radius). ${SECRET_NOTE}`,
+  radiusCalledStationId: 'RADIUS Called-Station-Id attribute',
+  radiusCallingStationId: 'RADIUS Calling-Station-Id attribute',
+
+  // ── rabbitmq ──
+  rabbitmqNodes: 'RabbitMQ management API URLs, e.g. ["https://rabbit1.example.com:15672"] (required for rabbitmq)',
+  rabbitmqUsername: 'RabbitMQ management username',
+  rabbitmqPassword: `RabbitMQ management password. ${SECRET_NOTE}`,
+
+  // ── snmp (compares the OID's value using jsonPath / jsonPathOperator / expectedValue) ──
+  snmpOid: 'OID to query, e.g. 1.3.6.1.2.1.1.3.0 (required for snmp)',
+  snmpVersion: 'SNMP version (default: 2c). SNMPv3 cannot be set here: Uptime Kuma\'s edit handler does not save the v3 username.',
+  snmpCommunity: `SNMP community string, e.g. "public" (required for snmp). Stored by Uptime Kuma as radiusPassword. ${SECRET_NOTE}`,
+
+  // ── smtp ──
+  smtpSecurity: 'smtp: "secure" for SMTPS, "starttls" to require STARTTLS, "nostarttls" to never use it. Omit to use STARTTLS when offered.',
+
+  // ── gamedig ──
+  game: 'GameDig game ID, e.g. "minecraft" (required for gamedig)',
+  gamedigGivenPortOnly: 'Query only the given port instead of also trying the game\'s default ports (default: true)',
+  gamedigToken: `Token for games whose query needs one. ${SECRET_NOTE}`,
+
+  // ── real-browser ──
+  remote_browser: 'ID of a remote browser configured in Uptime Kuma. null uses the built-in Chromium.',
+  screenshot_delay: 'Milliseconds to wait after page load before the screenshot. Must be under 0.5 x interval.',
+
+  // ── globalping ──
+  subtype: 'globalping: the kind of measurement (default: ping). ping and dns need hostname; http needs url.',
+  location: 'globalping: where the probe runs — a continent, country, city, ASN or cloud region, e.g. "world", "DE", "aws-us-east-1" (default: world). One location only, no commas.',
+  protocol: 'globalping: ICMP or TCP for ping, UDP or TCP for dns, HTTP2 for http. null lets Globalping choose.',
+
+  // ── sftp ──
+  sshUsername: 'SSH username (required for sftp)',
+  sshAuthMethod: 'How the sftp monitor logs in (default: password)',
+  sshPassword: `SSH password, for sshAuthMethod "password". ${SECRET_NOTE}`,
+  sshPrivateKey: `PEM private key, for sshAuthMethod "privateKey". ${SECRET_NOTE}`,
+  sshPassphrase: `Passphrase of sshPrivateKey, if it has one. ${SECRET_NOTE}`,
+  sftpPath: 'Remote path that must exist for the sftp monitor to be UP (optional)',
+
+  // ── ping ──
+  packetSize: 'Ping packet size in bytes (default: 56). Also used by steam.',
+  ping_count: 'Echo requests sent per check (default: 1)',
+  ping_numeric: 'Skip reverse DNS lookups in ping output (default: true)',
+  ping_per_request_timeout: 'Seconds to wait for each echo reply (default: 2). Must not exceed timeout.',
+
+  // ── ntp ──
+  ntpStratumThreshold: 'ntp: DOWN when the server\'s stratum is above this (default: 5)',
+  ntpTimeOffsetThreshold: 'ntp: DOWN when the clock offset exceeds this many milliseconds (default: 1000)',
+  ntpRootDispersionThreshold: 'ntp: DOWN when root dispersion exceeds this many milliseconds (default: 500)',
+
+  // ── system-service, pm2 ──
+  system_service_name: 'Service name for system-service (the systemd unit or Windows service name, no spaces) or the process name for pm2. Required for both.',
+
+  // ── manual ──
+  manual_status: 'manual: the status to report — 1 = UP, 0 = DOWN, null = PENDING. Uptime Kuma does not return this field, so it cannot be read back.',
+
+  // ── conditions (dns, mqtt, and the database types) ──
+  conditions: 'Conditions the result must meet: a list of { type, andOr, variable, operator, value, children }. type is "expression" (compares one variable) or "group" (nests children of the same shape). andOr is "and" (default) or "or" and says how the entry combines with the one before it. variable is "record" for dns; "topic", "message" or "json_value" for mqtt; "result" for mysql, sqlserver and oracledb. operator is one of equals, not_equals, contains, not_contains, starts_with, not_starts_with, ends_with, not_ends_with, and for numeric variables num_equals, num_not_equals, lt, gt, lte, gte. value is a string. When set on mqtt they replace mqttCheckType. Replaced as a whole; pass [] to clear.',
+};
+
+
+const HTTP_AUTH_FIELDS = [
+  'authMethod', 'basic_auth_user', 'basic_auth_pass', 'bearer_token',
+  'oauth_token_url', 'oauth_client_id', 'oauth_client_secret', 'oauth_scopes', 'oauth_audience', 'oauth_auth_method',
+];
+const HTTP_REQUEST_FIELDS = [
+  'url', 'method', 'headers', 'body', 'httpBodyEncoding', 'accepted_statuscodes', 'maxredirects', 'ignoreTls',
+  'expiryNotification', 'domainExpiryNotification', 'ipFamily', 'cacheBust', 'proxyId',
+  'saveResponse', 'saveErrorResponse', 'responseMaxLength',
+  ...HTTP_AUTH_FIELDS, 'authDomain', 'authWorkstation', 'tlsCert', 'tlsKey', 'tlsCa',
+];
+const DATABASE_FIELDS = ['databaseConnectionString', 'databaseQuery'];
+
+/**
+ * The fields each monitor type uses, beyond the ones every type shares (COMMON_MONITOR_FIELDS).
+ *
+ * Read off what each type's check dereferences (server/monitor-types/*.js and the per-type
+ * branches of server/model/monitor.js, Uptime Kuma 2.5.9). It is what getMonitorTypeFields
+ * answers from and what the terse advertised descriptions are derived from. It does NOT gate
+ * writes: Uptime Kuma stores any field on any type, and refusing one here because this table
+ * is behind upstream would be a worse failure than accepting it.
+ */
+const MONITOR_TYPE_FIELDS: Record<string, string[]> = {
+  http: HTTP_REQUEST_FIELDS,
+  keyword: [...HTTP_REQUEST_FIELDS, 'keyword', 'invertKeyword'],
+  'json-query': [...HTTP_REQUEST_FIELDS, 'jsonPath', 'jsonPathOperator', 'expectedValue', 'retryOnlyOnStatusCodeFailure'],
+  port: ['hostname', 'port'],
+  ping: ['hostname', 'packetSize', 'ping_count', 'ping_numeric', 'ping_per_request_timeout'],
+  dns: ['hostname', 'port', 'dns_resolve_server', 'dns_resolve_type', 'conditions'],
+  docker: ['docker_container', 'docker_host'],
+  mqtt: [
+    'hostname', 'port', 'mqttTopic', 'mqttUsername', 'mqttPassword', 'mqttCheckType', 'mqttSuccessMessage',
+    'mqttWebsocketPath', 'jsonPath', 'expectedValue', 'conditions',
+  ],
+  mongodb: DATABASE_FIELDS,
+  redis: ['databaseConnectionString', 'ignoreTls'],
+  sqlserver: [...DATABASE_FIELDS, 'conditions'],
+  postgres: DATABASE_FIELDS,
+  mysql: [...DATABASE_FIELDS, 'databasePassword', 'conditions'],
+  oracledb: [...DATABASE_FIELDS, 'basic_auth_user', 'basic_auth_pass', 'conditions'],
+  'grpc-keyword': [
+    'grpcUrl', 'grpcProtobuf', 'grpcServiceName', 'grpcMethod', 'grpcBody', 'grpcMetadata', 'grpcEnableTls',
+    'keyword', 'invertKeyword',
+  ],
+  'kafka-producer': [
+    'kafkaProducerBrokers', 'kafkaProducerTopic', 'kafkaProducerMessage', 'kafkaProducerSsl',
+    'kafkaProducerAllowAutoTopicCreation', 'kafkaProducerSaslOptions',
+  ],
+  radius: [
+    'hostname', 'port', 'radiusUsername', 'radiusPassword', 'radiusSecret', 'radiusCalledStationId',
+    'radiusCallingStationId',
+  ],
+  rabbitmq: ['rabbitmqNodes', 'rabbitmqUsername', 'rabbitmqPassword'],
+  smtp: ['hostname', 'port', 'smtpSecurity'],
+  snmp: ['hostname', 'port', 'snmpOid', 'snmpVersion', 'snmpCommunity', 'jsonPath', 'jsonPathOperator', 'expectedValue'],
+  'real-browser': ['url', 'remote_browser', 'screenshot_delay', 'accepted_statuscodes', 'ignoreTls'],
+  gamedig: ['hostname', 'port', 'game', 'gamedigGivenPortOnly', 'gamedigToken'],
+  steam: ['hostname', 'port'],
+  push: ['pushToken'],
+  group: [],
+  'tailscale-ping': ['hostname'],
+  manual: ['manual_status'],
+  globalping: [
+    'subtype', 'location', 'protocol', 'hostname', 'url', 'port', 'ping_count', 'dns_resolve_server',
+    'dns_resolve_type', 'method', 'headers', 'accepted_statuscodes', 'ignoreTls', 'expiryNotification', 'ipFamily',
+    'cacheBust', 'keyword', 'invertKeyword', 'jsonPath', 'jsonPathOperator', 'expectedValue', ...HTTP_AUTH_FIELDS,
+  ],
+  ntp: ['hostname', 'port', 'ntpStratumThreshold', 'ntpTimeOffsetThreshold', 'ntpRootDispersionThreshold'],
+  'websocket-upgrade': [
+    'url', 'wsSubprotocol', 'wsIgnoreSecWebsocketAcceptHeader', 'accepted_statuscodes', 'headers', 'ignoreTls',
+    ...HTTP_AUTH_FIELDS, 'tlsCert', 'tlsKey', 'tlsCa',
+  ],
+  sftp: ['hostname', 'port', 'sshUsername', 'sshAuthMethod', 'sshPassword', 'sshPrivateKey', 'sshPassphrase', 'sftpPath'],
+  'sip-options': ['hostname', 'port'],
+  'system-service': ['system_service_name'],
+  pm2: ['system_service_name'],
+};
+
+/** Accepted by every monitor type, so not repeated per type. */
+const COMMON_MONITOR_FIELDS = [
+  'name', 'description', 'active', 'parent', 'interval', 'retryInterval', 'maxretries', 'resendInterval', 'timeout',
+  'upsideDown', 'notificationIDList', 'tags',
+];
+
+/** Declared aliases of type-specific fields, and the field each stands for. */
+const TYPE_SPECIFIC_FIELD_ALIASES: Record<string, string> = {
+  auth_method: 'authMethod',
+  proxy_id: 'proxyId',
+  save_response: 'saveResponse',
+  save_error_response: 'saveErrorResponse',
+  response_max_length: 'responseMaxLength',
+  retry_only_on_status_code_failure: 'retryOnlyOnStatusCodeFailure',
+};
+
+/** The monitor types that use a field, in MONITOR_TYPE_FIELDS order. */
+const monitorTypesUsing = (field: string): string[] =>
+  Object.keys(MONITOR_TYPE_FIELDS).filter((type) => MONITOR_TYPE_FIELDS[type].includes(field));
+
+/**
+ * The type-specific fields as the write tools advertise them: the schema, plus a few words
+ * saying which types the field belongs to. That is enough to pick the field out of the list
+ * and to know which type to ask getMonitorTypeFields about; the full text is in
+ * MONITOR_FIELD_DOCS.
+ */
+const TYPE_SPECIFIC_MONITOR_FIELDS = Object.fromEntries(
+  Object.entries(TYPE_SPECIFIC_MONITOR_FIELD_SCHEMAS).map(([field, schema]) => {
+    const alias = TYPE_SPECIFIC_FIELD_ALIASES[field];
+    if (alias) return [field, schema.describe(`Alias for ${alias}`)];
+    const types = monitorTypesUsing(field);
+    const http = ['http', 'keyword', 'json-query'];
+    const label = http.every((t) => types.includes(t))
+      ? ['HTTP types', ...types.filter((t) => !http.includes(t))]
+      : types;
+    return [field, schema.describe(`For ${label.join(', ')}`)];
+  })
+) as typeof TYPE_SPECIFIC_MONITOR_FIELD_SCHEMAS;
 
 const DRAFT_07_DIALECT = 'http://json-schema.org/draft-07/schema#';
 const DIALECT_2020_12 = 'https://json-schema.org/draft/2020-12/schema';
@@ -285,6 +535,12 @@ const isEmptySchema = (value: unknown): value is Record<string, never> =>
  * Issue #55: Home Assistant rejects the valid empty-schema form Zod emits for
  * z.record(..., z.unknown()), so `additionalProperties: {}` is rewritten to the equivalent
  * boolean form.
+ *
+ * Integer bounds: Zod stamps every `.int()` with `minimum: -9007199254740991` and
+ * `maximum: 9007199254740991`, the safe-integer range. They constrain nothing a JSON number
+ * could violate in practice and cost about 60 bytes per integer field in every session's
+ * tool list, so they are dropped. A bound the schema actually declares is a different number
+ * and is kept.
  */
 export function normalizeAdvertisedSchema(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(normalizeAdvertisedSchema);
@@ -295,6 +551,11 @@ export function normalizeAdvertisedSchema(value: unknown): unknown {
         out[key] = true;
       } else if (key === '$schema' && val === DRAFT_07_DIALECT) {
         out[key] = DIALECT_2020_12;
+      } else if (
+        (key === 'minimum' && val === Number.MIN_SAFE_INTEGER) ||
+        (key === 'maximum' && val === Number.MAX_SAFE_INTEGER)
+      ) {
+        // Dropped: see the note on integer bounds above.
       } else if (DATA_KEYWORDS.has(key)) {
         out[key] = val;
       } else if (SCHEMA_MAP_KEYWORDS.has(key)) {
@@ -1416,7 +1677,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     if (missing.length > 0) {
       throw new Error(
         `A ${type} monitor needs ${missing.join(', ')}. Without ${missing.length > 1 ? 'them' : 'it'} ` +
-        'Uptime Kuma saves the monitor and then fails every check.'
+        `Uptime Kuma saves the monitor and then fails every check. getMonitorTypeFields {"type": "${type}"} describes each field.`
       );
     }
     assertMongoQueryIsJson(type, monitor.databaseQuery);
@@ -1639,62 +1900,180 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     return null;
   };
 
+  // Hoisted out of the registration so getMonitorTypeFields can read the descriptions of the
+  // fields declared here (url, hostname, port, …) instead of keeping a second copy of them.
+  const createMonitorShape = {
+    name: z.string().describe('Display name for the monitor'),
+    type: z.string().describe('Monitor type (e.g. http, port, ping, dns, push, keyword). Use listMonitorTypes for all options.'),
+    description: z.string().nullable().optional().describe('Free-text description shown on the monitor page'),
+    active: z.boolean().optional().describe('Whether the monitor starts checking immediately (default: true). Pass false to create it paused.'),
+    resendInterval: numeric(z.number()).optional().describe('Resend notification every N checks while down (0 = disabled, the default)'),
+    timeout: numeric(z.number()).nullable().optional().describe('Request timeout in SECONDS. Omit for 0.8 x interval. Avoid 0: Uptime Kuma\'s runtime fallback for a stored 0 computes interval * 1000 * 0.8 and then multiplies by 1000 again, yielding a ~13 hour timeout, so the monitor can never report DOWN against a host that accepts the connection and never answers.'),
+    jsonPath: z.string().optional().describe('JSONata expression for json-query monitors. Must resolve to a primitive.'),
+    json_path: z.string().optional().describe('Alias for jsonPath (the database column name). Prefer jsonPath.'),
+    jsonPathOperator: z.enum(['>', '>=', '<', '<=', '==', '!=', 'contains']).optional().describe('Comparison operator for json-query monitors. UP while value <operator> expectedValue.'),
+    json_path_operator: z.enum(['>', '>=', '<', '<=', '==', '!=', 'contains']).optional().describe('Alias for jsonPathOperator. Prefer jsonPathOperator.'),
+    expectedValue: z.coerce.string().optional().describe('Threshold the json-query result is compared against. Stored as a string.'),
+    expected_value: z.coerce.string().optional().describe('Alias for expectedValue. Prefer expectedValue.'),
+    pushToken: z.string().min(8).optional().describe('Push token for push monitors — the secret in the ping URL. Omit and one is generated and returned.'),
+    push_token: z.string().min(8).optional().describe('Alias for pushToken (the database column name). Prefer pushToken.'),
+    url: z.string().optional().describe('URL to monitor (required for http, keyword and json-query; other types that need it are listed by getMonitorTypeFields)'),
+    hostname: z.string().optional().describe('Hostname or IP address to check (required for port, ping and dns, and most non-HTTP types — see getMonitorTypeFields)'),
+    port: numeric(z.number()).optional().describe('Port number (required for port; see getMonitorTypeFields for other types)'),
+    interval: numeric(z.number().min(1)).optional().describe('Check interval in seconds (default: 60, min: 1)'),
+    retryInterval: numeric(z.number().min(1)).optional().describe('Retry interval in seconds when monitor is down (default: 60, min: 1)'),
+    maxretries: numeric(z.number()).optional().describe('Max retries before marking as down (default: 0)'),
+    notificationIDList: z.record(z.string(), z.boolean()).optional().describe('Map of notification IDs to enable (e.g. {"1": true, "3": true})'),
+    tags: z.array(z.object({
+      name: z.string(),
+      value: z.string().optional(),
+      color: z.string().optional(),
+    })).optional().describe('Tags to assign to the monitor'),
+    keyword: z.string().optional().describe('Keyword to search for (keyword monitor type)'),
+    invertKeyword: z.boolean().optional().describe('Invert keyword match'),
+    method: z.string().optional().describe('HTTP method (GET, POST, etc.) for http type'),
+    body: z.string().optional().describe('HTTP request body'),
+    headers: z.string().optional().describe('HTTP headers as JSON string'),
+    accepted_statuscodes: z.array(z.string()).optional().describe('Accepted HTTP status codes (e.g. ["200-299"])'),
+    ignoreTls: z.boolean().optional().describe('Ignore TLS/SSL errors'),
+    maxredirects: numeric(z.number()).optional().describe('Max HTTP redirects (default: 10)'),
+    upsideDown: z.boolean().optional().describe('Invert status — treat up as down'),
+    expiryNotification: z.boolean().optional().describe('Notify before the TLS certificate expires (HTTP-based types)'),
+    domainExpiryNotification: z.boolean().optional().describe('Notify before the domain registration expires. Needs Uptime Kuma 2.1 or later.'),
+    parent: numeric(z.number()).nullable().optional().describe('Parent group monitor ID'),
+    docker_container: z.string().optional().describe('Docker container name (required for docker type)'),
+    docker_host: numeric(z.number()).optional().describe('Docker host ID (required for docker type). Use listDockerHosts to find available IDs.'),
+    dns_resolve_server: z.string().optional().describe('DNS server to use for resolution (required for dns type, default: 1.1.1.1)'),
+    dns_resolve_type: z.enum(['A', 'AAAA', 'CNAME', 'MX', 'NS', 'PTR', 'SOA', 'SRV', 'TXT', 'CAA']).optional().describe('DNS record type to query (required for dns type, default: A)'),
+    databaseConnectionString: z.string().optional().describe('Connection string for mysql, postgres, mongodb, redis, sqlserver and oracledb monitors (required for those types). For oracledb the login goes in basic_auth_user and basic_auth_pass. A credential: read tools return it as "***" unless includeSecrets is set.'),
+    database_connection_string: z.string().optional().describe('Alias for databaseConnectionString (the database column name). Prefer databaseConnectionString.'),
+    databaseQuery: z.string().optional().describe('Query for database monitors. SQL for mysql, postgres and sqlserver (default: SELECT 1); a JSON command object for mongodb (default: {"ping": 1}).'),
+    database_query: z.string().optional().describe('Alias for databaseQuery (the database column name). Prefer databaseQuery.'),
+    databasePassword: z.string().optional().describe('Password for mysql monitors, if not inline in the connection string. Stored by Uptime Kuma as radiusPassword. A credential: read tools return it as "***".'),
+    radiusPassword: z.string().optional().describe('The RADIUS password (required for radius). Also the column databasePassword and snmpCommunity are stored in — prefer those names for mysql and snmp.'),
+    ...TYPE_SPECIFIC_MONITOR_FIELDS,
+  };
+
+  // Which defaults this server fills in, and which fields depend on another field's value.
+  // Everything here restates a rule enforced in applyMonitorTypeRules / applyHttpAuthRules.
+  const MONITOR_TYPE_NOTES: Record<string, string[]> = {
+    dns: ['dns_resolve_server defaults to 1.1.1.1 and dns_resolve_type to A.'],
+    push: ['pushToken is generated when omitted, and the ping URL is returned by the call that creates the monitor.'],
+    group: ['A group has no check of its own. Put monitors in it with their parent field.'],
+    mqtt: [
+      'hostname is the broker, e.g. mqtt://broker.example.com, mqtts://… or ws://… for MQTT over WebSocket.',
+      'With mqttCheckType "json-query" the message is tested with jsonPath and expectedValue.',
+    ],
+    'kafka-producer': ['kafkaProducerSaslOptions defaults to { mechanism: "None" }.'],
+    snmp: [
+      'The value at snmpOid is compared using jsonPath, jsonPathOperator and expectedValue, which default to "$" and "==" — i.e. the value must equal expectedValue.',
+      'snmpVersion defaults to 2c. SNMPv3 cannot be configured through this server.',
+    ],
+    'websocket-upgrade': [
+      'url must be ws:// or wss://.',
+      'accepted_statuscodes are WebSocket close codes for this type and default to ["1000"].',
+    ],
+    globalping: [
+      'subtype defaults to "ping" and location to "world".',
+      'subtype "ping" and "dns" require hostname; subtype "http" requires url instead.',
+    ],
+    sftp: ['sshAuthMethod "password" (the default) requires sshPassword; "privateKey" requires sshPrivateKey.'],
+    mongodb: ['databaseQuery must be a JSON command object, e.g. {"ping": 1}.'],
+    oracledb: ['The login goes in basic_auth_user and basic_auth_pass, not in the connection string.'],
+    manual: ['manual_status is not returned by Uptime Kuma, so it cannot be read back.'],
+    'system-service': ['Checks a service on the machine Uptime Kuma itself runs on.'],
+    pm2: ['Checks a PM2 process on the machine Uptime Kuma itself runs on.'],
+  };
+
+  const describeMonitorField = (name: string) => {
+    const schema = (createMonitorShape as Record<string, z.ZodTypeAny>)[name];
+    const description =
+      (MONITOR_FIELD_DOCS as Record<string, string>)[name] ?? schema?.description ?? '';
+    // Type and allowed values, without the description the entry already carries.
+    let accepts: Record<string, unknown> = {};
+    try {
+      const { description: _d, $schema: _s, ...rest } = z.toJSONSchema(schema, {
+        io: 'input',
+        unrepresentable: 'any',
+      }) as Record<string, unknown>;
+      accepts = normalizeAdvertisedSchema(rest) as Record<string, unknown>;
+    } catch {
+      // Described in words only.
+    }
+    return { name, description, accepts };
+  };
+
+  const MonitorFieldDescription = z.object({
+    name: z.string(),
+    description: z.string(),
+    accepts: z.record(z.string(), z.unknown()).describe('JSON Schema of the value: its type and any allowed values'),
+  });
+
+  server.registerTool(
+    'getMonitorTypeFields',
+    {
+      title: 'Get Monitor Type Fields',
+      description: 'Describes the fields one monitor type uses: which are required, which are optional, what each means and accepts, and the defaults applied when they are omitted. Call this before createMonitor, or before updateMonitor changes a type or sets type-specific fields — the field descriptions on those two tools are deliberately brief.',
+      inputSchema: {
+        type: z.string().describe('The monitor type, e.g. http, mqtt, snmp. Use listMonitorTypes for all options.'),
+      },
+      outputSchema: {
+        type: z.string(),
+        description: z.string().describe('What this monitor type checks'),
+        required: z.array(MonitorFieldDescription).describe('Fields a monitor of this type cannot work without. A create or type change without them is refused.'),
+        optional: z.array(MonitorFieldDescription).describe('Other fields this type uses'),
+        notes: z.array(z.string()).describe('Defaults applied when a field is omitted, and fields that become required depending on another'),
+        commonFields: z.array(z.string()).describe('Fields every monitor type accepts, described on createMonitor'),
+      },
+    },
+    async ({ type }) => {
+      const known = MONITOR_TYPES.find((t) => t.type === type);
+      if (!known) {
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          `Unknown monitor type '${type}'. Use listMonitorTypes for the valid types.`
+        );
+      }
+
+      const required = (REQUIRED_MONITOR_FIELDS[type] ?? []).map((f) => requiredFieldLabel(type, f));
+      const notes = [...(MONITOR_TYPE_NOTES[type] ?? [])];
+      if (HTTP_AUTH_MONITOR_TYPES.has(type)) {
+        notes.push(
+          'Authentication: Uptime Kuma only sends the credentials of the stored authMethod. Pass authMethod, or pass ' +
+          'the credentials of one method and it is set to match. ' +
+          Object.entries(HTTP_AUTH_METHODS)
+            .filter(([, spec]) => spec.fields.every((f) => MONITOR_TYPE_FIELDS[type].includes(f)))
+            .map(([method, spec]) => `"${method}" requires ${spec.needs.join(' and ')}`)
+            .join('; ') + '.'
+        );
+      }
+      if (type !== 'push' && type !== 'group') {
+        notes.push('timeout defaults to 0.8 x interval seconds.');
+      }
+
+      const structuredContent = {
+        type,
+        description: known.description,
+        required: required.map(describeMonitorField),
+        optional: MONITOR_TYPE_FIELDS[type].filter((f) => !required.includes(f)).map(describeMonitorField),
+        notes,
+        commonFields: COMMON_MONITOR_FIELDS,
+      };
+      return {
+        // Not indented, unlike the other tools: this is read by a model on its way to a write,
+        // and indentation alone is a third of the size.
+        content: [{ type: 'text', text: JSON.stringify(structuredContent) }],
+        structuredContent,
+      };
+    }
+  );
+
   server.registerTool(
     'createMonitor',
     {
       title: 'Create Monitor',
-      description: 'Creates a new monitor in Uptime Kuma. Requires at minimum a name and type. Use listMonitorTypes to see supported types. For HTTP monitors include url; for TCP/port monitors include hostname and port; for ping and dns include hostname; for json-query include url, jsonPath, jsonPathOperator and expectedValue; for database types (mysql, postgres, mongodb, redis, sqlserver, oracledb) include databaseConnectionString. Every other type names the fields it requires in their descriptions (e.g. mqttTopic, grpcUrl, kafkaProducerBrokers, rabbitmqNodes, snmpOid), and a create without them is refused rather than saved as a monitor that fails every check. For an HTTP monitor behind authentication pass the credentials (basic_auth_user and basic_auth_pass, or bearer_token) and authMethod is set to match. A push monitor is given a generated push token (Uptime Kuma only generates one in its own web UI) and the resulting ping URL is returned. timeout defaults to 0.8 x interval seconds for polled types.',
-      inputSchema: {
-        name: z.string().describe('Display name for the monitor'),
-        type: z.string().describe('Monitor type (e.g. http, port, ping, dns, push, keyword). Use listMonitorTypes for all options.'),
-        description: z.string().nullable().optional().describe('Free-text description shown on the monitor page'),
-        active: z.boolean().optional().describe('Whether the monitor starts checking immediately (default: true). Pass false to create it paused.'),
-        resendInterval: numeric(z.number()).optional().describe('Resend notification every N checks while down (0 = disabled, the default)'),
-        timeout: numeric(z.number()).nullable().optional().describe('Request timeout in SECONDS. Omit for 0.8 x interval. Avoid 0: Uptime Kuma\'s runtime fallback for a stored 0 computes interval * 1000 * 0.8 and then multiplies by 1000 again, yielding a ~13 hour timeout, so the monitor can never report DOWN against a host that accepts the connection and never answers.'),
-        jsonPath: z.string().optional().describe('JSONata expression for json-query monitors. Must resolve to a primitive.'),
-        json_path: z.string().optional().describe('Alias for jsonPath (the database column name). Prefer jsonPath.'),
-        jsonPathOperator: z.enum(['>', '>=', '<', '<=', '==', '!=', 'contains']).optional().describe('Comparison operator for json-query monitors. UP while value <operator> expectedValue.'),
-        json_path_operator: z.enum(['>', '>=', '<', '<=', '==', '!=', 'contains']).optional().describe('Alias for jsonPathOperator. Prefer jsonPathOperator.'),
-        expectedValue: z.coerce.string().optional().describe('Threshold the json-query result is compared against. Stored as a string.'),
-        expected_value: z.coerce.string().optional().describe('Alias for expectedValue. Prefer expectedValue.'),
-        pushToken: z.string().min(8).optional().describe('Push token for push monitors — the secret in the ping URL. Omit and one is generated and returned.'),
-        push_token: z.string().min(8).optional().describe('Alias for pushToken (the database column name). Prefer pushToken.'),
-        url: z.string().optional().describe('URL to monitor (required for http/keyword/json-query types)'),
-        hostname: z.string().optional().describe('Hostname to monitor (required for port/ping/dns types)'),
-        port: numeric(z.number()).optional().describe('Port number (required for port/tcp types)'),
-        interval: numeric(z.number().min(1)).optional().describe('Check interval in seconds (default: 60, min: 1)'),
-        retryInterval: numeric(z.number().min(1)).optional().describe('Retry interval in seconds when monitor is down (default: 60, min: 1)'),
-        maxretries: numeric(z.number()).optional().describe('Max retries before marking as down (default: 0)'),
-        notificationIDList: z.record(z.string(), z.boolean()).optional().describe('Map of notification IDs to enable (e.g. {"1": true, "3": true})'),
-        tags: z.array(z.object({
-          name: z.string(),
-          value: z.string().optional(),
-          color: z.string().optional(),
-        })).optional().describe('Tags to assign to the monitor'),
-        keyword: z.string().optional().describe('Keyword to search for (keyword monitor type)'),
-        invertKeyword: z.boolean().optional().describe('Invert keyword match'),
-        method: z.string().optional().describe('HTTP method (GET, POST, etc.) for http type'),
-        body: z.string().optional().describe('HTTP request body'),
-        headers: z.string().optional().describe('HTTP headers as JSON string'),
-        accepted_statuscodes: z.array(z.string()).optional().describe('Accepted HTTP status codes (e.g. ["200-299"])'),
-        ignoreTls: z.boolean().optional().describe('Ignore TLS/SSL errors'),
-        maxredirects: numeric(z.number()).optional().describe('Max HTTP redirects (default: 10)'),
-        upsideDown: z.boolean().optional().describe('Invert status — treat up as down'),
-        expiryNotification: z.boolean().optional().describe('Notify before the TLS certificate expires (HTTP-based types)'),
-        domainExpiryNotification: z.boolean().optional().describe('Notify before the domain registration expires. Needs Uptime Kuma 2.1 or later.'),
-        parent: numeric(z.number()).nullable().optional().describe('Parent group monitor ID'),
-        docker_container: z.string().optional().describe('Docker container name (required for docker type)'),
-        docker_host: numeric(z.number()).optional().describe('Docker host ID (required for docker type). Use listDockerHosts to find available IDs.'),
-        dns_resolve_server: z.string().optional().describe('DNS server to use for resolution (required for dns type, default: 1.1.1.1)'),
-        dns_resolve_type: z.enum(['A', 'AAAA', 'CNAME', 'MX', 'NS', 'PTR', 'SOA', 'SRV', 'TXT', 'CAA']).optional().describe('DNS record type to query (required for dns type, default: A)'),
-        databaseConnectionString: z.string().optional().describe('Connection string for mysql, postgres, mongodb, redis, sqlserver and oracledb monitors (required for those types). For oracledb the login goes in basic_auth_user and basic_auth_pass. A credential: read tools return it as "***" unless includeSecrets is set.'),
-        database_connection_string: z.string().optional().describe('Alias for databaseConnectionString (the database column name). Prefer databaseConnectionString.'),
-        databaseQuery: z.string().optional().describe('Query for database monitors. SQL for mysql, postgres and sqlserver (default: SELECT 1); a JSON command object for mongodb (default: {"ping": 1}).'),
-        database_query: z.string().optional().describe('Alias for databaseQuery (the database column name). Prefer databaseQuery.'),
-        databasePassword: z.string().optional().describe('Password for mysql monitors, if not inline in the connection string. Stored by Uptime Kuma as radiusPassword. A credential: read tools return it as "***".'),
-        radiusPassword: z.string().optional().describe('The RADIUS password (required for radius). Also the column databasePassword and snmpCommunity are stored in — prefer those names for mysql and snmp.'),
-        ...TYPE_SPECIFIC_MONITOR_FIELDS,
-      },
+      description: 'Creates a new monitor in Uptime Kuma. Requires at minimum a name and type. Use listMonitorTypes to see supported types. For HTTP monitors include url; for TCP/port monitors include hostname and port; for ping and dns include hostname; for json-query include url, jsonPath, jsonPathOperator and expectedValue; for database types (mysql, postgres, mongodb, redis, sqlserver, oracledb) include databaseConnectionString. For any other type, call getMonitorTypeFields first: it lists the required and optional fields of the type and what each means, which the brief "For <types>" descriptions below do not. A create without the required fields of its type is refused rather than saved as a monitor that fails every check. For an HTTP monitor behind authentication pass the credentials (basic_auth_user and basic_auth_pass, or bearer_token) and authMethod is set to match. Never pass "***" for a credential. A push monitor is given a generated push token (Uptime Kuma only generates one in its own web UI) and the resulting ping URL is returned. timeout defaults to 0.8 x interval seconds for polled types.',
+      inputSchema: createMonitorShape,
       outputSchema: {
         ok: z.boolean(),
         monitorID: z.number().optional(),
@@ -1801,7 +2180,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
     'updateMonitor',
     {
       title: 'Update Monitor',
-      description: 'Updates an existing monitor configuration. You must include the monitorID. Only the fields you provide will be changed (the server merges your changes with the existing config). Use getMonitor first to get the current config. Passing a different type converts the monitor in place, keeping its ID and history: the new type must have the fields it needs, passed here or already stored (e.g. url for http, hostname for ping), and a monitor becoming push is given a push token if it has none.',
+      description: 'Updates an existing monitor configuration. You must include the monitorID. Only the fields you provide will be changed (the server merges your changes with the existing config). Use getMonitor first to get the current config. Passing a different type converts the monitor in place, keeping its ID and history: the new type must have the fields it needs, passed here or already stored (e.g. url for http, hostname for ping), and a monitor becoming push is given a push token if it has none. Call getMonitorTypeFields for what the fields of a type mean — the "For <types>" descriptions below only say which types use them. Credentials read back as "***"; sending "***" keeps the stored value.',
       inputSchema: {
         monitorID: requiredId('The ID of the monitor to update'),
         // `parent` was declared on createMonitor but not here, so an existing monitor could

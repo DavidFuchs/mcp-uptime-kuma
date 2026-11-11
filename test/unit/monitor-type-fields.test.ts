@@ -211,6 +211,138 @@ describe('type-specific monitor fields (#112)', () => {
     });
   });
 
+  describe('getMonitorTypeFields', () => {
+    type FieldDoc = { name: string; description: string; accepts: Record<string, unknown> };
+    type TypeFields = { type: string; required: FieldDoc[]; optional: FieldDoc[]; notes: string[]; commonFields: string[] };
+
+    const connect = async () => {
+      const { client } = await connectServer();
+      const { tools } = await client.listTools();
+      const properties = (name: string) =>
+        (tools.find((t) => t.name === name)!.inputSchema.properties ?? {}) as Record<string, { description?: string }>;
+      const types = (
+        (await client.callTool({ name: 'listMonitorTypes', arguments: {} })).structuredContent as {
+          types: Array<{ type: string }>;
+        }
+      ).types.map((t) => t.type);
+      const describe = async (type: string) =>
+        (await client.callTool({ name: 'getMonitorTypeFields', arguments: { type } })).structuredContent as TypeFields;
+      return { client, tools, properties, types, describe };
+    };
+
+    it('answers for every type listMonitorTypes offers, with fields createMonitor accepts', async () => {
+      const { properties, types, describe } = await connect();
+      const accepted = Object.keys(properties('createMonitor'));
+
+      for (const type of types) {
+        const fields = await describe(type);
+        expect(fields.type).toBe(type);
+        for (const field of [...fields.required, ...fields.optional]) {
+          expect(accepted, `${type}.${field.name}`).toContain(field.name);
+          expect(field.description, `${type}.${field.name}`).not.toBe('');
+          expect(Object.keys(field.accepts).length, `${type}.${field.name}`).toBeGreaterThan(0);
+        }
+        for (const field of fields.commonFields) expect(accepted).toContain(field);
+      }
+    });
+
+    // The refusal and the documentation come from one table; this is what holds them together.
+    it.each(Object.entries(MINIMAL))('lists as required for %s exactly what a create is refused without', async (type, fields) => {
+      const { describe } = await connect();
+      const required = (await describe(type)).required.map((f) => f.name);
+
+      // globalping has none that hold for every subtype; its requirement is in the notes.
+      for (const field of required) expect(Object.keys(fields), `${type} required ${field}`).toContain(field);
+      // Whatever MINIMAL passes beyond that is a conditional requirement, and must be in the notes.
+      const conditional = Object.keys(fields).filter((f) => !required.includes(f));
+      const notes = (await describe(type)).notes.join(' ');
+      for (const field of conditional) expect(notes, `${type} note about ${field}`).toContain(field);
+    });
+
+    it('explains every type-specific field under at least one type', async () => {
+      const { properties, types, describe } = await connect();
+      const described = new Set<string>();
+      for (const type of types) {
+        const fields = await describe(type);
+        for (const field of [...fields.required, ...fields.optional, ...fields.commonFields.map((name) => ({ name }))]) {
+          described.add(field.name);
+        }
+      }
+      // Fields that exist for one tool's bookkeeping or as another spelling of a described field.
+      const notPerType = ['type', 'monitorID', 'parentID', 'parent_id'];
+      const undescribed = Object.entries(properties('updateMonitor'))
+        .filter(([name, schema]) => !described.has(name) && !notPerType.includes(name) && !/^Alias for /.test(schema.description ?? ''))
+        .map(([name]) => name);
+
+      expect(undescribed).toEqual([]);
+    });
+
+    it('gives the allowed values and the auth requirements of an HTTP monitor', async () => {
+      const { describe } = await connect();
+      const http = await describe('http');
+
+      expect(http.required.map((f) => f.name)).toEqual(['url']);
+      expect(JSON.stringify(http.optional.find((f) => f.name === 'authMethod')!.accepts)).toContain('"oauth2-cc"');
+      expect(http.notes.join(' ')).toContain('"bearer" requires bearer_token');
+      // globalping cannot do ntlm or mtls, so it must not be told it can.
+      expect((await describe('globalping')).notes.join(' ')).not.toContain('mtls');
+    });
+
+    it('says what the caller should pass for the snmp community, not where it is stored', async () => {
+      const { describe } = await connect();
+
+      expect((await describe('snmp')).required.map((f) => f.name)).toEqual(['hostname', 'snmpOid', 'snmpCommunity', 'expectedValue']);
+    });
+
+    it('refuses an unknown type', async () => {
+      const { client } = await connect();
+      const result = await client.callTool({ name: 'getMonitorTypeFields', arguments: { type: 'nope' } });
+
+      expect(result.isError).toBe(true);
+      expect(textOf(result)).toContain("Unknown monitor type 'nope'");
+    });
+
+    it('is where a refused create sends the caller', async () => {
+      const result = await create({ type: 'mqtt', hostname: 'mqtt://broker.internal' });
+
+      expect(textOf(result)).toContain('getMonitorTypeFields {"type": "mqtt"}');
+    });
+  });
+
+  describe('context cost of the write tools', () => {
+    // Tool definitions are loaded into every session. With a full description on each of the
+    // ~85 type-specific fields these two were 23.7 KB and 23.0 KB; the text now lives in
+    // getMonitorTypeFields. If this fails, move the new text there rather than raising the cap.
+    it.each([
+      ['createMonitor', 17000],
+      ['updateMonitor', 16000],
+    ])('%s stays under %d bytes', async (toolName, cap) => {
+      const { client } = await connectServer();
+      const { tools } = await client.listTools();
+
+      expect(JSON.stringify(tools.find((t) => t.name === toolName)).length).toBeLessThan(cap);
+    });
+
+    it('describes a type-specific field by the types that use it', async () => {
+      const { client } = await connectServer();
+      const { tools } = await client.listTools();
+      const properties = tools.find((t) => t.name === 'createMonitor')!.inputSchema.properties as Record<string, { description: string }>;
+
+      expect(properties.mqttTopic.description).toBe('For mqtt');
+      expect(properties.authMethod.description).toBe('For HTTP types, globalping, websocket-upgrade');
+      expect(properties.save_response.description).toBe('Alias for saveResponse');
+    });
+
+    it('advertises no safe-integer bounds, and keeps the ones a field declares', async () => {
+      const { client } = await connectServer();
+      const { tools } = await client.listTools();
+
+      expect(JSON.stringify(tools)).not.toContain('9007199254740991');
+      const properties = tools.find((t) => t.name === 'createMonitor')!.inputSchema.properties as Record<string, Record<string, unknown>>;
+      expect(properties.ping_count).toMatchObject({ minimum: 1, maximum: 100 });
+    });
+  });
+
   describe('reading the monitor back', () => {
     // Both failed output validation, so the monitor could be created and then not read.
     it.each(['steam', 'globalping', 'ntp', 'websocket-upgrade', 'sftp', 'sip-options', 'oracledb', 'system-service', 'pm2'])(

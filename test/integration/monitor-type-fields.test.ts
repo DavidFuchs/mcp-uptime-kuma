@@ -259,6 +259,27 @@ export const monitorTypeFieldTests: Array<{ name: string; fn: TestFn }> = [
     },
   },
   {
+    name: 'getMonitorTypeFields names the fields a create is then accepted with',
+    fn: async ({ client }) => {
+      const described = await call(client, 'getMonitorTypeFields', { type: 'mqtt' });
+      extractText(described, 'getMonitorTypeFields');
+      const required: string[] = (described as any).structuredContent.required.map((f: any) => f.name);
+      if (required.join(',') !== 'hostname,port,mqttTopic') throw new Error(`mqtt required: ${required.join(',')}`);
+
+      // Exactly the required fields, nothing else, is a monitor Uptime Kuma accepts.
+      const values: Record<string, unknown> = { hostname: 'mqtt://broker.invalid', port: 1883, mqttTopic: 'zz/#' };
+      const created = await call(client, 'createMonitor', {
+        name: 'zz-type-fields-delete-me',
+        type: 'mqtt',
+        active: false,
+        ...Object.fromEntries(required.map((f) => [f, values[f]])),
+      });
+      extractText(created, 'createMonitor');
+      await call(client, 'deleteMonitor', { monitorID: extractID(created, 'createMonitor', 'monitorID') });
+      console.log('  ✓ getMonitorTypeFields: mqtt required fields are enough to create one');
+    },
+  },
+  {
     name: 'credentials inline in a monitor url survive a redacted round trip, and stay on their host',
     fn: async ({ client }) => {
       const created = await call(client, 'createMonitor', {

@@ -14,7 +14,7 @@ export const settingsTests: Array<{ name: string; fn: TestFn }> = [
       if (tools.tools.length === 0) throw new Error('No tools found');
 
       const expectedTools = [
-        'getMonitor', 'listMonitors', 'listMonitorTypes', 'getMonitorSummary',
+        'getMonitor', 'listMonitors', 'listMonitorTypes', 'getMonitorTypeFields', 'getMonitorSummary',
         'createMonitor', 'updateMonitor', 'deleteMonitor',
         'pauseMonitor', 'resumeMonitor',
         'getHeartbeats', 'listHeartbeats',

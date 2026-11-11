@@ -99,6 +99,7 @@ See [Authentication Methods](#authentication-methods) for JWT token and anonymou
 | `getMonitorSummary` | Get a quick overview of all monitors with their current status. Supports filtering. |
 | `listMonitors` | Get the full list of all monitors with configurations. Supports filtering. |
 | `listMonitorTypes` | Get all available monitor types supported by Uptime Kuma. |
+| `getMonitorTypeFields` | Get the required and optional fields of one monitor type, what each means and accepts, and the defaults applied. Call it before creating a monitor of a type you have not set up before. |
 | `getMonitor` | Get detailed configuration for a specific monitor by ID. |
 | `createMonitor` | Create a new monitor of any type (requires name, type, and whatever that type checks, e.g. `url` for http, `mqttTopic` for mqtt or `rabbitmqNodes` for rabbitmq). Accepts HTTP authentication: basic, bearer, OAuth2 client credentials, NTLM and mTLS. |
 | `updateMonitor` | Update an existing monitor's configuration, including changing its type in place (keeps the ID and history). |
