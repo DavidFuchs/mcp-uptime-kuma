@@ -100,7 +100,7 @@ See [Authentication Methods](#authentication-methods) for JWT token and anonymou
 | `listMonitors` | Get the full list of all monitors with configurations. Supports filtering. |
 | `listMonitorTypes` | Get all available monitor types supported by Uptime Kuma. |
 | `getMonitor` | Get detailed configuration for a specific monitor by ID. |
-| `createMonitor` | Create a new monitor (requires name, type, and whatever that type checks, e.g. `url` for http or `hostname` for ping). |
+| `createMonitor` | Create a new monitor of any type (requires name, type, and whatever that type checks, e.g. `url` for http, `mqttTopic` for mqtt or `rabbitmqNodes` for rabbitmq). Accepts HTTP authentication: basic, bearer, OAuth2 client credentials, NTLM and mTLS. |
 | `updateMonitor` | Update an existing monitor's configuration, including changing its type in place (keeps the ID and history). |
 | `deleteMonitor` | Permanently delete a monitor and all its heartbeat history. |
 | `pauseMonitor` | Pause a monitor to stop performing checks. |
@@ -335,7 +335,7 @@ What is withheld:
 | Tool | Withheld |
 |---|---|
 | `listNotifications` | everything in `config` except `type`/`name`/`isDefault`/`applyExisting`. The withheld field names are listed in `redactedConfigKeys` |
-| `listMonitors`, `getMonitor` | `pushToken`, `basic_auth_pass`, `bearer_token`, `oauth_client_secret`, `radiusPassword`, `radiusSecret`, `mqttPassword`, `rabbitmqPassword`, `tlsCert`/`tlsKey`/`tlsCa`, `databaseConnectionString`, `headers`, `grpcMetadata`, plus anything matching `/pass|secret|token|apikey|auth(oriz\|entic)|bearer|credential|private.?key|jwt/i` |
+| `listMonitors`, `getMonitor` | `pushToken`, `basic_auth_pass`, `bearer_token`, `oauth_client_secret`, `radiusPassword`, `radiusSecret`, `mqttPassword`, `rabbitmqPassword`, `gamedigToken`, `sshPassword`, `sshPrivateKey`, `sshPassphrase`, the password inside `kafkaProducerSaslOptions`, `user:pass@` inside `rabbitmqNodes`, `tlsCert`/`tlsKey`/`tlsCa`, `databaseConnectionString`, `headers`, `grpcMetadata`, plus anything matching `/pass|secret|token|apikey|auth(oriz\|entic)|bearer|credential|private.?key|jwt/i` |
 | `listDockerHosts` | `user:password@` inside a `dockerDaemon` URL |
 | `getHeartbeats`, `listHeartbeats` | any column Uptime Kuma returns beyond the declared heartbeat fields (e.g. `response`, which can carry a service's response body) is dropped, and `user:password@` inside a URL quoted in the status message is scrubbed |
 | `getSettings` | any secret-named field Uptime Kuma returns (e.g. `steamAPIKey`) |

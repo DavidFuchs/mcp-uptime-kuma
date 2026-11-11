@@ -12,12 +12,12 @@ export const HttpMonitorSchema = MonitorBaseSchema.extend({
   headers: z.string().optional().describe('HTTP headers as JSON string'),
   body: z.string().optional().describe('Request body (JSON string or other)'),
   httpBodyEncoding: z.enum(['json', 'xml', 'form']).optional().describe('Body encoding format'),
-  ipFamily: z.enum(['4', '6']).nullable().optional().describe('IP version (4 or 6)'),
+  ipFamily: z.enum(['ipv4', 'ipv6']).nullable().optional().describe('IP version (null lets Uptime Kuma choose)'),
 
   // Authentication
   basic_auth_user: z.string().optional().describe('HTTP Basic auth username'),
   basic_auth_pass: z.string().optional().describe('HTTP Basic auth password'),
-  authMethod: z.enum(['ntlm', 'bearer']).nullable().optional().describe('Auth method'),
+  authMethod: z.enum(['basic', 'bearer', 'oauth2-cc', 'ntlm', 'mtls']).nullable().optional().describe('Auth method'),
   authWorkstation: z.string().optional().describe('NTLM workstation'),
   authDomain: z.string().optional().describe('NTLM domain'),
 
@@ -242,7 +242,7 @@ export const TailscalePingMonitorSchema = MonitorBaseSchema.extend({
  */
 export const ManualMonitorSchema = MonitorBaseSchema.extend({
   type: z.literal('manual'),
-  manual_status: z.enum(['up', 'down', 'pending', 'maintenance']).optional().describe('Manual status'),
+  manual_status: z.number().nullable().optional().describe('Manual status: 1 = UP, 0 = DOWN, null = PENDING'),
 });
 
 /**

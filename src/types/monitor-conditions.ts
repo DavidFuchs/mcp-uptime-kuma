@@ -1,10 +1,14 @@
 import { z } from 'zod';
 
 /**
- * Monitor Condition type
+ * Monitor Condition type.
+ *
+ * Uptime Kuma names a comparison "expression" (server/monitor-conditions/expression.js:
+ * `condition.type === "expression"`). This used to say "condition", which no monitor has ever
+ * held, so getMonitor failed output validation on any monitor with a condition set (#112).
  */
 export type MonitorCondition = {
-  type: 'condition' | 'group';
+  type: 'expression' | 'group';
   variable?: string;
   operator?: string;
   value?: string;
@@ -16,7 +20,7 @@ export type MonitorCondition = {
  * Zod schema for Monitor Condition
  */
 export const MonitorConditionSchema: z.ZodType<MonitorCondition> = z.object({
-  type: z.enum(['condition', 'group']).describe('Condition or group'),
+  type: z.enum(['expression', 'group']).describe('A single comparison, or a group of nested conditions'),
   variable: z.string().optional().describe('Variable to check'),
   operator: z.string().optional().describe('Comparison operator'),
   value: z.string().optional().describe('Expected value'),
