@@ -51,39 +51,20 @@ export const MonitorBaseSchema = z.object({
   id: z.number().optional().describe('Monitor ID (omit for creation)'),
   name: z.string().describe('Monitor name'),
   description: z.string().nullable().optional().describe('Monitor description'),
-  type: z.enum([
-    'http',
-    'keyword',
-    'json-query',
-    'ping',
-    'port',
-    'dns',
-    'docker',
-    'mqtt',
-    'mongodb',
-    'redis',
-    'sqlserver',
-    'postgres',
-    'mysql',
-    'grpc-keyword',
-    'kafka-producer',
-    'radius',
-    'rabbitmq',
-    'smtp',
-    'snmp',
-    'real-browser',
-    'gamedig',
-    'push',
-    'group',
-    'tailscale-ping',
-    'manual',
-  ]).describe('Monitor type'),
+  // A string, not an enum of the types this server knows. This schema validates what the READ
+  // tools return, so an enum makes every monitor of a type missing from it unreadable — which
+  // is what happened to steam, globalping, ntp, websocket-upgrade, sftp, sip-options, oracledb,
+  // system-service and pm2 monitors (#112). listMonitorTypes is the list of valid types.
+  type: z.string().describe('Monitor type. Use listMonitorTypes for the valid values.'),
   active: z.coerce.boolean().optional().default(true).describe('Start monitoring immediately'),
   parent: z.number().nullable().optional().describe('Parent group ID (null for root)'),
   weight: z.number().nullable().optional().describe('Display order weight'),
 
   // Timing
-  interval: z.number().min(20).describe('Check interval in seconds (min 20; no upper bound since Uptime Kuma 2.5.0)'),
+  // No minimum here: this validates what the READ tools return, and a bound that disagrees with
+  // Uptime Kuma makes the monitor unreadable. Uptime Kuma's own floor is MIN_INTERVAL_SECOND = 1
+  // (src/util.ts); the old min(20) was its 1.x limit. The write tools enforce the floor.
+  interval: z.number().describe('Check interval in seconds (min 1, no upper bound)'),
   retryInterval: z.number().describe('Retry interval in seconds'),
   resendInterval: z.number().default(0).describe('Notification resend interval (0 = disabled)'),
   timeout: z.number().nullable().optional().describe('Request timeout in seconds'),

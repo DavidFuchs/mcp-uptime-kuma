@@ -31,6 +31,9 @@ function validateEnvironment(): UptimeKumaConfig {
   // Global opt-in to unredacted credentials in read-tool output (issue #59). Only an
   // explicit "true"/"1" enables it — an unset or misspelled value must fail closed.
   const includeSecrets = /^(true|1)$/i.test(process.env.UPTIME_KUMA_INCLUDE_SECRETS ?? '');
+  // Leave out every tool that creates, changes or deletes. Same parsing as above: only an
+  // explicit "true"/"1" enables it.
+  const readOnly = /^(true|1)$/i.test(process.env.UPTIME_KUMA_READ_ONLY ?? '');
 
   if (!url) {
     console.error('Error: UPTIME_KUMA_URL environment variable is required');
@@ -59,7 +62,7 @@ function validateEnvironment(): UptimeKumaConfig {
     );
   }
 
-  return { url, username, password, token, jwtToken, includeSecrets, extraHeaders };
+  return { url, username, password, token, jwtToken, includeSecrets, readOnly, extraHeaders };
 }
 
 // Parse command-line arguments

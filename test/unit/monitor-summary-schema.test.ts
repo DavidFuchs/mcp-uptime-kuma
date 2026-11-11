@@ -8,8 +8,11 @@ describe('MonitorBaseSchema interval', () => {
     expect(MonitorBaseSchema.parse({ ...base, interval: 3024000 }).interval).toBe(3024000);
   });
 
-  it('still rejects an interval below the minimum', () => {
-    expect(() => MonitorBaseSchema.parse({ ...base, interval: 19 })).toThrow();
+  // This schema validates what the read tools return, and Uptime Kuma's floor is 1 second
+  // (MIN_INTERVAL_SECOND), not the 20 of its 1.x releases. The write tools enforce the floor.
+  it('accepts an interval down to Uptime Kuma\'s 1 second minimum', () => {
+    expect(MonitorBaseSchema.parse({ ...base, interval: 19 }).interval).toBe(19);
+    expect(MonitorBaseSchema.parse({ ...base, interval: 1 }).interval).toBe(1);
   });
 });
 

@@ -15,6 +15,7 @@ import { dockerHostTests } from './docker-hosts.test.js';
 import { statusPageTests } from './status-pages.test.js';
 import { strictSchemaTests } from './strict-schema.test.js';
 import { redactionTests } from './redaction.test.js';
+import { monitorTypeFieldTests } from './monitor-type-fields.test.js';
 import { startupTests } from './startup.test.js';
 import { monitorHistoryTests } from './monitor-history.long.test.js';
 
@@ -47,6 +48,7 @@ const SHORT_SUITES: Record<string, Suite> = {
   'status-pages': { name: 'Status Pages', tests: statusPageTests },
   'strict-schema': { name: 'Strict Input Schemas', tests: strictSchemaTests },
   redaction: { name: 'Credential Redaction', tests: redactionTests },
+  'monitor-type-fields': { name: 'Type-specific Monitor Fields', tests: monitorTypeFieldTests },
   startup: { name: 'Fresh Server Startup', tests: startupTests },
 };
 

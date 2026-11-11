@@ -286,19 +286,28 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
         if (m.jsonPathOperator !== '>') throw new Error(`jsonPathOperator not persisted: ${JSON.stringify(m.jsonPathOperator)}`);
         if (String(m.expectedValue) !== '161061273600') throw new Error(`expectedValue not persisted: ${JSON.stringify(m.expectedValue)}`);
 
-        // snake_case aliases — the database column names, and the spelling used in #60
-        await client.callTool({
+        // The database column names, and the spelling used in #60, are refused by name rather
+        // than accepted as a second spelling: nothing may be written, and the reply must say
+        // which name to use.
+        const refused = await client.callTool({
           name: 'updateMonitor',
           arguments: { monitorID, json_path: '$.total', json_path_operator: '<', expected_value: '42' },
+        }) as CallToolResult;
+        if (!refused.isError || !JSON.stringify(refused.content).includes("'jsonPath' for 'json_path'")) {
+          throw new Error('snake_case spellings were not refused with the accepted name');
+        }
+        await client.callTool({
+          name: 'updateMonitor',
+          arguments: { monitorID, jsonPath: '$.total', jsonPathOperator: '<', expectedValue: '42' },
         });
         const m2 = JSON.parse(extractText(
           await client.callTool({ name: 'getMonitor', arguments: { monitorID, includeTypeSpecificFields: true } }) as CallToolResult,
           'getMonitor'
         ));
         if (m2.jsonPath !== '$.total' || m2.jsonPathOperator !== '<' || String(m2.expectedValue) !== '42') {
-          throw new Error('snake_case aliases were not normalised onto the camelCase fields');
+          throw new Error('the json-query triple was not updated');
         }
-        console.log('  ✓ #60: json-query triple persists, snake_case aliases normalised');
+        console.log('  ✓ #60: json-query triple persists and updates; snake_case spellings refused by name');
       } finally {
         await client.callTool({ name: 'deleteMonitor', arguments: { monitorID } });
       }
@@ -338,11 +347,11 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
         // The read-edit-write loop: "***" comes back and must not overwrite the credential.
         await client.callTool({
           name: 'updateMonitor',
-          arguments: { monitorID, databaseConnectionString: '***', database_query: 'SELECT 2' },
+          arguments: { monitorID, databaseConnectionString: '***', databaseQuery: 'SELECT 2' },
         });
         const m2 = await read(true);
         if (m2.databaseConnectionString !== connectionString) throw new Error('"***" overwrote databaseConnectionString');
-        if (m2.databaseQuery !== 'SELECT 2') throw new Error('database_query alias was not normalised onto databaseQuery');
+        if (m2.databaseQuery !== 'SELECT 2') throw new Error('databaseQuery was not updated');
         console.log('  ✓ #106: connection string and query persist, redact, and survive a "***" round trip');
       } finally {
         await client.callTool({ name: 'deleteMonitor', arguments: { monitorID } });

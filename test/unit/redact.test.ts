@@ -293,12 +293,21 @@ describe('rehydrateUrlCredentials - the dockerDaemon read-edit-write loop', () =
     expect(missing).toBe(false);
   });
 
-  it('restores credentials even when the caller changed the endpoint', () => {
-    // The realistic edit: read the redacted host, repoint it, write it back. The
-    // credentials must ride along to the new endpoint rather than being wiped.
-    const { value, preserved } = rehydrateUrlCredentials('http://***:***@new-host:2375', stored);
-    expect(value).toBe('http://admin:s3cret@new-host:2375/');
+  it('does not restore credentials onto a different host or port', () => {
+    // Otherwise the round trip could be used to send a password the caller was never shown
+    // to an address of their choosing.
+    for (const moved of ['http://***:***@new-host:2375', 'http://***:***@dockerd.local:2376']) {
+      const result = rehydrateUrlCredentials(moved, stored);
+      expect(result, moved).toEqual({ value: moved, preserved: false, missing: true, hostChanged: true });
+      expect(result.value).not.toContain('s3cret');
+    }
+  });
+
+  it('restores credentials when only the scheme or path changes', () => {
+    const { value, preserved, hostChanged } = rehydrateUrlCredentials('https://***:***@DOCKERD.local:2375/v1', stored);
+    expect(value).toBe('https://admin:s3cret@dockerd.local:2375/v1');
     expect(preserved).toBe(true);
+    expect(hostChanged).toBe(false);
   });
 
   it('reports missing when there is no stored credential to restore', () => {
@@ -326,6 +335,7 @@ describe('rehydrateUrlCredentials - the dockerDaemon read-edit-write loop', () =
       value: socket,
       preserved: false,
       missing: false,
+      hostChanged: false,
     });
   });
 

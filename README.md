@@ -99,8 +99,9 @@ See [Authentication Methods](#authentication-methods) for JWT token and anonymou
 | `getMonitorSummary` | Get a quick overview of all monitors with their current status. Supports filtering. |
 | `listMonitors` | Get the full list of all monitors with configurations. Supports filtering. |
 | `listMonitorTypes` | Get all available monitor types supported by Uptime Kuma. |
+| `getMonitorTypeFields` | Get the required and optional fields of one monitor type: what each means and accepts, whether it is passed at the top level or in `typeFields`, and the defaults applied. |
 | `getMonitor` | Get detailed configuration for a specific monitor by ID. |
-| `createMonitor` | Create a new monitor (requires name, type, and whatever that type checks, e.g. `url` for http or `hostname` for ping). |
+| `createMonitor` | Create a new monitor of any type (requires name, type, and whatever that type checks, e.g. `url` for http or `hostname` for ping). Type-specific fields, including HTTP authentication, go in `typeFields`. |
 | `updateMonitor` | Update an existing monitor's configuration, including changing its type in place (keeps the ID and history). |
 | `deleteMonitor` | Permanently delete a monitor and all its heartbeat history. |
 | `pauseMonitor` | Pause a monitor to stop performing checks. |
@@ -147,6 +148,27 @@ See [Authentication Methods](#authentication-methods) for JWT token and anonymou
 |------|---------|
 | `listStatusPages` | List all configured status pages. |
 | `getSettings` | Get Uptime Kuma server settings. |
+
+### Type-specific monitor fields
+
+`createMonitor` and `updateMonitor` declare the fields most monitors use (`url`, `hostname`,
+`port`, `keyword`, `interval`, …) as ordinary arguments. Everything specific to one kind of
+monitor goes in a single `typeFields` object:
+
+```
+createMonitor({ name: "API", type: "http", url: "https://api.example.com/health",
+                typeFields: { bearer_token: "…" } })
+createMonitor({ name: "Broker", type: "mqtt", hostname: "mqtt://broker.example.com", port: 1883,
+                typeFields: { mqttTopic: "sensors/#" } })
+```
+
+`getMonitorTypeFields({ type })` lists what a type needs and accepts. The fields are kept out
+of the tool definitions on purpose: there are about 85 of them, and tool definitions are loaded
+into every conversation whether or not a monitor is ever created. `typeFields` is still
+validated — an unknown name or a bad value is refused, with the accepted spelling suggested.
+
+`getMonitor` returns these fields at the top level of the monitor, as Uptime Kuma stores them.
+To change one, pass it inside `typeFields`.
 
 ### Filtering
 
@@ -230,6 +252,19 @@ In an MCP client's JSON config the value is a string, so the inner quotes need e
 
 `mcp-uptime-kuma-get-jwt` reads the same variable. A malformed value stops the server at startup
 with an error naming the offending header; header values are never logged.
+
+## Read-Only Mode
+
+To expose only the tools that report, and none that create, change, pause or delete, set:
+
+```
+UPTIME_KUMA_READ_ONLY=true
+```
+
+The write tools are then not registered at all, so they cannot be called and take up no room in
+the conversation. Thirteen tools remain: the `get…` and `list…` tools, minus
+`getMonitorTypeFields`, which only serves the write tools. This limits what the MCP server
+offers; it does not change what the Uptime Kuma account itself is allowed to do.
 
 ## Securing the HTTP Endpoint
 
@@ -335,7 +370,7 @@ What is withheld:
 | Tool | Withheld |
 |---|---|
 | `listNotifications` | everything in `config` except `type`/`name`/`isDefault`/`applyExisting`. The withheld field names are listed in `redactedConfigKeys` |
-| `listMonitors`, `getMonitor` | `pushToken`, `basic_auth_pass`, `bearer_token`, `oauth_client_secret`, `radiusPassword`, `radiusSecret`, `mqttPassword`, `rabbitmqPassword`, `tlsCert`/`tlsKey`/`tlsCa`, `databaseConnectionString`, `headers`, `grpcMetadata`, plus anything matching `/pass|secret|token|apikey|auth(oriz\|entic)|bearer|credential|private.?key|jwt/i` |
+| `listMonitors`, `getMonitor` | `pushToken`, `basic_auth_pass`, `bearer_token`, `oauth_client_secret`, `radiusPassword`, `radiusSecret`, `mqttPassword`, `rabbitmqPassword`, `gamedigToken`, `sshPassword`, `sshPrivateKey`, `sshPassphrase`, the password inside `kafkaProducerSaslOptions`, `user:pass@` inside `rabbitmqNodes`, `tlsCert`/`tlsKey`/`tlsCa`, `databaseConnectionString`, `headers`, `grpcMetadata`, plus anything matching `/pass|secret|token|apikey|auth(oriz\|entic)|bearer|credential|private.?key|jwt/i` |
 | `listDockerHosts` | `user:password@` inside a `dockerDaemon` URL |
 | `getHeartbeats`, `listHeartbeats` | any column Uptime Kuma returns beyond the declared heartbeat fields (e.g. `response`, which can carry a service's response body) is dropped, and `user:password@` inside a URL quoted in the status message is scrubbed |
 | `getSettings` | any secret-named field Uptime Kuma returns (e.g. `steamAPIKey`) |
@@ -371,10 +406,15 @@ token and ping URL of a new push monitor, and `updateMonitor` does the same when
 a monitor's type to push, because the sender cannot be wired up without them. Later reads
 redact the token like any other secret.
 
-`updateDockerHost` gets the same protection for the credentials embedded in a `dockerDaemon`
-URL: a `http://***:***@host:2375` read back from `listDockerHosts` has its userinfo restored
-from the stored URL rather than persisted verbatim, so repointing a host without re-entering
-its credentials does not wipe them.
+Credentials written inline in a URL get the same protection: the `url` of a monitor, the
+entries of `rabbitmqNodes`, and the `dockerDaemon` of a docker host. A `http://***:***@host:2375`
+read back from a read tool has its userinfo restored from the stored URL rather than persisted
+verbatim, so editing the path or scheme without re-entering the credentials does not wipe them.
+
+**Stored credentials are only restored onto the host and port they were stored for.** Sending
+`http://***:***@another-host` is refused rather than restored, because that would hand a
+password you were never shown to an address of the caller's choosing. To point a monitor or
+docker host at a new address, pass the real credentials along with it.
 
 The MCP logging channel gets the same rule. The debug log for a live heartbeat reports the
 monitored service's status message by length only (`msgLength=...`), never its content, since

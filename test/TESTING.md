@@ -76,6 +76,7 @@ wait on a check.
 | `status-pages` | `status-pages.test.ts` | short |
 | `strict-schema` | `strict-schema.test.ts` | short |
 | `redaction` | `redaction.test.ts` | short |
+| `monitor-type-fields` | `monitor-type-fields.test.ts` | short |
 | `startup` | `startup.test.ts` | short |
 | `monitor-history` | `monitor-history.long.test.ts` | long |
 

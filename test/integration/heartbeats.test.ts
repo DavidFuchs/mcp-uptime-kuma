@@ -46,7 +46,7 @@ export const heartbeatTests: Array<{ name: string; fn: TestFn }> = [
     },
   },
   {
-    name: '#56: beats come back newest-first, and `limit` is honoured',
+    name: '#56: beats come back newest-first, and maxHeartbeats is honoured',
     fn: async ({ client }) => {
       const summaries = JSON.parse(extractText(
         await client.callTool({ name: 'getMonitorSummary', arguments: {} }) as CallToolResult,
@@ -58,7 +58,7 @@ export const heartbeatTests: Array<{ name: string; fn: TestFn }> = [
       let beats: any[] = [];
       for (const s of summaries) {
         const got = JSON.parse(extractText(
-          await client.callTool({ name: 'getHeartbeats', arguments: { monitorID: s.id, limit: 5 } }) as CallToolResult,
+          await client.callTool({ name: 'getHeartbeats', arguments: { monitorID: s.id, maxHeartbeats: 5 } }) as CallToolResult,
           'getHeartbeats'
         ));
         if (got.length >= 3) {
@@ -73,9 +73,8 @@ export const heartbeatTests: Array<{ name: string; fn: TestFn }> = [
         return;
       }
 
-      // `limit` used to be stripped, leaving maxHeartbeats undefined and the call returning
-      // exactly one beat — the second half of #56.
-      if (beats.length < 3) throw new Error(`limit:5 returned ${beats.length} beat(s)`);
+      // The second half of #56: a call asking for several beats returned exactly one.
+      if (beats.length < 3) throw new Error(`maxHeartbeats:5 returned ${beats.length} beat(s)`);
 
       const times = beats.map((b: any) => Date.parse(b.time));
       for (let i = 1; i < times.length; i++) {
@@ -100,7 +99,7 @@ export const heartbeatTests: Array<{ name: string; fn: TestFn }> = [
       }
 
       const beats = JSON.parse(extractText(
-        await client.callTool({ name: 'getHeartbeats', arguments: { monitorID: withBeat.id, limit: 1 } }) as CallToolResult,
+        await client.callTool({ name: 'getHeartbeats', arguments: { monitorID: withBeat.id, maxHeartbeats: 1 } }) as CallToolResult,
         'getHeartbeats'
       ));
 
@@ -145,7 +144,7 @@ export const heartbeatTests: Array<{ name: string; fn: TestFn }> = [
         const important = JSON.parse(extractText(
           await client.callTool({
             name: 'getHeartbeats',
-            arguments: { monitorID: s.id, important: true, limit: 10 },
+            arguments: { monitorID: s.id, important: true, maxHeartbeats: 10 },
           }) as CallToolResult,
           'getHeartbeats'
         ));
