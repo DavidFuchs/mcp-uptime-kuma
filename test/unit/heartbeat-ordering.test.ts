@@ -286,15 +286,23 @@ describe('maxHeartbeats aliases (limit / count)', () => {
     return client;
   }
 
-  it('honours `limit`, which used to be stripped and silently return one beat', async () => {
+  // `limit` is what a caller reaches for first. It was once dropped, silently returning one
+  // beat, and then accepted as an alias. Now it is refused, and the refusal says what to pass.
+  it.each(['limit', 'count'])('refuses `%s` and names maxHeartbeats', async (name) => {
     const client = await connect();
-    await client.callTool({ name: 'getHeartbeats', arguments: { monitorID: 105, limit: 3 } });
-    expect(getHeartbeatsForMonitor).toHaveBeenCalledWith(105, 3);
+    for (const tool of ['getHeartbeats', 'listHeartbeats']) {
+      const args = tool === 'getHeartbeats' ? { monitorID: 105, [name]: 3 } : { [name]: 3 };
+      const result = await client.callTool({ name: tool, arguments: args });
+
+      expect(result.isError, tool).toBe(true);
+      expect(JSON.stringify(result.content)).toContain(`Did you mean 'maxHeartbeats' for '${name}'?`);
+    }
+    expect(getHeartbeatsForMonitor).not.toHaveBeenCalled();
   });
 
-  it('honours `count` as well', async () => {
+  it('honours maxHeartbeats', async () => {
     const client = await connect();
-    await client.callTool({ name: 'getHeartbeats', arguments: { monitorID: 105, count: 7 } });
+    await client.callTool({ name: 'getHeartbeats', arguments: { monitorID: 105, maxHeartbeats: 7 } });
     expect(getHeartbeatsForMonitor).toHaveBeenCalledWith(105, 7);
   });
 
@@ -304,33 +312,13 @@ describe('maxHeartbeats aliases (limit / count)', () => {
     expect(getHeartbeatsForMonitor).toHaveBeenCalledWith(105, 1);
   });
 
-  it('errors on an alias that disagrees with maxHeartbeats rather than picking one', async () => {
-    const client = await connect();
-    const result = await client.callTool({
-      name: 'getHeartbeats',
-      arguments: { monitorID: 105, maxHeartbeats: 3, limit: 9 },
-    });
-    expect(result.isError).toBe(true);
-    expect(JSON.stringify(result.content)).toContain('Conflicting values');
-  });
-
-  it('accepts an alias that agrees with maxHeartbeats', async () => {
-    const client = await connect();
-    const result = await client.callTool({
-      name: 'getHeartbeats',
-      arguments: { monitorID: 105, maxHeartbeats: 3, limit: 3 },
-    });
-    expect(result.isError).toBeFalsy();
-    expect(getHeartbeatsForMonitor).toHaveBeenCalledWith(105, 3);
-  });
-
   it('routes important:true to the live server fetch, not the cache', async () => {
     const fetchImportant = vi
       .spyOn(UptimeKumaClient.prototype, 'fetchImportantHeartbeats')
       .mockResolvedValue([] as never);
     const client = await connect();
 
-    await client.callTool({ name: 'getHeartbeats', arguments: { monitorID: 105, important: true, limit: 5 } });
+    await client.callTool({ name: 'getHeartbeats', arguments: { monitorID: 105, important: true, maxHeartbeats: 5 } });
 
     expect(fetchImportant).toHaveBeenCalledWith(105, 5);
     expect(getHeartbeatsForMonitor).not.toHaveBeenCalled();

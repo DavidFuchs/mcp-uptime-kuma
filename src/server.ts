@@ -647,7 +647,7 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
 
         READ operations:
         - START with 'getMonitorSummary' for status overview ("how is everything?", "what's down?").
-        - Use 'getHeartbeats' or 'listHeartbeats' for historical data (limit to 5-10 heartbeats unless user requests more).
+        - Use 'getHeartbeats' or 'listHeartbeats' for historical data (set maxHeartbeats to 5-10 unless the user asks for more).
         - Use 'listMonitors' when you need configuration details (URLs, intervals, notification settings).
         - Use 'listNotifications' to see notification channels.
         - Use 'listTags' to see available tags.
@@ -726,16 +726,22 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
     // rather than leaving the caller to find it in the list.
     const looseName = (key: string): string => key.toLowerCase().replace(/[_-]/g, '');
     const byLooseName = new Map(accepted.map((key) => [looseName(key), key]));
-    // updateMonitor accepted parentID and parent_id for `parent` until they were removed with
-    // the other second spellings. Unlike those, dropping the separators does not lead back to
-    // the accepted name, so it is spelled out.
-    const FORMER_PARENT_NAMES: Record<string, string> = { parentid: 'parent' };
+    // Names this server used to accept as aliases, where dropping the separators does not
+    // lead back to the accepted name: parentID / parent_id for `parent` on updateMonitor, and
+    // limit / count for `maxHeartbeats` on the heartbeat tools. `limit` in particular is what
+    // a caller reaches for first, and before unknown fields were refused it was dropped and
+    // the call silently returned a single beat — so the refusal has to say what to pass.
+    const FORMER_NAMES: Record<string, string> = { parentid: 'parent', limit: 'maxHeartbeats', count: 'maxHeartbeats' };
+    const formerName = (key: string): string | undefined => {
+      const target = FORMER_NAMES[looseName(key)];
+      return target !== undefined && accepted.includes(target) ? target : undefined;
+    };
 
     const schema = z.strictObject(shape, {
       error: (issue) => {
         if (issue.code !== 'unrecognized_keys') return undefined;
         const suggestions = issue.keys
-          .map((k) => [k, byLooseName.get(looseName(k)) ?? (accepted.includes('parent') ? FORMER_PARENT_NAMES[looseName(k)] : undefined)])
+          .map((k) => [k, byLooseName.get(looseName(k)) ?? formerName(k)])
           .filter(([, match]) => match !== undefined)
           .map(([k, match]) => `'${match}' for '${k}'`);
         // The fields that live in typeFields are the likeliest thing to be passed here instead.
@@ -1129,10 +1135,6 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
       inputSchema: {
         monitorID: requiredId('The ID of the monitor to get heartbeats for'),
         maxHeartbeats: numeric(z.number().int().positive().max(100)).optional().describe('If set, returns the most recent X heartbeats (up to 100). If unset, returns only the most recent heartbeat (default: 1)'),
-        // `limit` and `count` are what a caller reaches for first. Both used to be stripped,
-        // leaving maxHeartbeats undefined and the call silently returning a single beat.
-        limit: numeric(z.number().int().positive().max(100)).optional().describe('Alias for maxHeartbeats. Prefer maxHeartbeats.'),
-        count: numeric(z.number().int().positive().max(100)).optional().describe('Alias for maxHeartbeats. Prefer maxHeartbeats.'),
         important: z.boolean().optional().describe('Return only IMPORTANT beats — the status changes behind Uptime Kuma\'s event list — fetched live from the server rather than the cache. History only: the newest important beat is not the monitor\'s current status.'),
         includeSecrets: includeSecretsParam
       },
@@ -1142,17 +1144,11 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
         count: z.number()
       },
     },
-    async ({ monitorID, maxHeartbeats, limit, count: countAlias, important, includeSecrets }) => {
+    async ({ monitorID, maxHeartbeats, important, includeSecrets }) => {
       await authenticateClient();
 
       try {
-        const requested = [maxHeartbeats, limit, countAlias].filter((v) => v !== undefined);
-        if (new Set(requested).size > 1) {
-          throw new Error(
-            `Conflicting values for maxHeartbeats and its aliases (${requested.join(', ')}) — pass only 'maxHeartbeats'.`
-          );
-        }
-        const count = requested[0] ?? 1;
+        const count = maxHeartbeats ?? 1;
         // The important/event feed is fetched live rather than served from the cache, but it
         // is heartbeat data all the same — it carries the same `msg`, so it goes through the
         // same redaction. Redacting only the cached path would leave the event list as an
@@ -1235,8 +1231,6 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
       description: 'Retrieves historical heartbeat data for ALL monitors (response times, status changes over time). Use this for analyzing patterns across multiple monitors or correlating events. Beats are returned NEWEST-FIRST. By default returns only the most recent heartbeat per monitor; set maxHeartbeats (up to 100) for historical analysis. Keep maxHeartbeats ≤5 unless user requests more. Credentials embedded in a status message URL (user:pass@host) read "***" unless includeSecrets is set.',
       inputSchema: {
         maxHeartbeats: numeric(z.number().int().positive().max(100)).optional().describe('If set, returns the most recent X heartbeats per monitor (up to 100). If unset, returns only the most recent heartbeat per monitor (default: 1)'),
-        limit: numeric(z.number().int().positive().max(100)).optional().describe('Alias for maxHeartbeats. Prefer maxHeartbeats.'),
-        count: numeric(z.number().int().positive().max(100)).optional().describe('Alias for maxHeartbeats. Prefer maxHeartbeats.'),
         includeSecrets: includeSecretsParam
       },
       outputSchema: { 
@@ -1245,17 +1239,11 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
         totalHeartbeatCount: z.number()
       },
     },
-    async ({ maxHeartbeats, limit, count: countAlias, includeSecrets }) => {
+    async ({ maxHeartbeats, includeSecrets }) => {
       await authenticateClient();
 
       try {
-        const requested = [maxHeartbeats, limit, countAlias].filter((v) => v !== undefined);
-        if (new Set(requested).size > 1) {
-          throw new Error(
-            `Conflicting values for maxHeartbeats and its aliases (${requested.join(', ')}) — pass only 'maxHeartbeats'.`
-          );
-        }
-        const count = requested[0] ?? 1;
+        const count = maxHeartbeats ?? 1;
         const raw = client.getHeartbeatList(count);
         // Heartbeats are projected to their declared fields (dropping passthrough columns
         // like response) and a msg that quotes the monitor's URL has its credentials scrubbed.
