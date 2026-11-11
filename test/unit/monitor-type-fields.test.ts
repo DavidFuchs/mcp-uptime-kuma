@@ -226,6 +226,30 @@ describe('type-specific monitor fields (#112)', () => {
       }
     );
 
+    // Uptime Kuma's floor is 1 second (MIN_INTERVAL_SECOND); the read schema used to demand 20.
+    it('getMonitor returns a monitor checked every second', async () => {
+      existing = { id: 7, name: 'M', type: 'http', url: 'https://example.com', interval: 1, retryInterval: 1 };
+      const { client } = await connectServer();
+
+      const result = await client.callTool({ name: 'getMonitor', arguments: { monitorID: 7 } });
+
+      expect(result.isError).toBeFalsy();
+      expect(JSON.parse(textOf(result)).interval).toBe(1);
+    });
+
+    it('accepts a 1 second interval on write and refuses anything shorter', async () => {
+      expect((await create({ type: 'http', url: 'https://example.com', interval: 1, retryInterval: 1 })).isError).toBeFalsy();
+      expect(lastWrite).toMatchObject({ interval: 1, retryInterval: 1 });
+
+      for (const field of ['interval', 'retryInterval']) {
+        const result = await create({ type: 'http', url: 'https://example.com', [field]: 0 });
+        expect(result.isError, field).toBe(true);
+        expect(textOf(result)).toContain(field);
+      }
+      expect((await update({ interval: 0.5 })).isError).toBe(true);
+      expect(updateMonitor).not.toHaveBeenCalled();
+    });
+
     it('getMonitor returns a monitor with a condition set', async () => {
       existing = {
         id: 7,

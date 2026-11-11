@@ -1627,8 +1627,8 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         url: z.string().optional().describe('URL to monitor (required for http/keyword/json-query types)'),
         hostname: z.string().optional().describe('Hostname to monitor (required for port/ping/dns types)'),
         port: numeric(z.number()).optional().describe('Port number (required for port/tcp types)'),
-        interval: numeric(z.number()).optional().describe('Check interval in seconds (default: 60)'),
-        retryInterval: numeric(z.number()).optional().describe('Retry interval in seconds when monitor is down (default: 60)'),
+        interval: numeric(z.number().min(1)).optional().describe('Check interval in seconds (default: 60, min: 1)'),
+        retryInterval: numeric(z.number().min(1)).optional().describe('Retry interval in seconds when monitor is down (default: 60, min: 1)'),
         maxretries: numeric(z.number()).optional().describe('Max retries before marking as down (default: 0)'),
         notificationIDList: z.record(z.string(), z.boolean()).optional().describe('Map of notification IDs to enable (e.g. {"1": true, "3": true})'),
         tags: z.array(z.object({
@@ -1791,8 +1791,8 @@ export async function createServer(config: UptimeKumaConfig): Promise<{ server: 
         url: z.string().optional().describe('URL to monitor'),
         hostname: z.string().optional().describe('Hostname'),
         port: numeric(z.number()).optional().describe('Port number'),
-        interval: numeric(z.number()).optional().describe('Check interval in seconds'),
-        retryInterval: numeric(z.number()).optional().describe('Retry interval in seconds'),
+        interval: numeric(z.number().min(1)).optional().describe('Check interval in seconds (min: 1)'),
+        retryInterval: numeric(z.number().min(1)).optional().describe('Retry interval in seconds (min: 1)'),
         maxretries: numeric(z.number()).optional().describe('Max retries before marking as down'),
         notificationIDList: z.record(z.string(), z.boolean()).optional().describe('Notification ID map'),
         tags: z.array(z.object({

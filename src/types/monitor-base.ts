@@ -61,7 +61,10 @@ export const MonitorBaseSchema = z.object({
   weight: z.number().nullable().optional().describe('Display order weight'),
 
   // Timing
-  interval: z.number().min(20).describe('Check interval in seconds (min 20; no upper bound since Uptime Kuma 2.5.0)'),
+  // No minimum here: this validates what the READ tools return, and a bound that disagrees with
+  // Uptime Kuma makes the monitor unreadable. Uptime Kuma's own floor is MIN_INTERVAL_SECOND = 1
+  // (src/util.ts); the old min(20) was its 1.x limit. The write tools enforce the floor.
+  interval: z.number().describe('Check interval in seconds (min 1, no upper bound)'),
   retryInterval: z.number().describe('Retry interval in seconds'),
   resendInterval: z.number().default(0).describe('Notification resend interval (0 = disabled)'),
   timeout: z.number().nullable().optional().describe('Request timeout in seconds'),
