@@ -7,7 +7,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/infra.sh"
 
 # Ensure containers are torn down on exit (success, failure, or interrupt)
-trap infra_down EXIT INT TERM
+trap infra_down EXIT
+# Exit on Ctrl+C rather than carrying on (e.g. polling for readiness); EXIT then tears down once.
+trap 'exit 130' INT TERM
 
 echo "🧪 MCP Uptime Kuma Integration Test Runner"
 echo "=========================================="

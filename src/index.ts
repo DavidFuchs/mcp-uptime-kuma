@@ -129,6 +129,10 @@ async function runStdio(config: UptimeKumaConfig) {
     };
     process.stdin.on('end', () => shutdown());
     process.stdin.on('close', () => shutdown());
+    // The reader of our stdout can vanish before stdin closes (a killed client). The next write
+    // then fails with EPIPE, which crashes the process as an unhandled 'error' event unless
+    // something listens for it. Nobody is left to answer, so shut down.
+    process.stdout.on('error', () => shutdown());
     process.on('SIGINT', () => shutdown());
     process.on('SIGTERM', () => shutdown());
 

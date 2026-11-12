@@ -117,4 +117,27 @@ describe('eval findings', () => {
       expect(result.content[0].text).toMatch(/no Primary Base URL is set/i);
     });
   });
+
+  describe('radius station IDs', () => {
+    // Found by the LLM eval: Uptime Kuma sends both station IDs in every request, and its RADIUS
+    // library fails to encode one that is unset ("Cannot have nested attributes when using hash
+    // syntax"), so the monitor failed every check. The web form requires both.
+    const base = { name: 'New', type: 'radius', hostname: 'radius.example.com', radiusPassword: 'p', typeFields: { radiusUsername: 'u', radiusSecret: 's' } };
+
+    it('refuses a radius monitor without the station IDs', async () => {
+      const client = await connectServer();
+      const result = await client.callTool({ name: 'createMonitor', arguments: base }) as any;
+      expect(result.isError).toBe(true);
+      expect(JSON.stringify(result.content)).toContain('radiusCalledStationId');
+      expect(JSON.stringify(result.content)).toContain('radiusCallingStationId');
+    });
+
+    it('creates one with both', async () => {
+      const client = await connectServer();
+      const result = await client.callTool({ name: 'createMonitor', arguments: { ...base, typeFields: { ...base.typeFields, radiusCalledStationId: 'AA:corp', radiusCallingStationId: 'BB' } } }) as any;
+      expect(result.isError).toBeFalsy();
+      expect(lastWrite).toMatchObject({ radiusCalledStationId: 'AA:corp', radiusCallingStationId: 'BB' });
+    });
+  });
 });
+

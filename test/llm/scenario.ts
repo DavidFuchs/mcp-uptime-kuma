@@ -1,5 +1,5 @@
 import type { TestContext } from '../integration/helpers.js';
-import type { Trace } from './claude-driver.js';
+import { failureDetail, type Trace } from './claude-driver.js';
 
 /** Every entity a scenario creates is named (or slugged) with this prefix, so the sweep can find it. */
 export const PREFIX = 'llm-eval-';
@@ -73,8 +73,7 @@ export function classify(input: {
     return { ...base, outcome: 'error', errorMessage: e instanceof Error ? e.message : String(e) };
   }
   if (trace && trace.resultSubtype !== 'success') {
-    const why = trace.resultSubtype === 'is_error' && trace.finalText ? `: ${trace.finalText}` : '';
-    return { ...base, outcome: 'error', errorMessage: `claude run ended with ${trace.resultSubtype}${why}` };
+    return { ...base, outcome: 'error', errorMessage: `claude run ended with ${trace.resultSubtype}${failureDetail(trace)}` };
   }
   return { ...base, outcome: assertions.every(a => a.ok) ? 'pass' : 'fail' };
 }

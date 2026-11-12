@@ -3,11 +3,11 @@ import { existsSync, mkdirSync, rmSync } from 'fs';
 import { join } from 'path';
 import { pathToFileURL } from 'url';
 import { createTestClient, loadTestConfig, validateTestConfig, type TestContext, type TestConfig } from '../integration/helpers.js';
-import { runClaude, assertProbeTrace, type Trace } from './claude-driver.js';
+import { runClaude, assertProbeTrace, abortActiveClaude, type Trace } from './claude-driver.js';
 import { classify, type RunResult, type Scenario, type Assertion } from './scenario.js';
 import { sweep } from './kuma.js';
 import { parseArgs, selectScenarios, type LlmArgs } from './args.js';
-import { summarize, formatConsole, writeResults } from './report.js';
+import { summarize, formatConsole, writeResults, maskSecretPairs } from './report.js';
 import { scenarios as allScenarios } from './scenarios/index.js';
 
 /**
@@ -25,10 +25,18 @@ export class PreflightError extends Error {
   }
 }
 
-/** Runs the probe; any failure becomes one clear PreflightError instead of N error rows. */
-export async function preflight(runProbe: () => Promise<void>): Promise<void> {
+/**
+ * Runs the probe; any failure becomes one clear PreflightError instead of N error rows. It is
+ * tried twice, so one transient API error (an overloaded model, say) does not abort the run.
+ */
+export async function preflight(runProbe: () => Promise<void>, { retryDelayMs = 5000 } = {}): Promise<void> {
   try {
-    await runProbe();
+    try {
+      await runProbe();
+    } catch {
+      await new Promise(r => setTimeout(r, retryDelayMs));
+      await runProbe();
+    }
   } catch (e) {
     const why = e instanceof Error ? e.message : String(e);
     throw new PreflightError(
@@ -44,6 +52,25 @@ async function probeClaude(config: TestConfig, model: string, dir: string): Prom
     prompt: 'Reply with OK.', model, maxBudgetUsd: 0.05, timeoutMs: 60_000, config, rawPath: join(dir, 'preflight.jsonl'),
   });
   assertProbeTrace(trace);
+}
+
+/**
+ * Ctrl+C handling. claude runs in its own process group, so the terminal's SIGINT never reaches
+ * it. The first signal aborts the running session; that run's teardown and sweep still happen,
+ * the loop stops and the results so far are written. A second signal exits at once.
+ */
+export function createInterruptHandler(deps: { abort: () => boolean; exit: (code: number) => void }) {
+  const state = { interrupted: false };
+  const onSignal = () => {
+    if (state.interrupted) {
+      deps.exit(130);
+      return;
+    }
+    state.interrupted = true;
+    console.error('\n⏹  Interrupted: stopping after cleaning up this run (Ctrl+C again to quit now)...');
+    deps.abort();
+  };
+  return { state, onSignal };
 }
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
@@ -146,25 +173,45 @@ async function main(): Promise<number> {
   const { client } = await createTestClient(config);
   const ctx: TestContext = { client, config };
   const results: RunResult[] = [];
+  const { state: interrupt, onSignal } = createInterruptHandler({ abort: abortActiveClaude, exit: code => process.exit(code) });
+  process.on('SIGINT', onSignal);
+  process.on('SIGTERM', onSignal);
   try {
-    for (const scenario of selected) {
+    outer: for (const scenario of selected) {
       for (let n = 1; n <= args.repeat; n++) {
+        if (interrupt.interrupted) break outer;
         const r = await runOnce(ctx, scenario, n, args, dir);
         results.push(r);
         const icon = r.outcome === 'pass' ? (r.degraded ? '⚠' : '✓') : r.outcome === 'fail' ? '✗' : '!';
         const calls = r.trace ? `${r.trace.toolCalls.length} calls` : '';
-        console.log(`  ${icon} ${scenario.id} #${n} ${r.outcome} ${calls}${r.errorMessage ? ` — ${r.errorMessage}` : ''}`);
+        console.log(`  ${icon} ${scenario.id} #${n} ${r.outcome} ${calls}${r.errorMessage ? ` — ${maskSecretPairs(r.errorMessage)}` : ''}`);
       }
     }
   } finally {
-    await client.close();
+    await client.close().catch(() => {});
+  }
+
+  if (interrupt.interrupted) {
+    // The terminal's SIGINT also reached the scripted MCP server, which shuts down on it, so the
+    // interrupted run's own sweep may have had no connection. Sweep again with a fresh one.
+    try {
+      const { client: fresh } = await createTestClient(config, { settleMs: 0 });
+      try {
+        const n = await sweep({ client: fresh, config });
+        if (n > 0) console.error(`🧹 Removed ${n} llm-eval- entities left by the interrupted run`);
+      } finally {
+        await fresh.close().catch(() => {});
+      }
+    } catch (e) {
+      console.error(`⚠ Could not clean up after the interrupt: ${(e as Error).message}. The next run's sweep will remove any llm-eval- leftovers.`);
+    }
   }
 
   const summary = summarize(results, args.minPassRate);
   writeResults(dir, results, { model: args.model, gitSha: gitSha(), startedAt });
   console.log(`\n${formatConsole(summary, results)}`);
   console.log(`\nResults: ${dir}`);
-  return summary.exitCode;
+  return interrupt.interrupted ? 130 : summary.exitCode;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

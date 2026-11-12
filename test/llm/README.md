@@ -32,8 +32,12 @@ npm run test:llm -- --keep-traces                  # keep raw traces of passing 
 `test/integration/.env.test` if needed, runs the eval and tears the container down. With the
 container already up, `npx tsx test/llm/run-llm.ts [options]` skips that.
 
-A full run of the 8 starter scenarios with sonnet takes about 40 seconds of model time and
-costs about $0.25 (measured: 16 runs for $0.49). Each run is capped at $0.50 and 180 seconds.
+There are 23 scenarios. One full pass with haiku costs about $0.06 and about 2 minutes of
+model time (measured: 69 runs for $0.18); one with sonnet about $0.75 (46 runs for $1.52). Each run is capped
+at $0.50 and 180 seconds.
+
+Ctrl+C stops after cleaning up the run in progress, writes the results so far and exits 130.
+Press it again to quit at once.
 
 ## What a run does
 
@@ -122,7 +126,11 @@ export default defineScenario({
 Rules:
 
 - **Name everything `llm-eval-…`** (monitors, tags, maintenance titles, notifications, status
-  page slugs). That is how the sweep finds and deletes it, including entities the model creates.
+  page slugs, docker hosts). That is how the sweep finds and deletes it, including entities the
+  model creates.
+- **Delete status pages in `teardown`.** Uptime Kuma sends the status page list only when a
+  client logs in, so the runner's scripted client never hears of a page the model created and
+  the sweep cannot find it (see `status-page-groups`).
 - **Never name a tool in the prompt.** Choosing the tool is part of what is being tested. Write
   the prompt the way a person would ask.
 - **Check state, not the reply.** Read the result back with the helpers in `kuma.ts`. Only read

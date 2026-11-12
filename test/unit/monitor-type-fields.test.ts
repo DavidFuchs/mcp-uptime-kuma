@@ -59,7 +59,10 @@ const MINIMAL: Record<string, Record<string, unknown>> = {
     kafkaProducerTopic: 'uptime',
     kafkaProducerMessage: 'ping',
   },
-  radius: { hostname: 'radius.internal', radiusUsername: 'probe', radiusPassword: 'pw', radiusSecret: 'shared' },
+  radius: {
+    hostname: 'radius.internal', radiusUsername: 'probe', radiusPassword: 'pw', radiusSecret: 'shared',
+    radiusCalledStationId: 'AA-BB-CC-DD-EE-FF:corp', radiusCallingStationId: '11-22-33-44-55-66',
+  },
   rabbitmq: { rabbitmqNodes: ['https://rabbit.internal:15672'] },
   smtp: { hostname: 'mail.internal' },
   snmp: { hostname: 'switch.internal', snmpOid: '1.3.6.1.2.1.1.3.0', snmpCommunity: 'public', expectedValue: '1' },
@@ -409,6 +412,19 @@ describe('type-specific monitor fields (#112)', () => {
 
       expect(result.isError).toBe(true);
       expect(textOf(result)).toContain("Unknown monitor type 'nope'");
+    });
+
+    it('names the valid types in the refusal, so a guess like "minecraft" is put right in one step', async () => {
+      // Found by the LLM eval: models asked for type "minecraft" and needed another call to find gamedig.
+      const { client } = await connect();
+      for (const tool of ['getMonitorTypeFields', 'createMonitor']) {
+        const args = tool === 'createMonitor' ? { name: 'MC', type: 'minecraft', hostname: 'mc.example.com' } : { type: 'minecraft' };
+        const result = await client.callTool({ name: tool, arguments: args });
+        expect(result.isError).toBe(true);
+        expect(textOf(result)).toContain('gamedig');
+        expect(textOf(result)).toMatch(/game server/i);
+        expect(textOf(result)).toContain('mqtt');
+      }
     });
 
     it('is where a refused create sends the caller', async () => {

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { parseArgs, selectScenarios } from '../llm/args.js';
 import { summarize, formatConsole } from '../llm/report.js';
-import { preflight, PreflightError, assertTestInstance } from '../llm/run-llm.js';
+import { preflight, PreflightError, assertTestInstance, createInterruptHandler } from '../llm/run-llm.js';
 import { defineScenario, expectThat, type RunResult } from '../llm/scenario.js';
 
 const sc = (id: string, tags: string[]) =>
@@ -95,9 +95,21 @@ describe('formatConsole', () => {
 
 describe('preflight', () => {
   it('preflight failure aborts before scenarios', async () => {
-    const p = preflight(() => Promise.reject(new Error('not logged in')));
+    const p = preflight(() => Promise.reject(new Error('not logged in')), { retryDelayMs: 0 });
     await expect(p).rejects.toBeInstanceOf(PreflightError);
-    await expect(preflight(() => Promise.reject(new Error('not logged in')))).rejects.toThrow(/claude.*not logged in/s);
+    await expect(preflight(() => Promise.reject(new Error('not logged in')), { retryDelayMs: 0 })).rejects.toThrow(/claude.*not logged in/s);
+  });
+
+  it('preflight retries once, so one transient API error does not abort the run', async () => {
+    let calls = 0;
+    await expect(preflight(async () => { if (++calls === 1) throw new Error('overloaded'); }, { retryDelayMs: 0 })).resolves.toBeUndefined();
+    expect(calls).toBe(2);
+  });
+
+  it('preflight gives up after the retry fails too', async () => {
+    let calls = 0;
+    await expect(preflight(async () => { calls++; throw new Error('not logged in'); }, { retryDelayMs: 0 })).rejects.toBeInstanceOf(PreflightError);
+    expect(calls).toBe(2);
   });
 
   it('preflight passes when the probe resolves', async () => {
@@ -116,5 +128,47 @@ describe('assertTestInstance', () => {
     expect(() => assertTestInstance('https://kuma.example.com', {})).toThrow(/kuma\.example\.com.*LLM_EVAL_ALLOW_REMOTE/s);
     expect(() => assertTestInstance('not a url', {})).toThrow();
     expect(() => assertTestInstance('https://kuma.example.com', { LLM_EVAL_ALLOW_REMOTE: '1' })).not.toThrow();
+  });
+});
+
+describe('createInterruptHandler', () => {
+  it('aborts the running session on the first signal and exits on the second', () => {
+    let aborts = 0;
+    const exits: number[] = [];
+    const { state, onSignal } = createInterruptHandler({ abort: () => { aborts++; return true; }, exit: code => { exits.push(code); } });
+    expect(state.interrupted).toBe(false);
+    onSignal();
+    expect(state.interrupted).toBe(true);
+    expect(aborts).toBe(1);
+    expect(exits).toEqual([]);
+    onSignal();
+    expect(exits).toEqual([130]);
+  });
+});
+
+describe('formatConsole masks secrets', () => {
+  it('masks secret-named fields in tool inputs and assertion details of failed runs', () => {
+    const results = [run('http-oauth', 'fail', {
+      assertions: [
+        expectThat('client secret stored', false, 'oauth_client_secret=cs-0123456789'),
+        expectThat('token URL stored', false, 'oauth_token_url=https://auth.example.com/token'),
+      ],
+      trace: {
+        toolCalls: [{
+          name: 'createMonitor',
+          input: { name: 'x', typeFields: { oauth_client_secret: 'cs-0123456789', basic_auth_pass: 's3cret-Pass', oauth_token_url: 'https://auth.example.com/token' } },
+          isError: true,
+          resultText: 'refused',
+        }],
+        turns: 1, costUsd: 0, durationMs: 0, finalText: '', rawPath: '', resultSubtype: 'success',
+      },
+    })];
+    const out = formatConsole(summarize(results, 1), results);
+    expect(out).not.toContain('cs-0123456789');
+    expect(out).not.toContain('s3cret-Pass');
+    expect(out).toContain('oauth_client_secret=***');
+    // Non-secret values stay readable, so a failure still says what happened. (The server's
+    // isSecretKey also counts oauth_client_id as a secret, and the report follows it.)
+    expect(out).toContain('oauth_token_url=https://auth.example.com/token');
   });
 });
