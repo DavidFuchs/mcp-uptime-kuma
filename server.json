@@ -1,7 +1,9 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
   "name": "io.github.DavidFuchs/mcp-uptime-kuma",
-  "description": "A Model Context Protocol (MCP) server for Uptime Kuma version 2.",
+  "title": "MCP Server for Uptime Kuma",
+  "description": "Manage your Uptime Kuma 2 instance from an LLM: monitors, status pages, notifications, maintenance",
+  "websiteUrl": "https://github.com/DavidFuchs/mcp-uptime-kuma#readme",
   "repository": {
     "url": "https://github.com/DavidFuchs/mcp-uptime-kuma",
     "source": "github"
@@ -57,6 +59,13 @@
           "format": "string",
           "isSecret": true,
           "name": "UPTIME_KUMA_HEADERS"
+        },
+        {
+          "description": "Set to true to return credentials (passwords, tokens, auth headers) unredacted in tool output; by default they read \"***\"",
+          "isRequired": false,
+          "format": "boolean",
+          "isSecret": false,
+          "name": "UPTIME_KUMA_INCLUDE_SECRETS"
         },
         {
           "description": "Set to true to expose only the tools that report, and none that create, change, pause or delete",
@@ -135,6 +144,13 @@
           "name": "UPTIME_KUMA_HEADERS"
         },
         {
+          "description": "Set to true to return credentials (passwords, tokens, auth headers) unredacted in tool output; by default they read \"***\"",
+          "isRequired": false,
+          "format": "boolean",
+          "isSecret": false,
+          "name": "UPTIME_KUMA_INCLUDE_SECRETS"
+        },
+        {
           "description": "Set to true to expose only the tools that report, and none that create, change, pause or delete",
           "isRequired": false,
           "format": "boolean",
@@ -155,6 +171,28 @@
           "isSecret": false,
           "default": "3000",
           "name": "PORT"
+        },
+        {
+          "description": "Address to bind. Default 0.0.0.0; use 127.0.0.1 to accept local connections only",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false,
+          "default": "0.0.0.0",
+          "name": "HOST"
+        },
+        {
+          "description": "Comma-separated origins allowed to call /mcp. Default * (no Origin validation)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false,
+          "name": "ALLOWED_ORIGIN"
+        },
+        {
+          "description": "Trust reverse-proxy X-Forwarded-For headers for rate limiting: a hop count (1), true/false, or an IP/subnet list. Unset = no trust",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false,
+          "name": "TRUST_PROXY"
         }
       ],
       "packageArguments": [
