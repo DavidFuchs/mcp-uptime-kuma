@@ -7,12 +7,8 @@ if (!process.env.MCP_TEST_MODE) {
 }
 
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import express from 'express';
-import cors from 'cors';
-import rateLimit from 'express-rate-limit';
 import { createServer } from './server.js';
-import { parseAllowedOrigins, createOriginMiddleware, createAuthMiddleware } from './http-security.js';
+import { createHttpApp, type HttpApp } from './http-app.js';
 import { parseExtraHeaders } from './extra-headers.js';
 import type { UptimeKumaConfig } from './types/index.js';
 
@@ -100,6 +96,7 @@ Environment variables for the streamable HTTP transport:
   PORT             Port to listen on. Default 3000.
   TRUST_PROXY      Trust reverse-proxy headers (X-Forwarded-For) for rate limiting.
                    Hop count ('1'), 'true'/'false', or IP/subnet list. Unset = no trust.
+  RATE_LIMIT_MAX   Requests allowed per client IP every 15 minutes. Default 1000; 0 = no limit.
 `);
       process.exit(0);
     }
@@ -158,138 +155,19 @@ async function runStdio(config: UptimeKumaConfig) {
 
 // Run with the streamable HTTP transport (stateless mode - no session management)
 async function runHttp(config: UptimeKumaConfig) {
-  const app = express();
-  app.use(express.json());
-
-  // When running behind a reverse proxy (ingress, load balancer, sidecar proxy),
-  // set TRUST_PROXY so express-rate-limit derives the real client IP from
-  // X-Forwarded-For. Without it req.ip is the proxy's address, so every client
-  // shares a single rate-limit bucket and all of them start getting 429s.
-  // (express-rate-limit also logs ERR_ERL_UNEXPECTED_X_FORWARDED_FOR in that case —
-  // its validations wrapper catches the error and console.errors it, so it is a
-  // diagnostic signal rather than the failure itself.)
-  // Accepts a hop count ("1"), "true"/"false", or an IP/subnet list.
-  // Defaults to Express's built-in behaviour (no trust) when unset — secure by default.
-  const trustProxy = process.env.TRUST_PROXY;
-  if (trustProxy !== undefined && trustProxy !== '') {
-    const numericHops = Number(trustProxy);
-    app.set(
-      'trust proxy',
-      trustProxy === 'true'
-        ? true
-        : trustProxy === 'false'
-          ? false
-          : Number.isNaN(numericHops)
-            ? trustProxy
-            : numericHops
-    );
+  let httpApp: HttpApp;
+  try {
+    httpApp = await createHttpApp(config);
+  } catch (error) {
+    console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
   }
+  const { app, session, authToken, allowedOrigins } = httpApp;
 
-  const allowedOrigins = parseAllowedOrigins(process.env.ALLOWED_ORIGIN);
-  const authToken = process.env.MCP_AUTH_TOKEN;
-
-  // Rate limiting: 100 requests per 15 minutes per IP.
-  //
-  // Stays outermost so that an unauthenticated flood is throttled before it reaches
-  // anything that does work — including the guards below.
-  app.use(
-    rateLimit({
-      windowMs: 15 * 60 * 1000,
-      max: 100,
-      standardHeaders: true,
-      legacyHeaders: false,
-      message: 'Too many requests from this IP, please try again later.',
-    })
-  );
-
-  // Origin validation ahead of authentication, so a caller from an origin we do not
-  // recognise never gets to probe whether its token is correct. Both guards are scoped
-  // to the MCP endpoint: /health has to stay reachable for container healthchecks and
-  // load balancer probes, and it discloses nothing beyond the fact that we are running.
-  app.use('/mcp', createOriginMiddleware(allowedOrigins));
-
-  // CORS configuration for MCP client compatibility. `Authorization` MUST be listed:
-  // without it a browser-based client's preflight rejects the very header the auth
-  // guard below requires.
-  app.use(
-    cors({
-      origin: allowedOrigins,
-      exposedHeaders: ['mcp-session-id'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'mcp-session-id', 'mcp-protocol-version'],
-    })
-  );
-
-  // Authentication AFTER cors, which answers `OPTIONS` preflights itself. A preflight
-  // carries no `Authorization` header by definition, so a guard placed ahead of cors
-  // would 401 every browser client before it ever sent its credential.
-  app.use('/mcp', createAuthMiddleware(authToken));
-
-  // Create the MCP server once (reused across requests)
-  const { server, authenticateClient } = await createServer(config);
-  
-  // Track authentication state - authenticate on first request when transport is connected
-  let isAuthenticated = false;
-
-  // POST: Handle all MCP requests (stateless mode)
-  app.post('/mcp', async (req, res) => {
-    try {
-      // Create a new transport for each request to prevent request ID collisions
-      // Different clients may use the same JSON-RPC request IDs, which would cause
-      // responses to be routed to the wrong HTTP connections if transport state is shared
-      const transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: undefined, // Disable session management
-        enableJsonResponse: true, // Return JSON responses instead of SSE
-      });
-
-      res.on('close', () => {
-        transport.close();
-      });
-
-      await server.connect(transport);
-      
-      // Authenticate on first request (when transport is connected so logging works)
-      if (!isAuthenticated) {
-        isAuthenticated = true;
-        try {
-          await authenticateClient();
-        } catch (error) {
-          console.error('[MCP] Failed to authenticate with Uptime Kuma:', error);
-          res.status(500).json({
-            jsonrpc: '2.0',
-            error: {
-              code: -32603,
-              message: 'Authentication failed',
-            },
-            id: null,
-          });
-          return;
-        }
-      }
-      
-      await transport.handleRequest(req, res, req.body);
-    } catch (error) {
-      console.error('[MCP] Error handling request:', error);
-      if (!res.headersSent) {
-        res.status(500).json({
-          jsonrpc: '2.0',
-          error: {
-            code: -32603,
-            message: 'Internal server error',
-          },
-          id: null,
-        });
-      }
-    }
-  });
-
-  // GET: Session management not supported - return HTTP 405
-  app.get('/mcp', (req, res) => {
-    res.status(405).end();
-  });
-
-  // Health check endpoint
-  app.get('/health', (req, res) => {
-    res.json({ status: 'ok', server: 'mcp-uptime-kuma' });
+  // Log in now so the first tool call finds the monitor list already loaded. Not fatal:
+  // Uptime Kuma may still be starting, and every tool call logs in on demand.
+  session.authenticateClient().catch((error) => {
+    console.error(`[MCP] Initial authentication failed, will retry on demand: ${error}`);
   });
 
   const port = parseInt(process.env.PORT || '3000');

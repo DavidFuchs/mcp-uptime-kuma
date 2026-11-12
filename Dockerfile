@@ -1,6 +1,7 @@
 # check=skip=SecretsUsedInArgOrEnv
-# Build stage
-FROM node:22-alpine AS builder
+# Build stage. Runs on the build machine's own architecture whatever the target: its output
+# is JavaScript, so nothing here needs emulating.
+FROM --platform=$BUILDPLATFORM node:22-alpine AS builder
 
 # Accept version as build argument
 ARG VERSION=dev
@@ -45,7 +46,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install production dependencies only
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copy built files from builder stage
 COPY --from=builder /app/dist ./dist
@@ -66,6 +67,9 @@ ENV MCP_AUTH_TOKEN=""
 ENV ALLOWED_ORIGIN="*"
 ENV HOST="0.0.0.0"
 ENV PORT=3000
+
+# Nothing here needs root: the port is unprivileged and the app only reads its own files.
+USER node
 
 # Expose port for HTTP transport
 EXPOSE 3000

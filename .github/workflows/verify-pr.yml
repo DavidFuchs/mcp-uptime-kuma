@@ -37,6 +37,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Covers the tests as well as src: vitest strips types without checking them.
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
       - name: Run unit tests
         run: npx vitest run test/unit/
 

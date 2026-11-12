@@ -130,3 +130,26 @@ export function createAuthMiddleware(token: string | undefined): RequestHandler 
     res.status(401).set('WWW-Authenticate', 'Bearer').json({ error: 'unauthorized' });
   };
 }
+
+/** Requests allowed per client IP in each 15-minute window when `RATE_LIMIT_MAX` is unset. */
+export const DEFAULT_RATE_LIMIT_MAX = 1000;
+
+/**
+ * Reads the `RATE_LIMIT_MAX` setting: how many requests one client IP may make per 15
+ * minutes. `0` turns the limiter off, for a deployment that limits at its reverse proxy.
+ *
+ * The transport is stateless, so every tool call is a request of its own and a single busy
+ * agent session makes hundreds of them. Anything that is not a whole number of zero or more
+ * is refused rather than guessed at: a typo that silently became "unlimited" or "none" would
+ * be found much later, as either an outage or a missing protection.
+ */
+export function parseRateLimitMax(value: string | undefined): number {
+  const raw = value?.trim();
+  if (!raw) {
+    return DEFAULT_RATE_LIMIT_MAX;
+  }
+  if (!/^\d+$/.test(raw)) {
+    throw new Error(`RATE_LIMIT_MAX must be a whole number of 0 or more (0 disables the limit), got "${raw}"`);
+  }
+  return Number(raw);
+}

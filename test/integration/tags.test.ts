@@ -1,5 +1,5 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { TestFn, extractText, extractID } from './helpers.js';
+import { type TestFn, extractText, extractID } from './helpers.js';
 
 /**
  * Integration tests for tag operations and monitor-tag binding.

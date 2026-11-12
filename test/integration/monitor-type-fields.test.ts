@@ -1,5 +1,5 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { TestFn, extractID, extractText } from './helpers.js';
+import { type TestFn, extractID, extractText } from './helpers.js';
 import { MONITOR_TYPE_FIELD_NAMES } from '../../src/server.js';
 
 /**

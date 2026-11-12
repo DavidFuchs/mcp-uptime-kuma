@@ -15,6 +15,7 @@
   ],
   "scripts": {
     "build": "tsc",
+    "typecheck": "tsc -p tsconfig.test.json",
     "prepublishOnly": "npm run build",
     "start": "node dist/index.js",
     "start:stdio": "node dist/index.js -t stdio",
@@ -53,7 +54,6 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.22.0",
-    "@types/cors": "^2.8.19",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
@@ -64,6 +64,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.0",
     "@types/node": "^22.10.2",
     "@types/node-cache": "^4.1.3",

@@ -188,6 +188,14 @@
           "name": "ALLOWED_ORIGIN"
         },
         {
+          "description": "Requests allowed per client IP every 15 minutes. 0 turns the limit off",
+          "isRequired": false,
+          "format": "number",
+          "isSecret": false,
+          "default": "1000",
+          "name": "RATE_LIMIT_MAX"
+        },
+        {
           "description": "Trust reverse-proxy X-Forwarded-For headers for rate limiting: a hop count (1), true/false, or an IP/subnet list. Unset = no trust",
           "isRequired": false,
           "format": "string",

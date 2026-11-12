@@ -1,5 +1,5 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { TestFn, createTestClient, extractText, extractID } from './helpers.js';
+import { type TestFn, createTestClient, extractText, extractID } from './helpers.js';
 
 /**
  * Integration tests for a freshly started server.
