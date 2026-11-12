@@ -598,6 +598,15 @@ function keepGroups(groups: unknown[]): Array<Record<string, unknown>> {
   });
 }
 
+/**
+ * The refusal for a type that does not exist. It names the valid ones, so a guess such as
+ * "minecraft" (seen in the LLM eval) is put right without another call to listMonitorTypes.
+ */
+function unknownMonitorTypeMessage(type: string, valid: Iterable<string>): string {
+  return `Unknown monitor type '${type}'. Valid types: ${[...valid].join(', ')}. ` +
+    'A game server is gamedig, with the GameDig game ID in typeFields.game (e.g. "minecraft"). listMonitorTypes says what each type checks.';
+}
+
 const DRAFT_07_DIALECT = 'http://json-schema.org/draft-07/schema#';
 const DIALECT_2020_12 = 'https://json-schema.org/draft/2020-12/schema';
 
@@ -1102,7 +1111,7 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
     { type: 'smtp', description: 'SMTP server connectivity check' },
     { type: 'snmp', description: 'SNMP device monitoring with OID queries' },
     { type: 'real-browser', description: 'Real browser-based monitoring using Chrome/Chromium' },
-    { type: 'gamedig', description: 'Game server status check using GameDig protocol' },
+    { type: 'gamedig', description: 'Game server (Minecraft, Counter-Strike, Valheim, Rust, ARK and any other game GameDig supports): checks that the server answers its game query, not just that the port is open. Set game to the GameDig ID, e.g. "minecraft".' },
     { type: 'push', description: 'Push-based monitoring (monitor receives heartbeats from external sources)' },
     { type: 'group', description: 'Group/folder for organizing monitors (not an actual check)' },
     { type: 'tailscale-ping', description: 'Tailscale network ping check' },
@@ -1124,7 +1133,7 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
     'listMonitorTypes',
     {
       title: 'List Monitor Types',
-      description: 'Returns a list of all available monitor types supported by Uptime Kuma. Use this to discover valid values for type filters in other tools.',
+      description: 'Returns every monitor type Uptime Kuma supports, with what each one checks. Use it to choose the type for createMonitor — there are dedicated types for game servers, MQTT, RADIUS, SNMP, SMTP, gRPC, Docker containers and more — and to find valid values for type filters in other tools.',
       inputSchema: {},
       outputSchema: {
         types: z.array(z.object({
@@ -1790,7 +1799,7 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
   ): Record<string, unknown> => {
     const type = String(monitor.type);
     if (!MONITOR_TYPE_NAMES.has(type)) {
-      throw new Error(`Unknown monitor type '${type}'. Use listMonitorTypes for the valid types.`);
+      throw new Error(unknownMonitorTypeMessage(type, MONITOR_TYPE_NAMES));
     }
 
     const applied: Record<string, unknown> = {};
@@ -2172,7 +2181,7 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
       if (!known) {
         throw new McpError(
           ErrorCode.InvalidParams,
-          `Unknown monitor type '${type}'. Use listMonitorTypes for the valid types.`
+          unknownMonitorTypeMessage(type, MONITOR_TYPE_NAMES)
         );
       }
 
@@ -2214,7 +2223,7 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
     'createMonitor',
     {
       title: 'Create Monitor',
-      description: 'Creates a new monitor in Uptime Kuma. Requires at minimum a name and type. Use listMonitorTypes to see supported types. For HTTP monitors include url; for TCP/port monitors include hostname and port; for ping and dns include hostname; for json-query include url, jsonPath, jsonPathOperator and expectedValue; for database types (mysql, postgres, mongodb, redis, sqlserver, oracledb) include databaseConnectionString. For any other type, and for anything type-specific such as HTTP authentication, call getMonitorTypeFields first: it lists the required and optional fields of the type, what each means, and whether it is passed at the top level or inside typeFields. A create without the required fields of its type is refused rather than saved as a monitor that fails every check. For an HTTP monitor behind authentication pass the credentials in typeFields (basic_auth_user and basic_auth_pass, or bearer_token) and authMethod is set to match. Never pass "***" for a credential. A push monitor is given a generated push token (Uptime Kuma only generates one in its own web UI) and the resulting ping URL is returned. Omitted settings get the web form\'s defaults: interval 60 (300 for ntp), retryInterval equal to interval, and a per-type timeout.',
+      description: 'Creates a new monitor in Uptime Kuma. Requires at minimum a name and type. Use listMonitorTypes to see supported types; prefer one made for the service (e.g. gamedig for a game server) over a port check. For HTTP monitors include url; for TCP/port monitors include hostname and port; for ping and dns include hostname; for json-query include url, jsonPath, jsonPathOperator and expectedValue; for database types (mysql, postgres, mongodb, redis, sqlserver, oracledb) include databaseConnectionString. For any other type, and for anything type-specific such as HTTP authentication, call getMonitorTypeFields first: it lists the required and optional fields of the type, what each means, and whether it is passed at the top level or inside typeFields. A create without the required fields of its type is refused rather than saved as a monitor that fails every check. For an HTTP monitor behind authentication pass the credentials in typeFields (basic_auth_user and basic_auth_pass, or bearer_token) and authMethod is set to match. Never pass "***" for a credential. A push monitor is given a generated push token (Uptime Kuma only generates one in its own web UI) and the resulting ping URL is returned. Omitted settings get the web form\'s defaults: interval 60 (300 for ntp), retryInterval equal to interval, and a per-type timeout.',
       inputSchema: createMonitorShape,
       outputSchema: {
         ok: z.boolean(),
