@@ -1,6 +1,7 @@
 import { spawn } from 'child_process';
 import { createWriteStream, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
+import { finished } from 'stream';
 import { join } from 'path';
 import type { TestConfig } from '../integration/helpers.js';
 
@@ -242,7 +243,12 @@ export async function runClaude(opts: ClaudeRunOptions): Promise<Trace> {
       child.on('close', c => {
         clearTimeout(timer);
         if (!settled) activeAbort = null;
-        raw.end(() => {
+        // finished() rather than end(cb): if the trace file never opened (bad path), the
+        // child can exit before the stream's 'error' event fires, and that error must
+        // still reject rather than be swallowed by a successful-looking resolve.
+        raw.end();
+        finished(raw, e => {
+          if (e) return fail(e);
           if (settled) return;
           settled = true;
           resolve({ stdout: out, stderr: err, code: c });
