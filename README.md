@@ -2,30 +2,174 @@
 
 A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for [Uptime Kuma](https://github.com/louislam/uptime-kuma) *version 2*. Supports stdio and streamable HTTP transports.
 
-![GitHub Stars](https://img.shields.io/github/stars/DavidFuchs/mcp-uptime-kuma?style=flat)
-![GitHub Last Commit](https://img.shields.io/github/last-commit/DavidFuchs/mcp-uptime-kuma?style=flat)
-![GitHub Repo Size](https://img.shields.io/github/repo-size/DavidFuchs/mcp-uptime-kuma?style=flat)
+[![npm version](https://img.shields.io/npm/v/%40davidfuchs%2Fmcp-uptime-kuma?style=flat&label=npm)](https://www.npmjs.com/package/@davidfuchs/mcp-uptime-kuma)
+[![npm downloads](https://img.shields.io/npm/d18m/%40davidfuchs%2Fmcp-uptime-kuma?style=flat&label=downloads&color=blue)](https://www.npmjs.com/package/@davidfuchs/mcp-uptime-kuma)
+[![Docker pulls](https://img.shields.io/docker/pulls/davidfuchs/mcp-uptime-kuma?style=flat)](https://hub.docker.com/r/davidfuchs/mcp-uptime-kuma)
+[![Release build](https://img.shields.io/github/actions/workflow/status/DavidFuchs/mcp-uptime-kuma/publish-npm.yml?style=flat&label=release%20build)](https://github.com/DavidFuchs/mcp-uptime-kuma/actions/workflows/publish-npm.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat)](LICENSE)
 
-![GitHub Actions - npmjs](https://img.shields.io/github/actions/workflow/status/DavidFuchs/mcp-uptime-kuma/publish-npm.yml?style=flat&label=npmjs%20build&link=https://www.npmjs.com/package/@davidfuchs/mcp-uptime-kuma)
-![npmjs Version](https://img.shields.io/npm/v/%40davidfuchs%2Fmcp-uptime-kuma?style=flat&label=npmjs%20package%20version)
-![npmjs Downloads](https://img.shields.io/npm/d18m/%40davidfuchs%2Fmcp-uptime-kuma?style=flat&label=npmjs%20downloads&color=blue)
+**Contents:** [What You Can Ask](#what-you-can-ask) ·
+[Features](#features) ·
+[Setup](#setup) ·
+[Available Tools](#available-tools) ·
+[Configuration](#configuration-reference) ·
+[Authentication](#authentication-methods) ·
+[Read-Only Mode](#read-only-mode) ·
+[Securing HTTP](#securing-the-http-endpoint) ·
+[Credential Redaction](#credential-redaction) ·
+[Troubleshooting](#troubleshooting)
 
-![GitHub Actions - DockerHub](https://img.shields.io/github/actions/workflow/status/DavidFuchs/mcp-uptime-kuma/publish-docker.yml?style=flat&label=docker%20build&link=https://www.npmjs.com/package/@davidfuchs/mcp-uptime-kuma)
-![Docker Version](https://img.shields.io/docker/v/davidfuchs/mcp-uptime-kuma?style=flat&label=docker%20image%20version)
-![Docker Pulls](https://img.shields.io/docker/pulls/davidfuchs/mcp-uptime-kuma?style=flat)
+## What You Can Ask
+
+Once it's connected, you manage Uptime Kuma by asking your AI assistant in plain language:
+
+- *"What's down right now, and since when?"*
+- *"Which monitors have been flapping this week?"*
+- *"Add an HTTP monitor for https://example.com/health that checks every 60 seconds and alerts the Discord channel."*
+- *"Put the NAS monitors in maintenance tonight from 10 to 11pm."*
+- *"Build a public status page with a group for each of my web services."*
+- *"Pause everything tagged `staging`."*
 
 ## Features
 
-- **Real-time Monitoring**: Access monitors, heartbeats, uptime, and responsiveness metrics via Socket.IO with instant status change notifications.
-- **Context-Friendly**: Returns only essential data by default to avoid overwhelming LLM context windows.
-- **Multiple Transports**: Supports stdio (local) and streamable HTTP (remote) transports.
-- **Annotated Tools**: Every tool says whether it only reads, and whether it deletes or replaces, so your MCP client can run reads unattended and ask before the rest.
+- **Manage everything, not just read it.** 36 tools cover monitors of any type, notification
+  channels, tags, maintenance windows, status pages and Docker hosts. See [Available Tools](#available-tools).
+- **Live data.** The server keeps a Socket.IO connection open to Uptime Kuma, so status and
+  heartbeats are current without polling.
+- **Context-friendly.** Summaries come first and full detail only when asked for. The roughly
+  85 type-specific monitor fields are looked up on demand instead of filling every conversation.
+- **Credentials stay out of transcripts.** Read tools return `***` for passwords, tokens and
+  API keys, and writing `***` back keeps the stored value. See [Credential Redaction](#credential-redaction).
+- **Read-only mode.** One setting removes every tool that creates, changes or deletes. See
+  [Read-Only Mode](#read-only-mode).
+- **Annotated tools.** Every tool says whether it only reads, and whether it deletes or
+  replaces, so your client can run reads unattended and ask before the rest.
+- **Run it locally or share it.** Use stdio through `npx`, or streamable HTTP in Docker with
+  bearer-token auth, `Origin` checks and rate limiting.
 
-## Quick Start
+## Example Conversation
 
-### Using npx (stdio transport)
+![MCP server answering questions about Uptime Kuma monitors](.github/images/screenshot-1.png)
+*Conversation in [LibreChat](https://github.com/danny-avila/LibreChat) where the `mcp-uptime-kuma` server is providing real-time information from Uptime Kuma.*
 
-Add this to your MCP client configuration:
+## Setup
+
+Setup takes two steps: pick how the server runs, then point your AI client at it.
+
+### 1. Choose how to run it
+
+| | **Local (stdio)** | **Shared server (Docker, streamable HTTP)** |
+|---|---|---|
+| How it runs | Your AI client starts it on your machine with `npx` and talks to it over stdin/stdout | One long-running container, usually next to Uptime Kuma, that clients reach at `http://<host>:3000/mcp` |
+| Needs | Node.js 22+ on each machine that uses it | Docker on one host |
+| Uptime Kuma credentials live | In each client's config | Only in the container |
+| Best for | One person, one or two machines. The quickest way to try it. | Several machines or people, a homelab, or web clients such as claude.ai |
+
+If you're not sure, start with **local**. Every client below supports it, and you can switch later.
+
+Either way you need:
+
+- **Uptime Kuma 2.0 or later.** The server talks to Uptime Kuma 2's socket API; 1.x is not supported.
+- **Your Uptime Kuma URL and a way to log in to it.** A username and password work. Use a JWT
+  token if you have 2FA, or nothing at all if authentication is disabled. See
+  [Authentication Methods](#authentication-methods).
+
+Trying it out for the first time? Add `UPTIME_KUMA_READ_ONLY=true` to the environment in any of
+the examples below. The assistant can then look at everything but change nothing. Remove it
+once you're comfortable. See [Read-Only Mode](#read-only-mode).
+
+### 2. Start the shared server (Docker only)
+
+Skip this step if you chose local.
+
+Generate a secret that clients will present as a bearer token:
+
+```bash
+openssl rand -base64 32
+```
+
+Then start the container:
+
+```bash
+docker run -d \
+  --name mcp-uptime-kuma \
+  --restart unless-stopped \
+  -p 3000:3000 \
+  -e UPTIME_KUMA_URL=http://your-uptime-kuma-instance:3001 \
+  -e UPTIME_KUMA_USERNAME=your_username \
+  -e UPTIME_KUMA_PASSWORD=your_password \
+  -e MCP_AUTH_TOKEN=your_generated_secret \
+  davidfuchs/mcp-uptime-kuma:latest \
+  -t streamable-http
+```
+
+Prefer Compose? Download the provided [docker-compose.yml](docker-compose.yml), fill in the
+same variables, and run `docker compose up -d`.
+
+Check it's up with `curl http://your-docker-host:3000/health`.
+
+> **Don't skip `MCP_AUTH_TOKEN`.** Without it, anyone who can reach port 3000 gets full
+> read/write control of your Uptime Kuma instance. Plain `http://` also sends the token
+> unencrypted, so put the server behind a TLS reverse proxy before it leaves your LAN. See
+> [Securing the HTTP Endpoint](#securing-the-http-endpoint).
+
+In the client examples below, `UPTIME_KUMA_MCP_TOKEN` is an environment variable on the
+machine running the client. It holds the same value as `MCP_AUTH_TOKEN`. Clients that can't
+read environment variables take the token directly.
+
+### 3. Connect your client
+
+Jump to your client:
+
+- [Claude Code](#claude-code)
+- [Claude Desktop and claude.ai](#claude-desktop-and-claudeai)
+- [GitHub Copilot (VS Code and Copilot CLI)](#github-copilot-vs-code-and-copilot-cli)
+- [Codex and ChatGPT](#codex-and-chatgpt)
+- [Cursor](#cursor)
+- [LibreChat](#librechat)
+- [Other clients](#other-clients)
+
+The server is also listed in the official [MCP Registry](https://registry.modelcontextprotocol.io/)
+as `io.github.DavidFuchs/mcp-uptime-kuma`. Clients and directories that read the registry can
+find it and show its settings for you to fill in.
+
+Every local example runs `@davidfuchs/mcp-uptime-kuma@latest`. Keep the `@latest` suffix.
+Without it, npx reuses whatever version it cached the first time it ran and never picks up
+new releases.
+
+After connecting, ask something like *"How are my monitors doing?"* to check it works. If it
+doesn't, see [Troubleshooting](#troubleshooting).
+
+#### Claude Code
+
+**Local:**
+
+```bash
+claude mcp add --scope user \
+  --env UPTIME_KUMA_URL=http://your-uptime-kuma-instance:3001 \
+  --env UPTIME_KUMA_USERNAME=your_username \
+  --env UPTIME_KUMA_PASSWORD=your_password \
+  --transport stdio uptime-kuma \
+  -- npx -y @davidfuchs/mcp-uptime-kuma@latest
+```
+
+**Shared server:**
+
+```bash
+claude mcp add --scope user --transport http uptime-kuma \
+  http://your-docker-host:3000/mcp \
+  --header "Authorization: Bearer your_generated_secret"
+```
+
+`--scope user` makes the server available in every project. Leave it off to add the server to
+the current project only, or use `--scope project` to write it to a `.mcp.json` you can commit.
+A committed file should reference the token as `"Bearer ${UPTIME_KUMA_MCP_TOKEN}"` rather than
+contain it. Run `/mcp` inside Claude Code to check the connection.
+
+#### Claude Desktop and claude.ai
+
+**Local (Claude Desktop only):** open *Settings → Developer → Edit Config* to open
+`claude_desktop_config.json`, add the server, then restart Claude Desktop:
 
 ```json
 {
@@ -43,53 +187,249 @@ Add this to your MCP client configuration:
 }
 ```
 
-Keep the `@latest` suffix. Without it, npx reuses whatever version it cached the first time it ran and never picks up new releases.
+**Shared server, reachable from the internet (claude.ai, Claude Desktop, mobile):** go to
+*Settings → Connectors → Add custom connector*. Enter `https://your-public-host/mcp`, choose
+no sign-in, and add a request header `Authorization: Bearer your_generated_secret`. Claude
+connects from Anthropic's cloud, not from your computer. The server must therefore be
+reachable over public HTTPS, for example through a reverse proxy or Cloudflare Tunnel. A
+`localhost` or LAN address won't work.
 
-### Using Docker (streamable HTTP transport)
-
-**Option 1: Docker Run**
-
-```bash
-docker run -d \
-  --name mcp-uptime-kuma \
-  -p 3000:3000 \
-  -e UPTIME_KUMA_URL=http://your-uptime-kuma-instance:3001 \
-  -e UPTIME_KUMA_USERNAME=your_username \
-  -e UPTIME_KUMA_PASSWORD=your_password \
-  davidfuchs/mcp-uptime-kuma:latest \
-  -t streamable-http
-```
-
-**Option 2: Docker Compose**
-
-A [docker-compose.yml](docker-compose.yml) file is provided in the repository. Download it, configure your environment variables, and run:
-
-```bash
-docker compose up -d
-```
-
-Then configure your MCP client to connect to the endpoint:
+**Shared server on your LAN (Claude Desktop):** connectors can't reach a private address.
+Instead, bridge to it from `claude_desktop_config.json` with
+[`mcp-remote`](https://www.npmjs.com/package/mcp-remote). `--allow-http` is only needed for a
+plain `http://` URL that isn't `localhost`.
 
 ```json
 {
   "mcpServers": {
     "uptime-kuma": {
-      "url": "http://localhost:3000/mcp"
+      "command": "npx",
+      "args": [
+        "-y", "mcp-remote",
+        "http://your-docker-host:3000/mcp",
+        "--allow-http",
+        "--header", "Authorization:${AUTH_HEADER}"
+      ],
+      "env": {
+        "AUTH_HEADER": "Bearer your_generated_secret"
+      }
     }
   }
 }
 ```
 
-See [Authentication Methods](#authentication-methods) for JWT token and anonymous authentication options.
+#### GitHub Copilot (VS Code and Copilot CLI)
 
-> **The endpoint above is unauthenticated.** Anyone who can reach port 3000 gets full
-> read/write control of your Uptime Kuma instance. See
-> [Securing the HTTP Endpoint](#securing-the-http-endpoint) before exposing it beyond localhost.
+Copilot reads `~/.copilot/mcp-config.json`, which VS Code's Copilot Chat and the `copilot` CLI
+share. You can also use a `.mcp.json` at the root of a workspace. Values written as `${NAME}`
+come from the environment of the machine running the server.
 
-## Example Conversation
+**Local:**
 
-![MCP server answering questions about Uptime Kuma monitors](.github/images/screenshot-1.png)
-*Conversation in [LibreChat](https://github.com/danny-avila/LibreChat) where the `mcp-uptime-kuma` server is providing real-time information from Uptime Kuma.*
+```json
+{
+  "mcpServers": {
+    "uptime-kuma": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@davidfuchs/mcp-uptime-kuma@latest"],
+      "env": {
+        "UPTIME_KUMA_URL": "http://your-uptime-kuma-instance:3001",
+        "UPTIME_KUMA_USERNAME": "your_username",
+        "UPTIME_KUMA_PASSWORD": "${UPTIME_KUMA_PASSWORD}"
+      },
+      "tools": ["*"]
+    }
+  }
+}
+```
+
+**Shared server:**
+
+```json
+{
+  "mcpServers": {
+    "uptime-kuma": {
+      "type": "http",
+      "url": "http://your-docker-host:3000/mcp",
+      "headers": {
+        "Authorization": "Bearer ${UPTIME_KUMA_MCP_TOKEN}"
+      },
+      "tools": ["*"]
+    }
+  }
+}
+```
+
+Older VS Code setups keep servers in `.vscode/mcp.json` or the profile `mcp.json` instead.
+Those use a top-level `"servers"` key rather than `"mcpServers"`, and VS Code is phasing
+them out. On a Business or Enterprise plan, an admin may first need to turn on the
+*MCP servers in Copilot* policy.
+
+#### Codex and ChatGPT
+
+The Codex CLI, the Codex IDE extension and the ChatGPT desktop app share one configuration
+file, `~/.codex/config.toml`.
+
+**Local:**
+
+```bash
+codex mcp add uptime-kuma \
+  --env UPTIME_KUMA_URL=http://your-uptime-kuma-instance:3001 \
+  --env UPTIME_KUMA_USERNAME=your_username \
+  --env UPTIME_KUMA_PASSWORD=your_password \
+  -- npx -y @davidfuchs/mcp-uptime-kuma@latest
+```
+
+That command writes this to `config.toml`, which you can also edit by hand:
+
+```toml
+[mcp_servers.uptime-kuma]
+command = "npx"
+args = ["-y", "@davidfuchs/mcp-uptime-kuma@latest"]
+
+[mcp_servers.uptime-kuma.env]
+UPTIME_KUMA_URL = "http://your-uptime-kuma-instance:3001"
+UPTIME_KUMA_USERNAME = "your_username"
+UPTIME_KUMA_PASSWORD = "your_password"
+```
+
+**Shared server:** add this to `config.toml`, and set `UPTIME_KUMA_MCP_TOKEN` in the
+environment Codex starts from:
+
+```toml
+[mcp_servers.uptime-kuma]
+url = "http://your-docker-host:3000/mcp"
+bearer_token_env_var = "UPTIME_KUMA_MCP_TOKEN"
+```
+
+Either way, you can add `default_tools_approval_mode = "writes"` to the server's table. Codex
+then runs the read-only tools unattended and asks before anything that changes your
+instance, using the [tool annotations](#features) this server provides.
+
+**ChatGPT on the web** isn't supported. Its custom connectors call the server from OpenAI's
+cloud and authenticate with OAuth or not at all, so they can't send the bearer token this
+server requires. Use the ChatGPT desktop app or Codex instead.
+
+#### Cursor
+
+Add this to `~/.cursor/mcp.json` for every project, or `.cursor/mcp.json` for one project.
+
+**Local:**
+
+```json
+{
+  "mcpServers": {
+    "uptime-kuma": {
+      "command": "npx",
+      "args": ["-y", "@davidfuchs/mcp-uptime-kuma@latest"],
+      "env": {
+        "UPTIME_KUMA_URL": "http://your-uptime-kuma-instance:3001",
+        "UPTIME_KUMA_USERNAME": "your_username",
+        "UPTIME_KUMA_PASSWORD": "your_password"
+      }
+    }
+  }
+}
+```
+
+**Shared server:**
+
+```json
+{
+  "mcpServers": {
+    "uptime-kuma": {
+      "url": "http://your-docker-host:3000/mcp",
+      "headers": {
+        "Authorization": "Bearer ${env:UPTIME_KUMA_MCP_TOKEN}"
+      }
+    }
+  }
+}
+```
+
+#### LibreChat
+
+Add this to `librechat.yaml`.
+
+**Local:**
+
+```yaml
+mcpServers:
+  uptime-kuma:
+    command: npx
+    args: ["-y", "@davidfuchs/mcp-uptime-kuma@latest"]
+    env:
+      UPTIME_KUMA_URL: "http://your-instance:3001"
+      UPTIME_KUMA_USERNAME: "your_username"
+      UPTIME_KUMA_PASSWORD: "your_password"
+    serverInstructions: true
+```
+
+**Shared server:** LibreChat blocks MCP calls to domains it hasn't been told to trust. List
+the host from the URL under `allowedDomains`, for example the container name when both run on
+the same Docker network:
+
+```yaml
+mcpServers:
+  uptime-kuma:
+    type: streamable-http
+    url: "http://mcp-uptime-kuma:3000/mcp"
+    headers:
+      Authorization: "Bearer ${UPTIME_KUMA_MCP_TOKEN}"
+    serverInstructions: true
+
+mcpSettings:
+  allowedDomains:
+    - 'mcp-uptime-kuma'
+```
+
+LibreChat runs in a browser. If you set `ALLOWED_ORIGIN` on the server, include your
+LibreChat origin in it.
+
+#### Other clients
+
+Most other clients, including Windsurf, Cline, Zed and Gemini CLI, accept some variation of
+the standard `mcpServers` block. Check your client's docs for the file location and the key it
+uses for HTTP servers (`url`, `serverUrl` or `httpUrl`).
+
+```json
+{
+  "mcpServers": {
+    "uptime-kuma": {
+      "command": "npx",
+      "args": ["-y", "@davidfuchs/mcp-uptime-kuma@latest"],
+      "env": { "UPTIME_KUMA_URL": "http://your-uptime-kuma-instance:3001" }
+    }
+  }
+}
+```
+
+For a shared server, use `"url": "http://your-docker-host:3000/mcp"` and
+`"headers": { "Authorization": "Bearer your_generated_secret" }` instead of `command`/`args`/`env`.
+
+No Node.js on the machine? Clients can run the server locally through Docker instead of npx,
+because the image speaks stdio by default:
+
+```json
+{
+  "mcpServers": {
+    "uptime-kuma": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "-e", "UPTIME_KUMA_URL", "-e", "UPTIME_KUMA_USERNAME", "-e", "UPTIME_KUMA_PASSWORD",
+        "davidfuchs/mcp-uptime-kuma:latest"
+      ],
+      "env": {
+        "UPTIME_KUMA_URL": "http://your-uptime-kuma-instance:3001",
+        "UPTIME_KUMA_USERNAME": "your_username",
+        "UPTIME_KUMA_PASSWORD": "your_password"
+      }
+    }
+  }
+}
+```
 
 ## Available Tools
 
@@ -143,12 +483,31 @@ See [Authentication Methods](#authentication-methods) for JWT token and anonymou
 | `resumeMaintenance` | Switch a paused maintenance window back on (starts a manual window). |
 | `deleteMaintenance` | Permanently delete a maintenance window. |
 
-### Status Pages & Settings
+### Status Pages
 
 | Tool | Purpose |
 |------|---------|
-| `listStatusPages` | List all configured status pages. |
-| `getSettings` | Get Uptime Kuma server settings. |
+| `listStatusPages` | List all configured status pages with their slug, title, visibility, and custom domains. |
+| `getStatusPage` | Get one status page by slug, including its groups, the monitors in each group, and active incidents. Works for unpublished pages too. |
+| `createStatusPage` | Create a new, empty status page with a title and slug. Follow up with `updateStatusPage` to add groups and monitors. |
+| `updateStatusPage` | Change a status page's settings (description, theme, published, custom domains, CSS, …) and, optionally, replace its groups and their monitors. |
+| `deleteStatusPage` | Permanently delete a status page; its URL stops working. |
+
+### Docker Hosts
+
+| Tool | Purpose |
+|------|---------|
+| `listDockerHosts` | List the docker daemon connections that docker container monitors use. |
+| `testDockerHost` | Check that a docker daemon is reachable, without saving it. Reports the number of containers on success. |
+| `addDockerHost` | Add a docker daemon connection, over a unix socket or TCP (e.g. a docker socket proxy). |
+| `updateDockerHost` | Change an existing docker daemon connection. Fields you don't pass keep their values. |
+| `deleteDockerHost` | Permanently delete a docker daemon connection. Monitors that used it are kept but lose their docker host. |
+
+### Settings
+
+| Tool | Purpose |
+|------|---------|
+| `getSettings` | Get Uptime Kuma server settings, such as timezone, primary base URL, and data retention. |
 
 ### Type-specific monitor fields
 
@@ -192,6 +551,43 @@ listMonitors({ tags: "production,region=us-east" })    // Monitors with specific
 listMonitors({ parentId: 12 })                         // Direct children of group 12
 listMonitors({ parentId: null })                       // Top-level monitors only
 ```
+
+## Configuration Reference
+
+Every setting is an environment variable. The sections after this table explain the ones that
+need more than a line.
+
+**Connecting to Uptime Kuma** (both transports)
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `UPTIME_KUMA_URL` | *required* | Address of your Uptime Kuma 2 instance, e.g. `http://192.168.1.10:3001`. |
+| `UPTIME_KUMA_USERNAME` | unset | Username to log in with. See [Authentication Methods](#authentication-methods). |
+| `UPTIME_KUMA_PASSWORD` | unset | Password to log in with. |
+| `UPTIME_KUMA_2FA_TOKEN` | unset | Current 2FA code. It expires within seconds, so prefer `UPTIME_KUMA_JWT_TOKEN` when 2FA is on. |
+| `UPTIME_KUMA_JWT_TOKEN` | unset | JWT to log in with instead of a username and password. Takes precedence over them. |
+| `UPTIME_KUMA_HEADERS` | unset | JSON object of extra headers sent on every request, for an [authenticating proxy](#behind-an-authenticating-proxy-cloudflare-access-etc) in front of Uptime Kuma. |
+
+**What the server exposes** (both transports)
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `UPTIME_KUMA_READ_ONLY` | `false` | `true` registers only the tools that read. See [Read-Only Mode](#read-only-mode). |
+| `UPTIME_KUMA_INCLUDE_SECRETS` | `false` | `true` returns passwords, tokens and API keys in tool output instead of `***`. See [Credential Redaction](#credential-redaction). |
+
+**HTTP endpoint** (`-t streamable-http` only)
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `MCP_AUTH_TOKEN` | unset (no auth) | Shared secret clients must send as `Authorization: Bearer <token>`. See [Securing the HTTP Endpoint](#securing-the-http-endpoint). |
+| `ALLOWED_ORIGIN` | `*` (no check) | Comma-separated browser origins allowed to call `/mcp`. |
+| `HOST` | `0.0.0.0` | Address to bind. |
+| `PORT` | `3000` | Port to listen on. |
+| `TRUST_PROXY` | unset (no trust) | Trust `X-Forwarded-For` from a reverse proxy: a hop count, `true`/`false`, or an IP/subnet list. |
+| `RATE_LIMIT_MAX` | `1000` | Requests per client IP every 15 minutes. `0` turns the limit off. |
+
+The transport itself is a command-line option, not a variable: `-t stdio` (the default) or
+`-t streamable-http`.
 
 ## Authentication Methods
 
@@ -269,190 +665,82 @@ offers; it does not change what the Uptime Kuma account itself is allowed to do.
 
 ## Securing the HTTP Endpoint
 
-Applies to `-t streamable-http` only. The stdio transport has no listener to protect and
-takes its credentials from the environment, as the MCP specification prescribes.
+Applies to `-t streamable-http` only. Anyone who can reach `/mcp` has full read/write control
+of your Uptime Kuma instance, and the defaults are permissive so that upgrading can't break an
+existing deployment. The server warns at startup when it's unprotected. For anything beyond
+your own machine:
 
-Anyone who can reach `/mcp` has full read/write control of your Uptime Kuma instance,
-including deleting monitors. Two settings guard it, and both default to permissive so that
-upgrading cannot break an existing deployment - the server warns at startup in that state.
+- **Set `MCP_AUTH_TOKEN`** to a long random secret (`openssl rand -base64 32`). Clients then
+  send it as `Authorization: Bearer <token>`.
+- **Set `ALLOWED_ORIGIN`** if you use a browser-based client. This blocks DNS rebinding
+  attacks, which a token alone doesn't stop.
+- **Put it behind a TLS reverse proxy** before it leaves your LAN. Set `TRUST_PROXY` then, so
+  rate limiting sees real client IPs.
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `MCP_AUTH_TOKEN` | unset (no authentication) | Shared secret that callers must present as `Authorization: Bearer <token>`. Anything else gets `401`. |
-| `ALLOWED_ORIGIN` | `*` (no validation) | Comma-separated list of browser origins permitted to call `/mcp`. A request whose `Origin` is not listed gets `403`. Requests with no `Origin` header (every native MCP client) are always allowed. |
-| `HOST` | `0.0.0.0` | Address to bind. Set to `127.0.0.1` when running locally outside a container. |
-| `PORT` | `3000` | Port to listen on. |
-| `TRUST_PROXY` | unset (no trust) | Trust `X-Forwarded-For` from a reverse proxy in front of the server, so the rate limiter keys on the real client IP instead of the proxy's. Accepts a hop count (`1`), `true`/`false`, or an IP/subnet list - see [Express's `trust proxy` docs](https://expressjs.com/en/guide/behind-proxies.html). |
-| `RATE_LIMIT_MAX` | `1000` | Requests allowed per client IP every 15 minutes; beyond that the server answers `429`. Every tool call is one request, so a busy agent makes hundreds. Set to `0` to turn the limit off, for example when your reverse proxy already limits. |
+`/health` stays unauthenticated so container healthchecks keep working. It reports only
+liveness.
 
-`/health` is deliberately left unauthenticated so container healthchecks and load balancer
-probes keep working. It reports nothing but liveness.
-
-### Setting a token
-
-Generate a high-entropy secret - this is a password, and it is compared in constant time,
-so length is the only thing protecting it:
-
-```bash
-openssl rand -base64 32
-```
-
-```bash
-docker run -d \
-  --name mcp-uptime-kuma \
-  -p 3000:3000 \
-  -e UPTIME_KUMA_URL=http://your-uptime-kuma-instance:3001 \
-  -e UPTIME_KUMA_JWT_TOKEN=your_jwt_token \
-  -e MCP_AUTH_TOKEN=your_generated_secret \
-  davidfuchs/mcp-uptime-kuma:latest \
-  -t streamable-http
-```
-
-Clients then send it as a header:
-
-```json
-{
-  "mcpServers": {
-    "uptime-kuma": {
-      "url": "http://localhost:3000/mcp",
-      "headers": {
-        "Authorization": "Bearer your_generated_secret"
-      }
-    }
-  }
-}
-```
-
-### Why `Origin` validation matters separately
-
-A shared secret stops anyone who cannot present it. It does not stop a website your browser
-already trusts. Under a DNS rebinding attack a page on `evil.example` resolves its own
-hostname to `127.0.0.1`, so the browser treats requests to your local server as same-origin
-- no preflight happens and CORS never applies. The server comparing the `Origin` header it
-was sent against a list of expected origins is the only check left standing, which is why
-the MCP specification makes it a MUST rather than a SHOULD.
-
-If you only use native clients, leaving `ALLOWED_ORIGIN` unset costs you nothing; those
-clients send no `Origin` header. If you use a browser-based client, list its origin:
-
-```
-ALLOWED_ORIGIN=https://librechat.example.com,http://localhost:5173
-```
-
-### Running behind a reverse proxy
-
-Without `TRUST_PROXY`, Express sees every request as coming from the proxy's IP, so the
-rate limiter puts all of your clients in one shared bucket (`RATE_LIMIT_MAX`) and starts
-returning spurious `429`s once traffic from any of them adds up.
-
-Set `TRUST_PROXY` to the number of proxy hops in front of the server so it reads the
-real client IP from `X-Forwarded-For` instead:
-
-```
-TRUST_PROXY=1
-```
-
-Only set this when a proxy you control is actually there to strip and re-set that
-header. If the server is reachable directly as well, or the proxy passes through
-whatever `X-Forwarded-For` it receives, a client can forge that header to get a fresh
-rate-limit bucket on every request, defeating the limiter entirely.
+The details, including why `Origin` validation matters separately from the token and how
+`TRUST_PROXY` can be abused, are in [docs/http-security.md](docs/http-security.md).
 
 ## Credential Redaction
 
-Read tools return `***` in place of secrets rather than the values themselves.
+Read tools return `***` in place of passwords, tokens, API keys and HTTP headers. Tool output
+lands in your conversation transcript, and asking "what am I monitoring?" shouldn't write a
+live SMTP password into it.
 
-Uptime Kuma's socket API returns configuration verbatim - its web UI masks credentials at
-render time. That is fine for a browser and not fine for an MCP server, whose output lands
-in an LLM's context window and is then persisted in conversation transcripts, logs and
-synced history. Asking "what am I monitoring?" should not write a live SMTP password or a
-third-party API key into storage you may not control.
+- **Writing `***` back is safe.** `updateMonitor` and `updateNotification` keep the stored
+  value when a field arrives as `***`, so the assistant can read, edit and write a
+  configuration without wiping its credentials.
+- **Push tokens are returned when they're created**, by `createMonitor` or by switching a
+  monitor to push, since the sender can't be set up without them.
+- **To see real values**, pass `includeSecrets: true` on a call, or set
+  `UPTIME_KUMA_INCLUDE_SECRETS=true` for every call.
 
-What is withheld:
+[docs/credential-redaction.md](docs/credential-redaction.md) lists exactly what each tool
+withholds and how credentials inside URLs are handled.
 
-| Tool | Withheld |
-|---|---|
-| `listNotifications` | everything in `config` except `type`/`name`/`isDefault`/`applyExisting`. The withheld field names are listed in `redactedConfigKeys` |
-| `listMonitors`, `getMonitor` | `pushToken`, `basic_auth_pass`, `bearer_token`, `oauth_client_secret`, `radiusPassword`, `radiusSecret`, `mqttPassword`, `rabbitmqPassword`, `gamedigToken`, `sshPassword`, `sshPrivateKey`, `sshPassphrase`, the password inside `kafkaProducerSaslOptions`, `user:pass@` inside `rabbitmqNodes`, `tlsCert`/`tlsKey`/`tlsCa`, `databaseConnectionString`, `headers`, `grpcMetadata`, plus anything matching `/pass|secret|token|apikey|auth(oriz\|entic)|bearer|credential|private.?key|jwt/i` |
-| `listDockerHosts` | `user:password@` inside a `dockerDaemon` URL |
-| `getHeartbeats`, `listHeartbeats` | any column Uptime Kuma returns beyond the declared heartbeat fields (e.g. `response`, which can carry a service's response body) is dropped, and `user:password@` inside a URL quoted in the status message is scrubbed |
-| `getSettings` | any secret-named field Uptime Kuma returns (e.g. `steamAPIKey`) |
-| `getMonitorSummary` | nothing - it returns no credentials to begin with |
+## Troubleshooting
 
-`hostname`, `port`, `url`, `authMethod`, `oauth_token_url`, `oauth_scopes` and usernames stay
-visible: hiding useful configuration is how a redaction feature gets switched off.
+**Where to look first.** The server writes its errors to stderr. With a local server your
+client captures them. Run `/mcp` in Claude Code or Codex. In VS Code, run *MCP: List
+Servers*, pick the server and choose *Show Output*. Claude Desktop writes them to
+`mcp-server-uptime-kuma.log` in its logs folder (`~/Library/Logs/Claude` on macOS,
+`%APPDATA%\Claude\logs` on Windows). With Docker, run `docker logs mcp-uptime-kuma`.
 
-To get the real values, either pass `includeSecrets: true` on the call:
+**The server connects but every tool call fails.** The server stays up even when it can't log
+in to Uptime Kuma. That way it recovers on its own when Uptime Kuma restarts. Look for
+`Initial authentication failed, will retry on demand` in the logs. It is followed by the reason:
 
-```
-listNotifications({ includeSecrets: true })
-```
+- *Can't reach the address.* Check `UPTIME_KUMA_URL` from the machine the server runs on.
+  Inside a container, `localhost` is the container itself. Use the host's LAN IP, the Uptime
+  Kuma container's name on a shared Docker network, or `host.docker.internal` (Docker Desktop).
+- *`authInvalidToken`.* The JWT is wrong or no longer valid. Generate a new one with
+  `mcp-uptime-kuma-get-jwt` (see [Obtaining Your JWT Token](#obtaining-your-jwt-token)).
+- *Login fails with 2FA on.* `UPTIME_KUMA_2FA_TOKEN` is a one-time code that's only valid for
+  a few seconds, so a value saved in a config file works once at most. Use a JWT instead.
 
-or enable it globally:
+**The client gets `401` from the shared server.** The token the client sends doesn't match
+`MCP_AUTH_TOKEN`. Check for a missing `Bearer ` prefix, stray whitespace or quotes copied
+along with the secret, and that the client's environment variable is set where the client
+starts. A GUI app launched from the Dock or Start menu doesn't see variables exported in your
+shell profile.
 
-```
-UPTIME_KUMA_INCLUDE_SECRETS=true
-```
+**A browser-based client gets `403`.** Its origin isn't listed in `ALLOWED_ORIGIN`. Add it
+exactly as the browser sends it, with scheme and port, for example `http://localhost:5173`.
 
-The per-call parameter wins over the environment variable in both directions, so a
-permissive deployment can still ask one call to redact.
+**You get `429 Too Many Requests`.** One client IP made more than `RATE_LIMIT_MAX` requests
+in 15 minutes. Behind a reverse proxy, every client usually shares the proxy's IP. Set
+`TRUST_PROXY` (see [Running behind a reverse proxy](docs/http-security.md#running-behind-a-reverse-proxy)), or
+raise the limit.
 
-**Writing `***` back is safe.** `updateMonitor` and `updateNotification` restore the stored
-value when a field arrives as the marker, and report which fields they preserved. This
-matters most for `updateNotification`: Uptime Kuma replaces the notification row rather than
-merging it, so without this a read-edit-write round trip would replace a working password
-with three asterisks. If there is no stored value to restore, the call fails rather than
-writing a credential that looks set and cannot work.
+**A new release's tools or fixes don't show up.** npx is running a cached older version.
+Make sure the package is written as `@davidfuchs/mcp-uptime-kuma@latest`, then restart the
+client. With Docker, run `docker pull davidfuchs/mcp-uptime-kuma:latest` and recreate the
+container.
 
-**Push tokens are returned by the call that sets them up.** `createMonitor` returns the
-token and ping URL of a new push monitor, and `updateMonitor` does the same when it changes
-a monitor's type to push, because the sender cannot be wired up without them. Later reads
-redact the token like any other secret.
-
-Credentials written inline in a URL get the same protection: the `url` of a monitor, the
-entries of `rabbitmqNodes`, and the `dockerDaemon` of a docker host. A `http://***:***@host:2375`
-read back from a read tool has its userinfo restored from the stored URL rather than persisted
-verbatim, so editing the path or scheme without re-entering the credentials does not wipe them.
-
-**Stored credentials are only restored onto the host and port they were stored for.** Sending
-`http://***:***@another-host` is refused rather than restored, because that would hand a
-password you were never shown to an address of the caller's choosing. To point a monitor or
-docker host at a new address, pass the real credentials along with it.
-
-The MCP logging channel gets the same rule. The debug log for a live heartbeat reports the
-monitored service's status message by length only (`msgLength=...`), never its content, since
-that message can echo a target URL with an embedded `user:password@` or a slice of a response
-body, and on the stdio transport those log notifications reach the client.
-
-## LibreChat Configuration
-
-**stdio transport:**
-```yaml
-mcpServers:
-  uptime-kuma:
-    command: npx
-    args: ["-y", "@davidfuchs/mcp-uptime-kuma@latest"]
-    env:
-      UPTIME_KUMA_URL: "http://your-instance:3001"
-      UPTIME_KUMA_USERNAME: "your_username"
-      UPTIME_KUMA_PASSWORD: "your_password"
-    serverInstructions: true
-```
-
-**streamable HTTP transport:**
-
-Update the allowed domains to whatever domain you're using in the URL (e.g., `localhost` or `host.docker.internal` for Docker setups):
-
-```yaml
-mcpServers:
-  uptime-kuma:
-    type: streamable-http
-    url: "http://mcp-uptime-kuma:3000/mcp"
-    serverInstructions: true
-
-mcpSettings:
-  allowedDomains:
-    - 'mcp-uptime-kuma'
-```
+**The assistant can't create or change anything.** Check whether `UPTIME_KUMA_READ_ONLY` is
+set. If it is, the write tools aren't registered at all.
 
 ## Contributing
 
@@ -463,7 +751,7 @@ For development setup, building, testing, and project structure, see [CONTRIBUTI
 - [Uptime Kuma](https://github.com/louislam/uptime-kuma)
 - [Model Context Protocol Documentation](https://modelcontextprotocol.io/)
 - [MCP TypeScript SDK](https://www.npmjs.com/package/@modelcontextprotocol/sdk)
-- [MCP Specification](https://spec.modelcontextprotocol.io/)
+- [MCP Specification](https://modelcontextprotocol.io/specification/latest)
 
 ## Security
 
