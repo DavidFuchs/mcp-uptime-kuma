@@ -122,7 +122,15 @@ See [test/TESTING.md](test/TESTING.md) for detailed testing documentation.
 mcp-uptime-kuma/
 ├── src/
 │   ├── index.ts                # Main entry point with transport selection
-│   ├── server.ts               # Core MCP server configuration with tools
+│   ├── http-app.ts             # Express app for the streamable HTTP transport
+│   ├── server.ts               # Builds the MCP server and registers each group of tools
+│   ├── tools/                  # The tools, one file per area (monitors, maintenance, ...)
+│   │   ├── registration.ts     # What applies to every tool: read-only mode, annotations, strict schemas
+│   │   └── schema.ts           # Argument helpers shared by the tools' input schemas
+│   ├── monitors/
+│   │   ├── fields.ts           # Monitor types and the fields each one takes
+│   │   └── rules.ts            # Rules and read-back checks for monitor writes
+│   ├── kuma-session.ts         # The shared, authenticated connection to Uptime Kuma
 │   ├── uptime-kuma-client.ts   # WebSocket client for Uptime Kuma API
 │   ├── types/                  # TypeScript type definitions
 │   └── version.ts              # Runtime version information
@@ -137,7 +145,7 @@ mcp-uptime-kuma/
 
 ## Development Tips
 
-- To add new tools or modify existing ones, edit `src/server.ts`
+- Tools live in `src/tools/`, one file per area. To add one, register it in the matching file and add its name to `READ_ONLY_TOOLS` or `WRITE_TOOLS` in `src/tools/registration.ts` (a test fails if it is in neither)
 - The Uptime Kuma client in `src/uptime-kuma-client.ts` handles the WebSocket connection and retrieves monitor and heartbeat data
 - Use `npm run dev` or `npm run dev:http` for development with hot reload
 

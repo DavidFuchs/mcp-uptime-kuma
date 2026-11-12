@@ -5,7 +5,7 @@ import { createServer } from '../../src/server.js';
  * Issue #83: the SDK stamps every tool's input/output schema with
  * "$schema": "http://json-schema.org/draft-07/schema#" (zod-to-json-schema's default target),
  * which clients validating strictly against the MCP spec's default dialect (2020-12, per
- * SEP-1613) reject outright. server.ts relabels the dialect on the way out; this asserts none
+ * SEP-1613) reject outright. src/tools/registration.ts relabels the dialect on the way out; this asserts none
  * of the advertised schemas still declare draft-07.
  */
 describe('tools/list schema dialect', () => {
