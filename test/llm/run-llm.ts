@@ -25,10 +25,18 @@ export class PreflightError extends Error {
   }
 }
 
-/** Runs the probe; any failure becomes one clear PreflightError instead of N error rows. */
-export async function preflight(runProbe: () => Promise<void>): Promise<void> {
+/**
+ * Runs the probe; any failure becomes one clear PreflightError instead of N error rows. It is
+ * tried twice, so one transient API error (an overloaded model, say) does not abort the run.
+ */
+export async function preflight(runProbe: () => Promise<void>, { retryDelayMs = 5000 } = {}): Promise<void> {
   try {
-    await runProbe();
+    try {
+      await runProbe();
+    } catch {
+      await new Promise(r => setTimeout(r, retryDelayMs));
+      await runProbe();
+    }
   } catch (e) {
     const why = e instanceof Error ? e.message : String(e);
     throw new PreflightError(

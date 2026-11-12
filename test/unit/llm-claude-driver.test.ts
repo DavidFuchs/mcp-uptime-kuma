@@ -96,6 +96,13 @@ describe('failed sessions', () => {
     expect(r.errorMessage).toContain('Not logged in');
   });
 
+  it('names the API error status of a failed session', () => {
+    const failed = JSON.stringify({ type: 'result', subtype: 'success', is_error: true, result: '', api_error_status: 529, total_cost_usd: 0, num_turns: 1, duration_ms: 3 });
+    const t = parseStreamJson([failed], 'x');
+    expect(() => assertProbeTrace(t)).toThrow(/529/);
+    expect(classify({ assertions: [], trace: t, scenario: {} }).errorMessage).toContain('529');
+  });
+
   it('reads the MCP server status from the init message', () => {
     expect(parseStreamJson(fixtureLines, 'x').mcpStatus).toBe('connected');
     const failed = JSON.stringify({ type: 'system', subtype: 'init', mcp_servers: [{ name: 'uptime-kuma', status: 'failed' }] });

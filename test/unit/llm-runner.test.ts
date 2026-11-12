@@ -95,9 +95,21 @@ describe('formatConsole', () => {
 
 describe('preflight', () => {
   it('preflight failure aborts before scenarios', async () => {
-    const p = preflight(() => Promise.reject(new Error('not logged in')));
+    const p = preflight(() => Promise.reject(new Error('not logged in')), { retryDelayMs: 0 });
     await expect(p).rejects.toBeInstanceOf(PreflightError);
-    await expect(preflight(() => Promise.reject(new Error('not logged in')))).rejects.toThrow(/claude.*not logged in/s);
+    await expect(preflight(() => Promise.reject(new Error('not logged in')), { retryDelayMs: 0 })).rejects.toThrow(/claude.*not logged in/s);
+  });
+
+  it('preflight retries once, so one transient API error does not abort the run', async () => {
+    let calls = 0;
+    await expect(preflight(async () => { if (++calls === 1) throw new Error('overloaded'); }, { retryDelayMs: 0 })).resolves.toBeUndefined();
+    expect(calls).toBe(2);
+  });
+
+  it('preflight gives up after the retry fails too', async () => {
+    let calls = 0;
+    await expect(preflight(async () => { calls++; throw new Error('not logged in'); }, { retryDelayMs: 0 })).rejects.toBeInstanceOf(PreflightError);
+    expect(calls).toBe(2);
   });
 
   it('preflight passes when the probe resolves', async () => {

@@ -34,6 +34,16 @@ export interface Trace {
   resultSubtype: string;
   /** Status of the uptime-kuma MCP server in the init message ('connected', 'failed', ...). */
   mcpStatus?: string;
+  /** HTTP status of the API error that ended a failed session (e.g. 529 overloaded), if any. */
+  apiErrorStatus?: number;
+}
+
+/** Why a session that did not succeed ended, for error messages: its reply, else the API status. */
+export function failureDetail(trace: Trace): string {
+  const parts = [];
+  if (trace.finalText) parts.push(trace.finalText);
+  if (trace.apiErrorStatus !== undefined) parts.push(`API error ${trace.apiErrorStatus}`);
+  return parts.length ? `: ${parts.join(' — ')}` : '';
 }
 
 export interface ClaudeRunOptions {
@@ -133,6 +143,7 @@ export function parseStreamJson(lines: string[], rawPath: string): Trace {
   let finalText = '';
   let resultSubtype = 'missing';
   let mcpStatus: string | undefined;
+  let apiErrorStatus: number | undefined;
 
   for (const line of lines) {
     const trimmed = line.trim();
@@ -168,16 +179,17 @@ export function parseStreamJson(lines: string[], rawPath: string): Trace {
       durationMs = Number(msg.duration_ms) || 0;
       turns = Number(msg.num_turns) || 0;
       finalText = typeof msg.result === 'string' ? msg.result : '';
+      if (typeof msg.api_error_status === 'number') apiErrorStatus = msg.api_error_status;
     }
   }
 
-  return { toolCalls, turns, costUsd, durationMs, finalText, rawPath, resultSubtype, mcpStatus };
+  return { toolCalls, turns, costUsd, durationMs, finalText, rawPath, resultSubtype, mcpStatus, apiErrorStatus };
 }
 
 /** Throws unless the session succeeded and the uptime-kuma MCP server connected. Used by preflight. */
 export function assertProbeTrace(trace: Trace): void {
   if (trace.resultSubtype !== 'success') {
-    throw new Error(`claude session ended with ${trace.resultSubtype}${trace.finalText ? `: ${trace.finalText}` : ''}`);
+    throw new Error(`claude session ended with ${trace.resultSubtype}${failureDetail(trace)}`);
   }
   if (trace.mcpStatus !== 'connected') {
     throw new Error(`MCP server uptime-kuma did not connect (status: ${trace.mcpStatus ?? 'not reported'})`);
