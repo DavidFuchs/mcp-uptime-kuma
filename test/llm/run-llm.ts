@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, rmSync } from 'fs';
 import { join } from 'path';
 import { pathToFileURL } from 'url';
 import { createTestClient, loadTestConfig, validateTestConfig, type TestContext, type TestConfig } from '../integration/helpers.js';
-import { runClaude, type Trace } from './claude-driver.js';
+import { runClaude, assertProbeTrace, type Trace } from './claude-driver.js';
 import { classify, type RunResult, type Scenario, type Assertion } from './scenario.js';
 import { sweep } from './kuma.js';
 import { parseArgs, selectScenarios, type LlmArgs } from './args.js';
@@ -43,7 +43,27 @@ async function probeClaude(config: TestConfig, model: string, dir: string): Prom
   const trace = await runClaude({
     prompt: 'Reply with OK.', model, maxBudgetUsd: 0.05, timeoutMs: 60_000, config, rawPath: join(dir, 'preflight.jsonl'),
   });
-  if (trace.resultSubtype !== 'success') throw new Error(`probe ended with ${trace.resultSubtype}`);
+  assertProbeTrace(trace);
+}
+
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
+
+/**
+ * The eval hands a model write and delete tools, so it only runs against a local test instance
+ * unless LLM_EVAL_ALLOW_REMOTE=1 says otherwise.
+ */
+export function assertTestInstance(url: string, env: NodeJS.ProcessEnv): void {
+  let host: string;
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    throw new Error(`UPTIME_KUMA_URL is not a valid URL: ${url}`);
+  }
+  if (LOCAL_HOSTS.has(host) || env.LLM_EVAL_ALLOW_REMOTE === '1') return;
+  throw new Error(
+    `Refusing to run: UPTIME_KUMA_URL points at ${host}, not a local test instance. The eval lets a ` +
+    `model create and delete monitors. Set LLM_EVAL_ALLOW_REMOTE=1 if ${host} really is a disposable test instance.`,
+  );
 }
 
 function gitSha(): string {
@@ -101,6 +121,12 @@ async function main(): Promise<number> {
 
   const config = loadTestConfig();
   validateTestConfig(config);
+  try {
+    assertTestInstance(config.url, process.env);
+  } catch (e) {
+    console.error(`❌ ${(e as Error).message}`);
+    return 2;
+  }
 
   const startedAt = new Date().toISOString();
   const dir = join(import.meta.dirname, 'results', startedAt.replace(/:/g, '-'));

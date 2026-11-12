@@ -73,7 +73,8 @@ export function classify(input: {
     return { ...base, outcome: 'error', errorMessage: e instanceof Error ? e.message : String(e) };
   }
   if (trace && trace.resultSubtype !== 'success') {
-    return { ...base, outcome: 'error', errorMessage: `claude run ended with ${trace.resultSubtype}` };
+    const why = trace.resultSubtype === 'is_error' && trace.finalText ? `: ${trace.finalText}` : '';
+    return { ...base, outcome: 'error', errorMessage: `claude run ended with ${trace.resultSubtype}${why}` };
   }
   return { ...base, outcome: assertions.every(a => a.ok) ? 'pass' : 'fail' };
 }

@@ -26,8 +26,14 @@ export interface Trace {
   /** Recorded, never graded (except where returning text is the task). */
   finalText: string;
   rawPath: string;
-  /** subtype of the final result message, or 'missing' when the stream had none. */
+  /**
+   * subtype of the final result message; 'is_error' when that message has is_error set (a
+   * logged-out or rate-limited claude still reports subtype 'success'); 'missing' when the
+   * stream had none.
+   */
   resultSubtype: string;
+  /** Status of the uptime-kuma MCP server in the init message ('connected', 'failed', ...). */
+  mcpStatus?: string;
 }
 
 export interface ClaudeRunOptions {
@@ -55,8 +61,10 @@ export function buildMcpConfig(config: TestConfig, repoRoot: string): object {
   return {
     mcpServers: {
       'uptime-kuma': {
-        command: 'npx',
-        args: ['tsx', join(repoRoot, 'src/index.ts'), '-t', 'stdio'],
+        // The repo's own tsx, run by this node. `npx tsx` from the empty temp cwd would resolve
+        // tsx from the npx cache or the registry instead.
+        command: process.execPath,
+        args: [join(repoRoot, 'node_modules/tsx/dist/cli.mjs'), join(repoRoot, 'src/index.ts'), '-t', 'stdio'],
         env,
       },
     },
@@ -106,6 +114,7 @@ export function parseStreamJson(lines: string[], rawPath: string): Trace {
   let durationMs = 0;
   let finalText = '';
   let resultSubtype = 'missing';
+  let mcpStatus: string | undefined;
 
   for (const line of lines) {
     const trimmed = line.trim();
@@ -117,7 +126,9 @@ export function parseStreamJson(lines: string[], rawPath: string): Trace {
       continue;
     }
     const content = Array.isArray(msg?.message?.content) ? msg.message.content : [];
-    if (msg.type === 'assistant') {
+    if (msg.type === 'system' && msg.subtype === 'init' && Array.isArray(msg.mcp_servers)) {
+      mcpStatus = msg.mcp_servers.find((m: any) => m?.name === 'uptime-kuma')?.status;
+    } else if (msg.type === 'assistant') {
       for (const block of content) {
         if (block?.type === 'tool_use' && typeof block.name === 'string' && block.name.startsWith(MCP_PREFIX)) {
           const call: ToolCall = { name: block.name.slice(MCP_PREFIX.length), input: block.input, isError: false, resultText: '' };
@@ -134,7 +145,7 @@ export function parseStreamJson(lines: string[], rawPath: string): Trace {
         call.resultText = resultContentText(block.content);
       }
     } else if (msg.type === 'result') {
-      resultSubtype = typeof msg.subtype === 'string' ? msg.subtype : 'unknown';
+      resultSubtype = msg.is_error === true ? 'is_error' : typeof msg.subtype === 'string' ? msg.subtype : 'unknown';
       costUsd = Number(msg.total_cost_usd) || 0;
       durationMs = Number(msg.duration_ms) || 0;
       turns = Number(msg.num_turns) || 0;
@@ -142,7 +153,17 @@ export function parseStreamJson(lines: string[], rawPath: string): Trace {
     }
   }
 
-  return { toolCalls, turns, costUsd, durationMs, finalText, rawPath, resultSubtype };
+  return { toolCalls, turns, costUsd, durationMs, finalText, rawPath, resultSubtype, mcpStatus };
+}
+
+/** Throws unless the session succeeded and the uptime-kuma MCP server connected. Used by preflight. */
+export function assertProbeTrace(trace: Trace): void {
+  if (trace.resultSubtype !== 'success') {
+    throw new Error(`claude session ended with ${trace.resultSubtype}${trace.finalText ? `: ${trace.finalText}` : ''}`);
+  }
+  if (trace.mcpStatus !== 'connected') {
+    throw new Error(`MCP server uptime-kuma did not connect (status: ${trace.mcpStatus ?? 'not reported'})`);
+  }
 }
 
 export async function runClaude(opts: ClaudeRunOptions): Promise<Trace> {
@@ -169,15 +190,31 @@ export async function runClaude(opts: ClaudeRunOptions): Promise<Trace> {
       const raw = createWriteStream(opts.rawPath);
       let out = '';
       let err = '';
-      child.stdout.on('data', (d: Buffer) => { out += d.toString(); raw.write(d); });
+      let settled = false;
+      const killGroup = () => {
+        try { process.kill(-child.pid!, 'SIGKILL'); } catch { try { child.kill('SIGKILL'); } catch { /* already gone */ } }
+      };
+      const fail = (e: unknown) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        killGroup();
+        reject(e);
+      };
+      // raw is only ever ended in 'close', after the last stdout chunk, so no write can follow it.
+      raw.on('error', fail);
+      child.stdout.on('data', (d: Buffer) => { out += d.toString(); if (!raw.writableEnded) raw.write(d); });
       child.stderr.on('data', (d: Buffer) => { err += d.toString(); });
-      const timer = setTimeout(() => {
-        try { process.kill(-child.pid!, 'SIGKILL'); } catch { child.kill('SIGKILL'); }
-        raw.end();
-        reject(new ClaudeTimeoutError(opts.timeoutMs));
-      }, opts.timeoutMs);
-      child.on('error', e => { clearTimeout(timer); raw.end(); reject(e); });
-      child.on('close', c => { clearTimeout(timer); raw.end(() => resolve({ stdout: out, stderr: err, code: c })); });
+      const timer = setTimeout(() => fail(new ClaudeTimeoutError(opts.timeoutMs)), opts.timeoutMs);
+      child.on('error', fail);
+      child.on('close', c => {
+        clearTimeout(timer);
+        raw.end(() => {
+          if (settled) return;
+          settled = true;
+          resolve({ stdout: out, stderr: err, code: c });
+        });
+      });
     });
 
     const trace = parseStreamJson(stdout.split('\n'), opts.rawPath);

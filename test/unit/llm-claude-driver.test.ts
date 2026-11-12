@@ -10,7 +10,9 @@ import {
   buildMcpConfig,
   runClaude,
   ClaudeTimeoutError,
+  assertProbeTrace,
 } from '../llm/claude-driver.js';
+import { classify } from '../llm/scenario.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixtureLines = readFileSync(join(here, 'fixtures/claude-stream.jsonl'), 'utf8').split('\n');
@@ -76,6 +78,37 @@ describe('parseStreamJson', () => {
   });
 });
 
+describe('failed sessions', () => {
+  // The result line a logged-out `claude -p` really prints: subtype success, but is_error true.
+  const loggedOut = JSON.stringify({ type: 'result', subtype: 'success', is_error: true, result: 'Not logged in · Please run /login', total_cost_usd: 0, num_turns: 1, duration_ms: 3 });
+
+  it('treats an is_error result as a failed session', () => {
+    const t = parseStreamJson([loggedOut], 'x');
+    expect(t.resultSubtype).toBe('is_error');
+    expect(t.finalText).toContain('Not logged in');
+  });
+
+  it('a logged-out run classifies as error, not pass', () => {
+    const r = classify({ assertions: [], trace: parseStreamJson([loggedOut], 'x'), scenario: {} });
+    expect(r.outcome).toBe('error');
+    expect(r.errorMessage).toContain('Not logged in');
+  });
+
+  it('reads the MCP server status from the init message', () => {
+    expect(parseStreamJson(fixtureLines, 'x').mcpStatus).toBe('connected');
+    const failed = JSON.stringify({ type: 'system', subtype: 'init', mcp_servers: [{ name: 'uptime-kuma', status: 'failed' }] });
+    expect(parseStreamJson([failed, result], 'x').mcpStatus).toBe('failed');
+    expect(parseStreamJson([result], 'x').mcpStatus).toBeUndefined();
+  });
+
+  it('assertProbeTrace rejects a logged-out or disconnected session and accepts a good one', () => {
+    expect(() => assertProbeTrace(parseStreamJson([loggedOut], 'x'))).toThrow(/Not logged in/);
+    const failed = JSON.stringify({ type: 'system', subtype: 'init', mcp_servers: [{ name: 'uptime-kuma', status: 'failed' }] });
+    expect(() => assertProbeTrace(parseStreamJson([failed, result], 'x'))).toThrow(/uptime-kuma.*failed/);
+    expect(() => assertProbeTrace(parseStreamJson(fixtureLines, 'x'))).not.toThrow();
+  });
+});
+
 describe('buildClaudeArgs', () => {
   it('includes isolation flags', () => {
     const args = buildClaudeArgs({ prompt: 'p', model: 'sonnet', maxBudgetUsd: 0.5, mcpConfigPath: '/tmp/m.json' });
@@ -107,7 +140,9 @@ describe('buildMcpConfig', () => {
   it('carries test credentials', () => {
     const cfg = buildMcpConfig({ url: 'http://localhost:3001', username: 'admin', password: 'pw' }, '/repo') as any;
     const s = cfg.mcpServers['uptime-kuma'];
-    expect(s.command).toBe('npx');
+    // The repo's own tsx, run by this node: no npx lookup from the empty temp cwd.
+    expect(s.command).toBe(process.execPath);
+    expect(s.args[0]).toBe('/repo/node_modules/tsx/dist/cli.mjs');
     expect(s.args.slice(-2)).toEqual(['-t', 'stdio']);
     expect(s.args).toContain('/repo/src/index.ts');
     expect(s.env).toEqual({
@@ -138,6 +173,48 @@ describe('runClaude', () => {
       if (prev === undefined) delete process.env.CLAUDE_BIN; else process.env.CLAUDE_BIN = prev;
     }
     expect(Date.now() - started).toBeLessThan(2000);
+  });
+
+  it('a timeout while the process is still writing does not crash the runner', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'llm-driver-test-'));
+    const bin = join(dir, 'chatty-claude');
+    writeFileSync(bin, '#!/bin/sh\nwhile true; do echo \'{"type":"noise","padding":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}\'; done\n');
+    chmodSync(bin, 0o755);
+    const uncaught: unknown[] = [];
+    const onUncaught = (e: unknown) => uncaught.push(e);
+    process.on('uncaughtException', onUncaught);
+    const prev = process.env.CLAUDE_BIN;
+    process.env.CLAUDE_BIN = bin;
+    try {
+      await expect(runClaude({
+        prompt: 'p', model: 'sonnet', maxBudgetUsd: 0.1, timeoutMs: 300,
+        config: { url: 'http://localhost:3001', username: 'a', password: 'b' },
+        rawPath: join(dir, 'raw.jsonl'),
+      })).rejects.toBeInstanceOf(ClaudeTimeoutError);
+      await new Promise(r => setTimeout(r, 300));
+    } finally {
+      process.off('uncaughtException', onUncaught);
+      if (prev === undefined) delete process.env.CLAUDE_BIN; else process.env.CLAUDE_BIN = prev;
+    }
+    expect(uncaught).toEqual([]);
+  });
+
+  it('an unwritable trace path rejects instead of crashing', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'llm-driver-test-'));
+    const bin = join(dir, 'fake-claude');
+    writeFileSync(bin, `#!/bin/sh\necho '${result}'\n`);
+    chmodSync(bin, 0o755);
+    const prev = process.env.CLAUDE_BIN;
+    process.env.CLAUDE_BIN = bin;
+    try {
+      await expect(runClaude({
+        prompt: 'p', model: 'sonnet', maxBudgetUsd: 0.1, timeoutMs: 5000,
+        config: { url: 'http://localhost:3001', username: 'a', password: 'b' },
+        rawPath: join(dir, 'no-such-dir', 'raw.jsonl'),
+      })).rejects.toThrow(/ENOENT/);
+    } finally {
+      if (prev === undefined) delete process.env.CLAUDE_BIN; else process.env.CLAUDE_BIN = prev;
+    }
   });
 
   it('parses the stream of a process that exits normally', async () => {

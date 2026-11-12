@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { parseArgs, selectScenarios } from '../llm/args.js';
 import { summarize, formatConsole } from '../llm/report.js';
-import { preflight, PreflightError } from '../llm/run-llm.js';
+import { preflight, PreflightError, assertTestInstance } from '../llm/run-llm.js';
 import { defineScenario, expectThat, type RunResult } from '../llm/scenario.js';
 
 const sc = (id: string, tags: string[]) =>
@@ -102,5 +102,19 @@ describe('preflight', () => {
 
   it('preflight passes when the probe resolves', async () => {
     await expect(preflight(() => Promise.resolve())).resolves.toBeUndefined();
+  });
+});
+
+describe('assertTestInstance', () => {
+  it('accepts a local test instance', () => {
+    for (const url of ['http://localhost:3001', 'http://127.0.0.1:3001', 'http://[::1]:3001']) {
+      expect(() => assertTestInstance(url, {})).not.toThrow();
+    }
+  });
+
+  it('refuses any other host unless explicitly allowed', () => {
+    expect(() => assertTestInstance('https://kuma.example.com', {})).toThrow(/kuma\.example\.com.*LLM_EVAL_ALLOW_REMOTE/s);
+    expect(() => assertTestInstance('not a url', {})).toThrow();
+    expect(() => assertTestInstance('https://kuma.example.com', { LLM_EVAL_ALLOW_REMOTE: '1' })).not.toThrow();
   });
 });
