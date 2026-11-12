@@ -1,13 +1,15 @@
 # Testing MCP Uptime Kuma
 
-There are two kinds of tests:
+There are three kinds of tests:
 
 | Kind | Where | Needs | Run with |
 |---|---|---|---|
 | Unit | `test/unit/` | Nothing | `npm test` |
 | Integration | `test/integration/` | Docker | `npm run test:integration` |
+| LLM agent-usability eval | `test/llm/` | Docker, logged-in `claude` CLI | `npm run test:llm` |
 
-Pull requests run the unit tests and the short integration suites in CI.
+Pull requests run the unit tests and the short integration suites in CI. The LLM eval is run
+by hand; see [llm/README.md](llm/README.md).
 
 ## Unit tests
 
@@ -120,6 +122,13 @@ in, without running any tests. On a fresh instance it creates the admin account 
   `includeTypeSpecificFields: true`.
 - A new suite is registered in `run-all.ts`, under `SHORT_SUITES` or `LONG_SUITES`. A test
   that waits for Uptime Kuma to run a check belongs in a long suite.
+
+## LLM agent-usability eval
+
+A real model (headless Claude Code) is given plain-language tasks against the same test
+container, and each run is graded on the Uptime Kuma state it leaves behind. It shows whether
+the tool names, descriptions and schemas are clear enough for an agent to use. It costs API
+usage and is not run in CI. See [llm/README.md](llm/README.md).
 
 ## Troubleshooting
 
