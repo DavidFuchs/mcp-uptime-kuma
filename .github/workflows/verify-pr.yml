@@ -44,6 +44,11 @@ jobs:
       - name: Build
         run: npm run build
 
+      # The Docker MCP Catalog reads the tool list from this file rather than running the
+      # server, so a tool added, renamed or removed must be reflected in it.
+      - name: Check Docker MCP Catalog tool list
+        run: npm run docker-catalog:tools -- --check
+
       - name: Run unit tests
         run: npx vitest run test/unit/
 
