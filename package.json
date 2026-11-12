@@ -27,6 +27,7 @@
     "test:integration": "cd test/integration && ./run-tests.sh",
     "test:integration:long": "cd test/integration && ./run-tests.sh --long",
     "test:integration:direct": "tsx test/integration/run-all.ts",
+    "test:llm": "test/llm/run-llm.sh",
     "test": "vitest run",
     "test:watch": "vitest"
   },

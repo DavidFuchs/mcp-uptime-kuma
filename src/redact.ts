@@ -193,8 +193,8 @@ export interface RedactedNotification extends Record<string, unknown> {
 /**
  * Applies the allowlist to one notification row.
  *
- * The row's own columns (`id`, `name`, `type`, `active`, `isDefault`) are not secret
- * and are kept as-is. `config` is a JSON STRING holding the provider-specific fields,
+ * The row's own columns (`id`, `name`, `active`, `isDefault`, `userId`) are not secret
+ * and are kept as-is. There is no `type` column: the type lives in `config`. `config` is a JSON STRING holding the provider-specific fields,
  * and is where every credential lives. It is returned as a JSON string of the
  * allowlisted subset so the field keeps its shape, alongside `redactedConfigKeys`
  * naming what was withheld.

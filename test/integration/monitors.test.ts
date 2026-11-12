@@ -704,7 +704,8 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
       )).timeout);
 
       try {
-        // A push monitor stores no timeout; carried over, Uptime Kuma would treat it as ~13 hours.
+        // A push monitor made before the form default was applied stores 0; carried over, Uptime
+        // Kuma would treat it as ~13 hours. The conversion must end up at 48 either way.
         extractText(await client.callTool({
           name: 'updateMonitor',
           arguments: { monitorID: pushID, type: 'http', url: 'https://example.com' },
