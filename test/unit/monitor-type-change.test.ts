@@ -255,7 +255,8 @@ describe('monitor type rules shared by createMonitor and updateMonitor', () => {
     it('treats a null timeout sent with a type change as not chosen', async () => {
       await update({ type: 'ping', hostname: 'app.example.com', timeout: null });
 
-      expect(lastWrite.timeout).toBe(48);
+      // The web form's ping default.
+      expect(lastWrite.timeout).toBe(10);
     });
 
     it('leaves a timeout the caller chose alone', async () => {

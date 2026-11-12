@@ -14,7 +14,7 @@ import { redactSecrets, SECRET_MARKER } from '../../src/redact.js';
 process.setMaxListeners(400);
 
 /**
- * Every field Uptime Kuma 2.5.9's `editMonitor` handler reads off the payload
+ * Every field Uptime Kuma 2.5.10's `editMonitor` handler reads off the payload
  * (server/server.js, the `bean.x = monitor.y` block), by the name it READS — `saveResponse`,
  * not the `save_response` it assigns to. A field missing from the write tools is one a caller
  * cannot set, which is the whole of #112.
@@ -364,6 +364,45 @@ describe('type-specific monitor fields (#112)', () => {
       expect((await describe('snmp')).required.map((f) => f.name)).toEqual(['hostname', 'snmpOid', 'snmpCommunity', 'expectedValue']);
     });
 
+    // Uptime Kuma 2.5.10, src/util.ts TYPES_WITH_DOMAIN_EXPIRY_SUPPORT_VIA_FIELD: the types whose
+    // domain DomainExpiry.checkSupport() can read. Every other type refuses domain expiry.
+    const DOMAIN_EXPIRY_TYPES = [
+      'http', 'keyword', 'json-query', 'real-browser', 'websocket-upgrade', 'port', 'ping', 'grpc-keyword', 'dns',
+      'smtp', 'snmp', 'gamedig', 'steam', 'mqtt', 'radius', 'tailscale-ping', 'sip-options',
+    ];
+    // The certificate check runs from handleTlsInfo() in the http/keyword/json-query branch of
+    // server/model/monitor.js, and from globalping.js. No other type reads expiryNotification.
+    const CERT_EXPIRY_TYPES = ['http', 'keyword', 'json-query', 'globalping'];
+
+    it.each(['domainExpiryNotification', 'expiryNotification'])('lists %s for exactly the types that check it', async (field) => {
+      const { types, describe } = await connect();
+      const expected = field === 'domainExpiryNotification' ? DOMAIN_EXPIRY_TYPES : CERT_EXPIRY_TYPES;
+      const listing: string[] = [];
+      for (const type of types) {
+        const fields = await describe(type);
+        if ([...fields.required, ...fields.optional].some((f) => f.name === field)) listing.push(type);
+      }
+
+      expect(listing.sort()).toEqual([...expected].sort());
+    });
+
+    // Each one read off the check in Uptime Kuma 2.5.10 (server/monitor-types/*.js and the
+    // per-type branches of server/model/monitor.js).
+    it.each([
+      ['mongodb', ['jsonPath', 'expectedValue'], []],
+      ['steam', ['packetSize'], []],
+      ['docker', ['ignoreTls'], []],
+      ['real-browser', [], ['accepted_statuscodes', 'ignoreTls']],
+      ['port', [], ['ipFamily', 'proxyId']],
+    ])('lists for %s the fields its check reads, and only those', async (type, present, absent) => {
+      const { describe } = await connect();
+      const fields = await describe(type);
+      const names = [...fields.required, ...fields.optional].map((f) => f.name);
+
+      for (const field of present) expect(names, `${type} lists ${field}`).toContain(field);
+      for (const field of absent) expect(names, `${type} does not list ${field}`).not.toContain(field);
+    });
+
     it('refuses an unknown type', async () => {
       const { client } = await connect();
       const result = await client.callTool({ name: 'getMonitorTypeFields', arguments: { type: 'nope' } });
@@ -553,6 +592,30 @@ describe('type-specific monitor fields (#112)', () => {
       expect(lastWrite.authMethod).toBe('mtls');
     });
 
+    // Uptime Kuma's oauth_auth_method column has no default, and its `authMethod =
+    // "client_secret_basic"` parameter default does not apply to a stored null, which
+    // openid-client 5.7 then refuses with "missing, or unsupported, token_endpoint_auth_method"
+    // on every check. Only the web form, which always sends one, avoids it.
+    it('stores client_secret_basic for an oauth2-cc monitor that does not say how to authenticate', async () => {
+      const oauth = {
+        type: 'http',
+        url: 'https://example.com',
+        oauth_token_url: 'https://idp.internal/token',
+        oauth_client_id: 'id',
+        oauth_client_secret: 'secret',
+      };
+
+      await create(oauth);
+      expect(lastWrite.oauth_auth_method).toBe('client_secret_basic');
+
+      await create({ ...oauth, oauth_auth_method: 'client_secret_post' });
+      expect(lastWrite.oauth_auth_method).toBe('client_secret_post');
+
+      existing = { ...EXISTING_HTTP_MONITOR, oauth_auth_method: null };
+      await update({ authMethod: 'oauth2-cc', oauth_token_url: 'https://idp.internal/token', oauth_client_id: 'id', oauth_client_secret: 'secret' });
+      expect(lastWrite.oauth_auth_method).toBe('client_secret_basic');
+    });
+
     it('does not report an authMethod the caller chose themselves', async () => {
       const result = await create({ type: 'http', url: 'https://example.com', authMethod: 'bearer', bearer_token: 'tok' });
 
@@ -698,6 +761,69 @@ describe('type-specific monitor fields (#112)', () => {
         'A globalping monitor needs url'
       );
       expect((await create({ type: 'globalping', subtype: 'http', url: 'https://example.com' })).isError).toBeFalsy();
+    });
+
+    // Uptime Kuma 2.5.10 offers different record types for the two (EditMonitor.vue
+    // dnsresolvetypeOptions / globalpingdnsresolvetypeoptions): a dns monitor passes the type to
+    // Node's resolver, globalping to the Globalping API. Neither list contains the other.
+    it('accepts the record types globalping offers that a dns monitor does not', async () => {
+      for (const recordType of ['ANY', 'DNSKEY', 'DS', 'HTTPS', 'NSEC', 'RRSIG', 'SVCB']) {
+        const result = await create({ type: 'globalping', subtype: 'dns', hostname: 'example.com', dns_resolve_type: recordType });
+        expect(result.isError, recordType).toBeFalsy();
+        expect(lastWrite.dns_resolve_type).toBe(recordType);
+      }
+    });
+
+    // What the web form starts a new monitor with (EditMonitor.vue monitorDefaults and its
+    // "monitor.type" watcher), where Uptime Kuma's column defaults differ: interval 20,
+    // retry_interval 0, and a timeout of 0 that its runtime fallback turns into ~13 hours.
+    it.each([
+      ['port', { hostname: 'db.internal', port: 5432 }, { interval: 60, retryInterval: 60, timeout: 48 }],
+      ['ping', { hostname: 'db.internal' }, { interval: 60, retryInterval: 60, timeout: 10 }],
+      ['snmp', MINIMAL.snmp, { timeout: 5 }],
+      ['kafka-producer', MINIMAL['kafka-producer'], { timeout: 1 }],
+      ['ntp', MINIMAL.ntp, { interval: 300, retryInterval: 300, timeout: 48 }],
+    ])('gives a new %s monitor the web form defaults', async (type, fields, expected) => {
+      await create({ type, ...fields });
+
+      expect(lastWrite).toMatchObject(expected);
+    });
+
+    it('holds the default timeout to 80% of a short interval, and follows the interval with the retry interval', async () => {
+      await create({ type: 'http', url: 'https://example.com', interval: 20 });
+      expect(lastWrite).toMatchObject({ interval: 20, retryInterval: 20, timeout: 16 });
+
+      await create({ type: 'http', url: 'https://example.com', interval: 300, retryInterval: 30 });
+      expect(lastWrite).toMatchObject({ interval: 300, retryInterval: 30, timeout: 48 });
+    });
+
+    it('queries A records when a globalping dns measurement names no record type', async () => {
+      await create({ type: 'globalping', subtype: 'dns', hostname: 'example.com' });
+      expect(lastWrite.dns_resolve_type).toBe('A');
+
+      await create({ type: 'globalping', subtype: 'ping', hostname: 'example.com' });
+      expect(lastWrite).not.toHaveProperty('dns_resolve_type');
+    });
+
+    it.each([
+      ['dns', 'DNSKEY'],
+      ['globalping', 'CAA'],
+    ])('refuses a record type a %s monitor cannot query (%s)', async (type, recordType) => {
+      const result = await create({ type, subtype: type === 'globalping' ? 'dns' : undefined, hostname: 'example.com', dns_resolve_type: recordType });
+
+      expect(result.isError).toBe(true);
+      expect(textOf(result)).toContain(`cannot query ${recordType} records`);
+      expect(createMonitor).not.toHaveBeenCalled();
+    });
+
+    it('refuses on update a record type the stored type cannot query', async () => {
+      existing = { id: 7, name: 'D', type: 'dns', hostname: 'example.com', interval: 60, retryInterval: 60, timeout: 48 };
+
+      const result = await update({ dns_resolve_type: 'HTTPS' });
+
+      expect(result.isError).toBe(true);
+      expect(textOf(result)).toContain('cannot query HTTPS records');
+      expect(updateMonitor).not.toHaveBeenCalled();
     });
 
     it('refuses an http:// url for a websocket-upgrade monitor', async () => {

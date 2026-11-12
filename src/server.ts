@@ -278,8 +278,8 @@ const MONITOR_FIELD_DOCS: Record<keyof typeof TYPE_SPECIFIC_MONITOR_FIELD_SCHEMA
   ipFamily: 'Force IPv4 or IPv6. null lets Uptime Kuma choose.',
   cacheBust: 'Append a random query parameter to each request to defeat caches',
   proxyId: 'ID of a proxy configured in Uptime Kuma to send requests through. null for none.',
-  saveResponse: 'Store the response body with every heartbeat',
-  saveErrorResponse: 'Store the response body with failing heartbeats',
+  saveResponse: 'Store the response body with every heartbeat (default: false)',
+  saveErrorResponse: 'Store the response body with failing heartbeats (default: true)',
   responseMaxLength: 'Maximum bytes of response body stored (default: 1024, max: 1048576)',
   retryOnlyOnStatusCodeFailure: 'json-query only: retry when the status code is wrong, but go DOWN at once when the JSON query fails',
 
@@ -301,7 +301,7 @@ const MONITOR_FIELD_DOCS: Record<keyof typeof TYPE_SPECIFIC_MONITOR_FIELD_SCHEMA
   grpcServiceName: 'Service name from the proto (required for grpc-keyword)',
   grpcMethod: 'Method to call on the service (required for grpc-keyword)',
   grpcBody: 'Request message as a JSON string',
-  grpcMetadata: `Request metadata as a JSON string. Usually carries credentials. ${SECRET_NOTE}`,
+  grpcMetadata: `Request metadata as a JSON string. Usually carries credentials. Uptime Kuma 2.5.10 stores it but its check does not send it yet. ${SECRET_NOTE}`,
   grpcEnableTls: 'Connect to the gRPC server over TLS',
 
   // ── kafka-producer ──
@@ -354,7 +354,7 @@ const MONITOR_FIELD_DOCS: Record<keyof typeof TYPE_SPECIFIC_MONITOR_FIELD_SCHEMA
   sftpPath: 'Remote path that must exist for the sftp monitor to be UP (optional)',
 
   // ── ping ──
-  packetSize: 'Ping packet size in bytes (default: 56). Also used by steam.',
+  packetSize: 'Ping packet size in bytes (default: 56). Also the size of the ping steam measures latency with.',
   ping_count: 'Echo requests sent per check (default: 1)',
   ping_numeric: 'Skip reverse DNS lookups in ping output (default: true)',
   ping_per_request_timeout: 'Seconds to wait for each echo reply (default: 2). Must not exceed timeout.',
@@ -381,20 +381,34 @@ const HTTP_AUTH_FIELDS = [
 ];
 const HTTP_REQUEST_FIELDS = [
   'url', 'method', 'headers', 'body', 'httpBodyEncoding', 'accepted_statuscodes', 'maxredirects', 'ignoreTls',
-  'expiryNotification', 'domainExpiryNotification', 'ipFamily', 'cacheBust', 'proxyId',
+  'expiryNotification', 'ipFamily', 'cacheBust', 'proxyId',
   'saveResponse', 'saveErrorResponse', 'responseMaxLength',
   ...HTTP_AUTH_FIELDS, 'authDomain', 'authWorkstation', 'tlsCert', 'tlsKey', 'tlsCa',
 ];
 const DATABASE_FIELDS = ['databaseConnectionString', 'databaseQuery'];
 
 /**
+ * The record types each type can query, as Uptime Kuma 2.5.10 offers them (EditMonitor.vue
+ * dnsresolvetypeOptions and globalpingdnsresolvetypeoptions). A dns monitor hands the type to
+ * Node's resolver and globalping to the Globalping API; neither list contains the other, so
+ * dns_resolve_type accepts both and assertDnsRecordType checks it against the monitor's type.
+ */
+const DNS_RECORD_TYPES: Record<string, readonly string[]> = {
+  dns: ['A', 'AAAA', 'CAA', 'CNAME', 'MX', 'NS', 'PTR', 'SOA', 'SRV', 'TXT'],
+  globalping: ['A', 'AAAA', 'ANY', 'CNAME', 'DNSKEY', 'DS', 'HTTPS', 'MX', 'NS', 'NSEC', 'PTR', 'RRSIG', 'SOA', 'SRV', 'SVCB', 'TXT'],
+};
+const ALL_DNS_RECORD_TYPES = [...new Set(Object.values(DNS_RECORD_TYPES).flat())].sort() as [string, ...string[]];
+
+/**
  * The fields each monitor type uses, beyond the ones every type shares (COMMON_MONITOR_FIELDS).
  *
  * Read off what each type's check dereferences (server/monitor-types/*.js and the per-type
- * branches of server/model/monitor.js, Uptime Kuma 2.5.9). It is what getMonitorTypeFields
+ * branches of server/model/monitor.js, Uptime Kuma 2.5.10). It is what getMonitorTypeFields
  * answers from and what the terse advertised descriptions are derived from. It does NOT gate
  * writes: Uptime Kuma stores any field on any type, and refusing one here because this table
  * is behind upstream would be a worse failure than accepting it.
+ *
+ * domainExpiryNotification is added below, from DOMAIN_EXPIRY_MONITOR_TYPES.
  */
 const MONITOR_TYPE_FIELDS: Record<string, string[]> = {
   http: HTTP_REQUEST_FIELDS,
@@ -403,12 +417,13 @@ const MONITOR_TYPE_FIELDS: Record<string, string[]> = {
   port: ['hostname', 'port'],
   ping: ['hostname', 'packetSize', 'ping_count', 'ping_numeric', 'ping_per_request_timeout'],
   dns: ['hostname', 'port', 'dns_resolve_server', 'dns_resolve_type', 'conditions'],
-  docker: ['docker_container', 'docker_host'],
+  // ignoreTls applies to the connection to a Docker host reached over HTTPS.
+  docker: ['docker_container', 'docker_host', 'ignoreTls'],
   mqtt: [
     'hostname', 'port', 'mqttTopic', 'mqttUsername', 'mqttPassword', 'mqttCheckType', 'mqttSuccessMessage',
     'mqttWebsocketPath', 'jsonPath', 'expectedValue', 'conditions',
   ],
-  mongodb: DATABASE_FIELDS,
+  mongodb: [...DATABASE_FIELDS, 'jsonPath', 'expectedValue'],
   redis: ['databaseConnectionString', 'ignoreTls'],
   sqlserver: [...DATABASE_FIELDS, 'conditions'],
   postgres: DATABASE_FIELDS,
@@ -429,9 +444,12 @@ const MONITOR_TYPE_FIELDS: Record<string, string[]> = {
   rabbitmq: ['rabbitmqNodes', 'rabbitmqUsername', 'rabbitmqPassword'],
   smtp: ['hostname', 'port', 'smtpSecurity'],
   snmp: ['hostname', 'port', 'snmpOid', 'snmpVersion', 'snmpCommunity', 'jsonPath', 'jsonPathOperator', 'expectedValue'],
-  'real-browser': ['url', 'remote_browser', 'screenshot_delay', 'accepted_statuscodes', 'ignoreTls'],
+  // The check takes any status from 200 to 399 and never reads accepted_statuscodes or ignoreTls.
+  'real-browser': ['url', 'remote_browser', 'screenshot_delay'],
   gamedig: ['hostname', 'port', 'game', 'gamedigGivenPortOnly', 'gamedigToken'],
-  steam: ['hostname', 'port'],
+  // The check also reads ignoreTls, maxredirects and accepted_statuscodes, but only for its call
+  // to the Steam Web API, not the game server, so they are not offered as settings of the monitor.
+  steam: ['hostname', 'port', 'packetSize'],
   push: ['pushToken'],
   group: [],
   'tailscale-ping': ['hostname'],
@@ -451,6 +469,18 @@ const MONITOR_TYPE_FIELDS: Record<string, string[]> = {
   'system-service': ['system_service_name'],
   pm2: ['system_service_name'],
 };
+
+/**
+ * The types whose domain registration expiry Uptime Kuma can check: the keys of
+ * TYPES_WITH_DOMAIN_EXPIRY_SUPPORT_VIA_FIELD (src/util.ts, Uptime Kuma 2.5.10), the table
+ * DomainExpiry.checkSupport() refuses every other type with. Not the same as the types that
+ * check certificate expiry (expiryNotification), which are only the HTTP ones and globalping.
+ */
+const DOMAIN_EXPIRY_MONITOR_TYPES = [
+  'http', 'keyword', 'json-query', 'real-browser', 'websocket-upgrade', 'port', 'ping', 'grpc-keyword', 'dns',
+  'smtp', 'snmp', 'gamedig', 'steam', 'mqtt', 'radius', 'tailscale-ping', 'sip-options',
+];
+for (const type of DOMAIN_EXPIRY_MONITOR_TYPES) MONITOR_TYPE_FIELDS[type] = [...MONITOR_TYPE_FIELDS[type], 'domainExpiryNotification'];
 
 /** Accepted by every monitor type, so not repeated per type. */
 const COMMON_MONITOR_FIELDS = [
@@ -1396,6 +1426,15 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
     }
   };
 
+  // A record type the monitor's type cannot query is saved, then fails every check.
+  const assertDnsRecordType = (type: unknown, recordType: unknown): void => {
+    const supported = DNS_RECORD_TYPES[String(type)];
+    if (!supported || recordType === undefined || recordType === null || supported.includes(String(recordType))) return;
+    throw new Error(
+      `A ${type} monitor cannot query ${recordType} records. It supports ${supported.join(', ')}.`
+    );
+  };
+
   const normaliseMonitorAliases = (fields: Record<string, unknown>): Record<string, unknown> => {
     for (const [alias, canonical] of Object.entries(MONITOR_FIELD_ALIASES)) {
       if (!(alias in fields)) continue;
@@ -1425,15 +1464,18 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
     return token;
   };
 
-  // Uptime Kuma's own intent for an unset timeout is 0.8 x interval; only its unit handling is
-  // wrong. Storing the value at creation means the buggy runtime fallback never runs.
+  // The timeout the web form gives a new monitor (EditMonitor.vue, the "monitor.type" watcher):
+  // 5 s for snmp, 10 s for ping, 1 s for kafka-producer and 48 s otherwise, held to 80% of the
+  // interval by clampTimeout() for every type but ping. Storing it at creation also means
+  // Uptime Kuma's runtime fallback for a 0 timeout, whose unit handling is wrong, never runs.
   // push never polls and group has no request of its own, so both correctly keep 0.
+  const FORM_TIMEOUT_DEFAULTS: Record<string, number> = { snmp: 5, ping: 10, 'kafka-producer': 1 };
   const defaultTimeoutForInterval = (type: string, interval?: number): number | undefined => {
     if (type === 'push' || type === 'group') return undefined;
-    const seconds = Math.round((interval ?? 60) * 0.8 * 10) / 10;
+    const timeout = FORM_TIMEOUT_DEFAULTS[type] ?? 48;
     // Monitor.validate() rejects a ping timeout outside PING_GLOBAL_TIMEOUT_MIN/MAX (1..300).
-    if (type === 'ping') return Math.min(Math.max(Math.round(seconds), 1), 300);
-    return seconds;
+    if (type === 'ping') return timeout;
+    return Math.min(timeout, Math.floor((interval ?? 60) * 8) / 10);
   };
 
   // The web UI's form stores its "https://" placeholder in url for types that never use it.
@@ -1590,6 +1632,13 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
     if (missing.length > 0) {
       throw new Error(`authMethod '${method}' needs ${missing.join(', ')}.`);
     }
+    // The oauth_auth_method column has no default, and Uptime Kuma's own fallback to
+    // client_secret_basic only covers undefined, not the stored null: openid-client then
+    // refuses every token request. The web form always sends one; do the same.
+    if (method === 'oauth2-cc' && isBlank(monitor.oauth_auth_method)) {
+      applied.oauth_auth_method = 'client_secret_basic';
+      monitor.oauth_auth_method = 'client_secret_basic';
+    }
     return applied;
   };
 
@@ -1689,6 +1738,9 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
       // The form's default; the check switches on it and does nothing at all for a blank one.
       if (isBlank(monitor.subtype)) applied.subtype = 'ping';
       if (isBlank(monitor.location)) applied.location = 'world';
+      // Also the form's default. The column has none, and the check passes it to the
+      // Globalping API as the query type as it is, null included.
+      if ((applied.subtype ?? monitor.subtype) === 'dns' && isBlank(monitor.dns_resolve_type)) applied.dns_resolve_type = 'A';
       required.push((applied.subtype ?? monitor.subtype) === 'http' ? 'url' : 'hostname');
     }
     if (type === 'sftp') {
@@ -1703,6 +1755,7 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
       );
     }
     assertMongoQueryIsJson(type, monitor.databaseQuery);
+    assertDnsRecordType(type, monitor.dns_resolve_type);
 
     if (type === 'websocket-upgrade') {
       if (!/^wss?:\/\//i.test(String(monitor.url))) {
@@ -1930,7 +1983,7 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
     description: z.string().nullable().optional().describe('Free-text description shown on the monitor page'),
     active: z.boolean().optional().describe('Whether the monitor starts checking immediately (default: true). Pass false to create it paused.'),
     resendInterval: numeric(z.number()).optional().describe('Resend notification every N checks while down (0 = disabled, the default)'),
-    timeout: numeric(z.number()).nullable().optional().describe('Request timeout in SECONDS. Omit for 0.8 x interval. Avoid 0: Uptime Kuma\'s runtime fallback for a stored 0 computes interval * 1000 * 0.8 and then multiplies by 1000 again, yielding a ~13 hour timeout, so the monitor can never report DOWN against a host that accepts the connection and never answers.'),
+    timeout: numeric(z.number()).nullable().optional().describe('Request timeout in SECONDS. Omit for the web form\'s default: 48, or 10 for ping, 5 for snmp and 1 for kafka-producer, at most 0.8 x interval. Avoid 0: Uptime Kuma\'s runtime fallback for a stored 0 computes interval * 1000 * 0.8 and then multiplies by 1000 again, yielding a ~13 hour timeout, so the monitor can never report DOWN against a host that accepts the connection and never answers.'),
     jsonPath: z.string().optional().describe('JSONata expression for json-query monitors. Must resolve to a primitive.'),
     jsonPathOperator: z.enum(['>', '>=', '<', '<=', '==', '!=', 'contains']).optional().describe('Comparison operator for json-query monitors. UP while value <operator> expectedValue.'),
     expectedValue: z.coerce.string().optional().describe('Threshold the json-query result is compared against. Stored as a string.'),
@@ -1938,8 +1991,8 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
     url: z.string().optional().describe('URL to monitor (required for http, keyword and json-query; other types that need it are listed by getMonitorTypeFields)'),
     hostname: z.string().optional().describe('Hostname or IP address to check (required for port, ping and dns, and most non-HTTP types — see getMonitorTypeFields)'),
     port: numeric(z.number()).optional().describe('Port number (required for port; see getMonitorTypeFields for other types)'),
-    interval: numeric(z.number().min(1)).optional().describe('Check interval in seconds (default: 60, min: 1)'),
-    retryInterval: numeric(z.number().min(1)).optional().describe('Retry interval in seconds when monitor is down (default: 60, min: 1)'),
+    interval: numeric(z.number().min(1)).optional().describe('Check interval in seconds (default: 60, or 300 for ntp; min: 1)'),
+    retryInterval: numeric(z.number().min(1)).optional().describe('Retry interval in seconds when monitor is down (default: the interval, min: 1)'),
     maxretries: numeric(z.number()).optional().describe('Max retries before marking as down (default: 0)'),
     notificationIDList: z.record(z.string(), z.boolean()).optional().describe('Map of notification IDs to enable (e.g. {"1": true, "3": true})'),
     tags: z.array(z.object({
@@ -1956,15 +2009,15 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
     ignoreTls: z.boolean().optional().describe('Ignore TLS/SSL errors'),
     maxredirects: numeric(z.number()).optional().describe('Max HTTP redirects (default: 10)'),
     upsideDown: z.boolean().optional().describe('Invert status — treat up as down'),
-    expiryNotification: z.boolean().optional().describe('Notify before the TLS certificate expires (HTTP-based types)'),
-    domainExpiryNotification: z.boolean().optional().describe('Notify before the domain registration expires. Needs Uptime Kuma 2.1 or later.'),
+    expiryNotification: z.boolean().optional().describe('Notify before the TLS certificate expires (http, keyword, json-query, globalping)'),
+    domainExpiryNotification: z.boolean().optional().describe('Notify before the domain registration expires (most types with a url or hostname; see getMonitorTypeFields). Needs Uptime Kuma 2.1 or later.'),
     parent: numeric(z.number()).nullable().optional().describe('Parent group monitor ID'),
     docker_container: z.string().optional().describe('Docker container name (required for docker type)'),
     docker_host: numeric(z.number()).optional().describe('Docker host ID (required for docker type). Use listDockerHosts to find available IDs.'),
     dns_resolve_server: z.string().optional().describe('DNS server to use for resolution (required for dns type, default: 1.1.1.1)'),
-    dns_resolve_type: z.enum(['A', 'AAAA', 'CNAME', 'MX', 'NS', 'PTR', 'SOA', 'SRV', 'TXT', 'CAA']).optional().describe('DNS record type to query (required for dns type, default: A)'),
+    dns_resolve_type: z.enum(ALL_DNS_RECORD_TYPES).optional().describe('DNS record type to query, for dns and globalping (default: A). Which types each supports: getMonitorTypeFields'),
     databaseConnectionString: z.string().optional().describe('Connection string for mysql, postgres, mongodb, redis, sqlserver and oracledb monitors (required for those types). For oracledb the login goes in basic_auth_user and basic_auth_pass. A credential: read tools return it as "***" unless includeSecrets is set.'),
-    databaseQuery: z.string().optional().describe('Query for database monitors. SQL for mysql, postgres and sqlserver (default: SELECT 1); a JSON command object for mongodb (default: {"ping": 1}).'),
+    databaseQuery: z.string().optional().describe('Query for database monitors. SQL for mysql, postgres and sqlserver (default: SELECT 1) and oracledb (default: SELECT 1 FROM DUAL); a JSON command object for mongodb (default: {"ping": 1}).'),
     databasePassword: z.string().optional().describe('Password for mysql monitors, if not inline in the connection string. Stored by Uptime Kuma as radiusPassword. A credential: read tools return it as "***".'),
     radiusPassword: z.string().optional().describe('The RADIUS password (required for radius). Also the column databasePassword and typeFields.snmpCommunity are stored in — prefer those names for mysql and snmp.'),
     typeFields: z.record(z.string(), z.unknown()).optional().describe(TYPE_FIELDS_DESCRIPTION),
@@ -1973,7 +2026,10 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
   // Which defaults this server fills in, and which fields depend on another field's value.
   // Everything here restates a rule enforced in applyMonitorTypeRules / applyHttpAuthRules.
   const MONITOR_TYPE_NOTES: Record<string, string[]> = {
-    dns: ['dns_resolve_server defaults to 1.1.1.1 and dns_resolve_type to A.'],
+    dns: [
+      'dns_resolve_server defaults to 1.1.1.1 and dns_resolve_type to A.',
+      `dns_resolve_type is one of ${DNS_RECORD_TYPES.dns.join(', ')}.`,
+    ],
     push: ['pushToken is generated when omitted, and the ping URL is returned by the call that creates the monitor.'],
     group: ['A group has no check of its own. Put monitors in it with their parent field.'],
     mqtt: [
@@ -1992,9 +2048,13 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
     globalping: [
       'subtype defaults to "ping" and location to "world".',
       'subtype "ping" and "dns" require hostname; subtype "http" requires url instead.',
+      `For subtype "dns", dns_resolve_type defaults to A and is one of ${DNS_RECORD_TYPES.globalping.join(', ')}. Uptime Kuma stores it in a 5-character column, so on a MariaDB or MySQL database DNSKEY may be refused or cut short.`,
     ],
     sftp: ['sshAuthMethod "password" (the default) requires sshPassword; "privateKey" requires sshPrivateKey.'],
-    mongodb: ['databaseQuery must be a JSON command object, e.g. {"ping": 1}.'],
+    mongodb: [
+      'databaseQuery must be a JSON command object, e.g. {"ping": 1}.',
+      'Optionally, jsonPath (a JSONata expression) picks a value out of the command result, which is DOWN when it finds nothing, and expectedValue is a string that value must equal. jsonPathOperator is not used.',
+    ],
     oracledb: ['The login goes in basic_auth_user and basic_auth_pass, not in the connection string.'],
     manual: ['manual_status is not returned by Uptime Kuma, so it cannot be read back.'],
     'system-service': ['Checks a service on the machine Uptime Kuma itself runs on.'],
@@ -2068,7 +2128,8 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
         );
       }
       if (type !== 'push' && type !== 'group') {
-        notes.push('timeout defaults to 0.8 x interval seconds.');
+        const timeout = FORM_TIMEOUT_DEFAULTS[type] ?? 48;
+        notes.push(`timeout defaults to ${timeout} seconds${type === 'ping' ? '' : ', or 0.8 x interval if that is less'}.`);
       }
 
       const structuredContent = {
@@ -2092,7 +2153,7 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
     'createMonitor',
     {
       title: 'Create Monitor',
-      description: 'Creates a new monitor in Uptime Kuma. Requires at minimum a name and type. Use listMonitorTypes to see supported types. For HTTP monitors include url; for TCP/port monitors include hostname and port; for ping and dns include hostname; for json-query include url, jsonPath, jsonPathOperator and expectedValue; for database types (mysql, postgres, mongodb, redis, sqlserver, oracledb) include databaseConnectionString. For any other type, and for anything type-specific such as HTTP authentication, call getMonitorTypeFields first: it lists the required and optional fields of the type, what each means, and whether it is passed at the top level or inside typeFields. A create without the required fields of its type is refused rather than saved as a monitor that fails every check. For an HTTP monitor behind authentication pass the credentials in typeFields (basic_auth_user and basic_auth_pass, or bearer_token) and authMethod is set to match. Never pass "***" for a credential. A push monitor is given a generated push token (Uptime Kuma only generates one in its own web UI) and the resulting ping URL is returned. timeout defaults to 0.8 x interval seconds for polled types.',
+      description: 'Creates a new monitor in Uptime Kuma. Requires at minimum a name and type. Use listMonitorTypes to see supported types. For HTTP monitors include url; for TCP/port monitors include hostname and port; for ping and dns include hostname; for json-query include url, jsonPath, jsonPathOperator and expectedValue; for database types (mysql, postgres, mongodb, redis, sqlserver, oracledb) include databaseConnectionString. For any other type, and for anything type-specific such as HTTP authentication, call getMonitorTypeFields first: it lists the required and optional fields of the type, what each means, and whether it is passed at the top level or inside typeFields. A create without the required fields of its type is refused rather than saved as a monitor that fails every check. For an HTTP monitor behind authentication pass the credentials in typeFields (basic_auth_user and basic_auth_pass, or bearer_token) and authMethod is set to match. Never pass "***" for a credential. A push monitor is given a generated push token (Uptime Kuma only generates one in its own web UI) and the resulting ping URL is returned. Omitted settings get the web form\'s defaults: interval 60 (300 for ntp), retryInterval equal to interval, and a per-type timeout.',
       inputSchema: createMonitorShape,
       outputSchema: {
         ok: z.boolean(),
@@ -2112,7 +2173,6 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
           notificationIDList: {} as Record<string, boolean>,
           accepted_statuscodes: ['200-299'],
           conditions: [] as string[],
-          retryInterval: 60,
         };
 
         // typeFields is flattened into the monitor here: Uptime Kuma's payload is one flat object.
@@ -2121,6 +2181,15 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
           ...topLevel,
           ...parseTypeFields(typeFields, Object.keys(createMonitorShape)),
         });
+
+        // What the web form starts a new monitor with, where the column default differs.
+        // Set on `requested` rather than `defaults` because the timeout default below is
+        // derived from the interval. The interval column defaults to 20, retry_interval to 0
+        // and expiry_notification to true.
+        if (requested.interval === undefined) requested.interval = requested.type === 'ntp' ? 300 : 60;
+        // The form moves the retry interval along with the interval while the two are equal.
+        if (requested.retryInterval === undefined) requested.retryInterval = requested.interval;
+        if (requested.expiryNotification === undefined) requested.expiryNotification = false;
 
         // Issue #59: nothing to restore on a create, so the redaction marker must be refused
         // rather than persisted — writing "***" produces a credential that looks set and can
@@ -2243,15 +2312,15 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
         ignoreTls: z.boolean().optional().describe('Ignore TLS/SSL errors'),
         maxredirects: numeric(z.number()).optional().describe('Max HTTP redirects'),
         upsideDown: z.boolean().optional().describe('Invert status'),
-        expiryNotification: z.boolean().optional().describe('Notify before the TLS certificate expires (HTTP-based types)'),
-        domainExpiryNotification: z.boolean().optional().describe('Notify before the domain registration expires. Needs Uptime Kuma 2.1 or later.'),
+        expiryNotification: z.boolean().optional().describe('Notify before the TLS certificate expires (http, keyword, json-query, globalping)'),
+        domainExpiryNotification: z.boolean().optional().describe('Notify before the domain registration expires (most types with a url or hostname; see getMonitorTypeFields). Needs Uptime Kuma 2.1 or later.'),
         active: z.boolean().optional().describe('Whether the monitor is active'),
         docker_container: z.string().optional().describe('Docker container name (required for docker type)'),
         docker_host: numeric(z.number()).optional().describe('Docker host ID (required for docker type). Use listDockerHosts to find available IDs.'),
         dns_resolve_server: z.string().optional().describe('DNS server to use for resolution (for dns type)'),
-        dns_resolve_type: z.enum(['A', 'AAAA', 'CNAME', 'MX', 'NS', 'PTR', 'SOA', 'SRV', 'TXT', 'CAA']).optional().describe('DNS record type to query (for dns type)'),
+        dns_resolve_type: z.enum(ALL_DNS_RECORD_TYPES).optional().describe('DNS record type to query, for dns and globalping. Which types each supports: getMonitorTypeFields'),
         databaseConnectionString: z.string().optional().describe('Connection string for mysql, postgres, mongodb, redis, sqlserver and oracledb monitors. A credential: read tools return "***", and sending "***" back keeps the stored value.'),
-        databaseQuery: z.string().optional().describe('Query for database monitors. SQL for mysql, postgres and sqlserver; a JSON command object for mongodb.'),
+        databaseQuery: z.string().optional().describe('Query for database monitors. SQL for mysql, postgres, sqlserver and oracledb; a JSON command object for mongodb.'),
         databasePassword: z.string().optional().describe('Password for mysql monitors, stored by Uptime Kuma as radiusPassword. Sending "***" back keeps the stored value.'),
         radiusPassword: z.string().optional().describe('The RADIUS password (required for radius). Also the column databasePassword and typeFields.snmpCommunity are stored in — prefer those names for mysql and snmp.'),
         typeFields: z.record(z.string(), z.unknown()).optional().describe(TYPE_FIELDS_DESCRIPTION),
@@ -2286,6 +2355,7 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
         };
         normaliseMonitorAliases(defined);
         assertMongoQueryIsJson(defined.type ?? existing.type, defined.databaseQuery);
+        assertDnsRecordType(defined.type ?? existing.type, defined.dns_resolve_type);
 
         // Issue #59: a caller that read this monitor back holds "***" where a credential
         // was, and the natural edit-one-field-and-write-it-back loop would then persist

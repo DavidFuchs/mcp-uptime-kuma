@@ -493,7 +493,7 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
     },
   },
   {
-    name: 'timeout defaults to 0.8 x interval instead of being stored as 0',
+    name: 'timeout defaults to the web form value instead of being stored as 0',
     fn: async ({ client }) => {
       const monitorID = extractID(await client.callTool({
         name: 'createMonitor',
@@ -505,10 +505,11 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
           await client.callTool({ name: 'getMonitor', arguments: { monitorID } }) as CallToolResult,
           'getMonitor'
         ));
-        if (Number(m.timeout) !== 240) {
-          throw new Error(`expected timeout 240 (0.8 x 300), got ${JSON.stringify(m.timeout)}`);
+        // The form gives a new http monitor 48 s, held to 80% of the interval.
+        if (Number(m.timeout) !== 48) {
+          throw new Error(`expected timeout 48 (the web form default), got ${JSON.stringify(m.timeout)}`);
         }
-        console.log('  ✓ timeout defaulted to 240s rather than 0');
+        console.log('  ✓ timeout defaulted to 48s rather than 0');
       } finally {
         await client.callTool({ name: 'deleteMonitor', arguments: { monitorID } });
       }
@@ -595,6 +596,57 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
     },
   },
   {
+    name: 'field audit: defaults and type-specific fields land as documented',
+    fn: async ({ client }) => {
+      const create = async (args: Record<string, unknown>) => extractID(await client.callTool({
+        name: 'createMonitor',
+        arguments: { active: false, ...args },
+      }) as CallToolResult, 'createMonitor', 'monitorID');
+      const read = async (monitorID: number) => JSON.parse(extractText(
+        await client.callTool({ name: 'getMonitor', arguments: { monitorID, includeTypeSpecificFields: true } }) as CallToolResult,
+        'getMonitor'
+      ));
+      const ids: number[] = [];
+
+      try {
+        // The interval column defaults to 20; createMonitor advertises 60.
+        ids.push(await create({ name: 'Integration Test - audit port', type: 'port', hostname: 'example.com', port: 443, domainExpiryNotification: false }));
+        const port = await read(ids[0]);
+        if (port.interval !== 60 || port.retryInterval !== 60 || port.timeout !== 48 || port.expiryNotification !== false) {
+          throw new Error(`not the web form defaults: ${JSON.stringify({ interval: port.interval, retryInterval: port.retryInterval, timeout: port.timeout, expiryNotification: port.expiryNotification })}`);
+        }
+        // domainExpiryNotification belongs to port too, not only the HTTP types.
+        if (port.domainExpiryNotification !== false) {
+          throw new Error(`domainExpiryNotification not persisted on a port monitor: ${JSON.stringify(port.domainExpiryNotification)}`);
+        }
+
+        // A stored null oauth_auth_method fails every token request.
+        ids.push(await create({
+          name: 'Integration Test - audit oauth',
+          type: 'http',
+          url: 'https://example.com',
+          typeFields: { oauth_token_url: 'https://idp.example.com/token', oauth_client_id: 'id', oauth_client_secret: 'secret' },
+        }));
+        const oauth = await read(ids[1]);
+        if (oauth.authMethod !== 'oauth2-cc' || oauth.oauth_auth_method !== 'client_secret_basic') {
+          throw new Error(`oauth2-cc defaults not stored: ${JSON.stringify({ authMethod: oauth.authMethod, oauth_auth_method: oauth.oauth_auth_method })}`);
+        }
+
+        // A record type only globalping offers, and the A default for a dns measurement.
+        ids.push(await create({ name: 'Integration Test - audit globalping', type: 'globalping', hostname: 'example.com', typeFields: { subtype: 'dns' } }));
+        if ((await read(ids[2])).dns_resolve_type !== 'A') throw new Error('globalping dns did not default to A records');
+        const https = await client.callTool({ name: 'updateMonitor', arguments: { monitorID: ids[2], dns_resolve_type: 'HTTPS' } }) as CallToolResult;
+        if (https.isError || (await read(ids[2])).dns_resolve_type !== 'HTTPS') {
+          throw new Error(`globalping HTTPS record type not stored: ${extractText(https, 'updateMonitor')}`);
+        }
+
+        console.log('  ✓ field audit: interval, domain expiry on port, oauth auth method and globalping record types');
+      } finally {
+        for (const monitorID of ids) await client.callTool({ name: 'deleteMonitor', arguments: { monitorID } });
+      }
+    },
+  },
+  {
     name: '#110: converting a group is refused and its children stay attached',
     fn: async ({ client }) => {
       const groupID = extractID(await client.callTool({
@@ -643,7 +695,7 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
       }) as CallToolResult, 'createMonitor', 'monitorID');
       const httpID = extractID(await client.callTool({
         name: 'createMonitor',
-        arguments: { name: 'Integration Test - Issue 110 slow http', type: 'http', url: 'https://example.com', interval: 600, active: false },
+        arguments: { name: 'Integration Test - Issue 110 slow http', type: 'http', url: 'https://example.com', interval: 600, timeout: 480, active: false },
       }) as CallToolResult, 'createMonitor', 'monitorID');
 
       const timeoutOf = async (monitorID: number) => Number(JSON.parse(extractText(
@@ -658,9 +710,9 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
           arguments: { monitorID: pushID, type: 'http', url: 'https://example.com' },
         }) as CallToolResult, 'updateMonitor');
         const fromPush = await timeoutOf(pushID);
-        if (fromPush !== 48) throw new Error(`push -> http: expected timeout 48 (0.8 x 60), got ${fromPush}`);
+        if (fromPush !== 48) throw new Error(`push -> http: expected timeout 48 (the web form default), got ${fromPush}`);
 
-        // 0.8 x 600 = 480, which Monitor.validate() rejects for ping (1..300).
+        // 480 is a valid http timeout, but Monitor.validate() rejects it for ping (1..300).
         const before = await timeoutOf(httpID);
         if (before !== 480) throw new Error(`expected the http monitor to start with timeout 480, got ${before}`);
         extractText(await client.callTool({
