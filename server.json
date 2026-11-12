@@ -66,6 +66,104 @@
           "name": "UPTIME_KUMA_READ_ONLY"
         }
       ]
+    },
+    {
+      "registryType": "npm",
+      "identifier": "@davidfuchs/mcp-uptime-kuma",
+      "version": "0.0.0-dev",
+      "transport": {
+        "type": "streamable-http",
+        "url": "http://localhost:{PORT}/mcp",
+        "headers": [
+          {
+            "name": "Authorization",
+            "description": "Bearer token the server requires on every request; must match MCP_AUTH_TOKEN",
+            "value": "Bearer {MCP_AUTH_TOKEN}",
+            "isRequired": true,
+            "isSecret": true,
+            "variables": {
+              "MCP_AUTH_TOKEN": {
+                "description": "The same value set in MCP_AUTH_TOKEN",
+                "isRequired": true,
+                "isSecret": true
+              }
+            }
+          }
+        ]
+      },
+      "environmentVariables": [
+        {
+          "description": "The URL of your Uptime Kuma instance",
+          "isRequired": true,
+          "format": "string",
+          "isSecret": false,
+          "name": "UPTIME_KUMA_URL"
+        },
+        {
+          "description": "Your Uptime Kuma username (not required if using JWT token authentication or if authentication is disabled)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false,
+          "name": "UPTIME_KUMA_USERNAME"
+        },
+        {
+          "description": "Your Uptime Kuma password (not required if using JWT token authentication or if authentication is disabled)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true,
+          "name": "UPTIME_KUMA_PASSWORD"
+        },
+        {
+          "description": "Your 2FA token (only required if two-factor authentication is enabled on your account)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true,
+          "name": "UPTIME_KUMA_2FA_TOKEN"
+        },
+        {
+          "description": "Your JWT token for authentication (takes precedence over username/password if provided)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true,
+          "name": "UPTIME_KUMA_JWT_TOKEN"
+        },
+        {
+          "description": "JSON object of extra HTTP headers sent on every request to Uptime Kuma, for reaching it through an authenticating proxy such as Cloudflare Access (e.g. {\"CF-Access-Client-Id\":\"...\",\"CF-Access-Client-Secret\":\"...\"})",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true,
+          "name": "UPTIME_KUMA_HEADERS"
+        },
+        {
+          "description": "Set to true to expose only the tools that report, and none that create, change, pause or delete",
+          "isRequired": false,
+          "format": "boolean",
+          "isSecret": false,
+          "name": "UPTIME_KUMA_READ_ONLY"
+        },
+        {
+          "description": "Shared secret clients must send as \"Authorization: Bearer <token>\"; requests without it are rejected",
+          "isRequired": true,
+          "format": "string",
+          "isSecret": true,
+          "name": "MCP_AUTH_TOKEN"
+        },
+        {
+          "description": "Port the HTTP server listens on",
+          "isRequired": false,
+          "format": "number",
+          "isSecret": false,
+          "default": "3000",
+          "name": "PORT"
+        }
+      ],
+      "packageArguments": [
+        {
+          "type": "named",
+          "name": "--transport",
+          "value": "streamable-http"
+        }
+      ]
     }
   ]
 }

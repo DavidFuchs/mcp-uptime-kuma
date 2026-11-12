@@ -35,7 +35,7 @@ jobs:
 
       - name: Set version in server.json
         run: |
-          jq --arg v "${{ steps.version.outputs.VERSION }}" '.version = $v | .packages[0].version = $v' server.json > server.tmp && mv server.tmp server.json
+          jq --arg v "${{ steps.version.outputs.VERSION }}" '.version = $v | .packages[].version = $v' server.json > server.tmp && mv server.tmp server.json
 
       - name: Install dependencies
         run: npm ci
