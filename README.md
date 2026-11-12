@@ -6,7 +6,7 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for [U
 [![npm downloads](https://img.shields.io/npm/d18m/%40davidfuchs%2Fmcp-uptime-kuma?style=flat&label=downloads&color=blue)](https://www.npmjs.com/package/@davidfuchs/mcp-uptime-kuma)
 [![Docker pulls](https://img.shields.io/docker/pulls/davidfuchs/mcp-uptime-kuma?style=flat)](https://hub.docker.com/r/davidfuchs/mcp-uptime-kuma)
 [![Release build](https://img.shields.io/github/actions/workflow/status/DavidFuchs/mcp-uptime-kuma/publish-npm.yml?style=flat&label=release%20build)](https://github.com/DavidFuchs/mcp-uptime-kuma/actions/workflows/publish-npm.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat)](https://github.com/DavidFuchs/mcp-uptime-kuma/blob/main/LICENSE)
 
 **Contents:** [What You Can Ask](#what-you-can-ask) ·
 [Features](#features) ·
@@ -188,8 +188,10 @@ contain it. Run `/mcp` inside Claude Code to check the connection.
 ```
 
 **Shared server, reachable from the internet (claude.ai, Claude Desktop, mobile):** go to
-*Settings → Connectors → Add custom connector*. Enter `https://your-public-host/mcp`, choose
-no sign-in, and add a request header `Authorization: Bearer your_generated_secret`. Claude
+*Customize → Connectors*, click *+ Add*, then *Add custom connector*. Give it a name and
+enter `https://your-public-host/mcp`. Under *Authentication* choose *No sign in*, and under
+*Request headers* add `Authorization: Bearer your_generated_secret`. On a Team or Enterprise
+plan, an owner adds it for everyone under *Organization settings → Connectors*. Claude
 connects from Anthropic's cloud, not from your computer. The server must therefore be
 reachable over public HTTPS, for example through a reverse proxy or Cloudflare Tunnel. A
 `localhost` or LAN address won't work.
@@ -366,9 +368,10 @@ mcpServers:
     serverInstructions: true
 ```
 
-**Shared server:** LibreChat blocks MCP calls to domains it hasn't been told to trust. List
-the host from the URL under `allowedDomains`, for example the container name when both run on
-the same Docker network:
+**Shared server:** LibreChat blocks MCP connections to private addresses by default, and that
+includes `localhost`, LAN IPs and a container name on a Docker network. List the host from the
+URL under `allowedDomains` to allow it. Once `allowedDomains` is set, it's a strict allowlist:
+list your other MCP servers' hosts there too, or they'll stop connecting.
 
 ```yaml
 mcpServers:
@@ -681,7 +684,7 @@ your own machine:
 liveness.
 
 The details, including why `Origin` validation matters separately from the token and how
-`TRUST_PROXY` can be abused, are in [docs/http-security.md](docs/http-security.md).
+`TRUST_PROXY` can be abused, are in [docs/http-security.md](https://github.com/DavidFuchs/mcp-uptime-kuma/blob/main/docs/http-security.md).
 
 ## Credential Redaction
 
@@ -697,16 +700,19 @@ live SMTP password into it.
 - **To see real values**, pass `includeSecrets: true` on a call, or set
   `UPTIME_KUMA_INCLUDE_SECRETS=true` for every call.
 
-[docs/credential-redaction.md](docs/credential-redaction.md) lists exactly what each tool
+[docs/credential-redaction.md](https://github.com/DavidFuchs/mcp-uptime-kuma/blob/main/docs/credential-redaction.md) lists exactly what each tool
 withholds and how credentials inside URLs are handled.
 
 ## Troubleshooting
 
-**Where to look first.** The server writes its errors to stderr. With a local server your
-client captures them. Run `/mcp` in Claude Code or Codex. In VS Code, run *MCP: List
-Servers*, pick the server and choose *Show Output*. Claude Desktop writes them to
-`mcp-server-uptime-kuma.log` in its logs folder (`~/Library/Logs/Claude` on macOS,
-`%APPDATA%\Claude\logs` on Windows). With Docker, run `docker logs mcp-uptime-kuma`.
+**Where to look first.** In Claude Code or Codex, run `/mcp` to see whether the server
+connected. The server writes its errors to stderr:
+
+- **VS Code:** run *MCP: List Servers*, pick the server and choose *Show Output*.
+- **Claude Desktop:** look for `mcp-server-uptime-kuma.log` in its logs folder:
+  `~/Library/Logs/Claude` on macOS, `%APPDATA%\Claude\logs` on Windows,
+  `~/.config/Claude/logs` on Linux.
+- **Docker:** run `docker logs mcp-uptime-kuma`.
 
 **The server connects but every tool call fails.** The server stays up even when it can't log
 in to Uptime Kuma. That way it recovers on its own when Uptime Kuma restarts. Look for
@@ -731,7 +737,7 @@ exactly as the browser sends it, with scheme and port, for example `http://local
 
 **You get `429 Too Many Requests`.** One client IP made more than `RATE_LIMIT_MAX` requests
 in 15 minutes. Behind a reverse proxy, every client usually shares the proxy's IP. Set
-`TRUST_PROXY` (see [Running behind a reverse proxy](docs/http-security.md#running-behind-a-reverse-proxy)), or
+`TRUST_PROXY` (see [Running behind a reverse proxy](https://github.com/DavidFuchs/mcp-uptime-kuma/blob/main/docs/http-security.md#running-behind-a-reverse-proxy)), or
 raise the limit.
 
 **A new release's tools or fixes don't show up.** npx is running a cached older version.
