@@ -1,0 +1,113 @@
+import { describe, it, expect } from 'vitest';
+import { classify, expectThat, PREFIX } from '../llm/scenario.js';
+import { sweep, call } from '../llm/kuma.js';
+import type { Trace, ToolCall } from '../llm/claude-driver.js';
+
+const trace = (calls: Partial<ToolCall>[] = [], resultSubtype = 'success'): Trace => ({
+  toolCalls: calls.map(c => ({ name: 'listMonitors', input: {}, isError: false, resultText: '', ...c })),
+  turns: 1, costUsd: 0, durationMs: 0, finalText: '', rawPath: '', resultSubtype,
+});
+
+describe('classify', () => {
+  it('all assertions true → pass, not degraded', () => {
+    const r = classify({ assertions: [expectThat('a', true), expectThat('b', true)], trace: trace(), scenario: {} });
+    expect(r.outcome).toBe('pass');
+    expect(r.degraded).toBe(false);
+    expect(r.degradedReasons).toEqual([]);
+  });
+
+  it('any assertion false → fail', () => {
+    const r = classify({ assertions: [expectThat('a', true), expectThat('b', false)], trace: trace(), scenario: {} });
+    expect(r.outcome).toBe('fail');
+  });
+
+  it('error present → error, regardless of assertions', () => {
+    const r = classify({ assertions: [expectThat('a', true)], trace: trace(), error: new Error('setup blew up'), scenario: {} });
+    expect(r.outcome).toBe('error');
+    expect(r.errorMessage).toContain('setup blew up');
+  });
+
+  it("trace.resultSubtype !== 'success' → error", () => {
+    const r = classify({ assertions: [expectThat('a', true)], trace: trace([], 'error_max_budget_usd'), scenario: {} });
+    expect(r.outcome).toBe('error');
+    expect(r.errorMessage).toContain('error_max_budget_usd');
+  });
+
+  it('over maxToolCalls on a pass → pass + degraded', () => {
+    const r = classify({
+      assertions: [expectThat('a', true)],
+      trace: trace(Array.from({ length: 9 }, () => ({}))),
+      scenario: { budget: { maxToolCalls: 8 } },
+    });
+    expect(r.outcome).toBe('pass');
+    expect(r.degraded).toBe(true);
+    expect(r.degradedReasons).toContain('tool calls 9 > 8');
+  });
+
+  it('over maxToolErrors on a pass → degraded', () => {
+    const r = classify({
+      assertions: [expectThat('a', true)],
+      trace: trace([{ isError: true }, { isError: true }]),
+      scenario: { budget: { maxToolErrors: 1 } },
+    });
+    expect(r.degraded).toBe(true);
+    expect(r.degradedReasons).toContain('tool errors 2 > 1');
+  });
+
+  it('unexpected tool called → degraded', () => {
+    const r = classify({
+      assertions: [expectThat('a', false)],
+      trace: trace([{ name: 'deleteMonitor' }]),
+      scenario: { unexpectedTools: ['deleteMonitor'] },
+    });
+    expect(r.outcome).toBe('fail');
+    expect(r.degraded).toBe(true);
+    expect(r.degradedReasons).toContain('called unexpected tool deleteMonitor');
+  });
+});
+
+describe('sweep', () => {
+  function fakeCtx(data: Record<string, unknown>) {
+    const calls: Array<{ name: string; arguments: any }> = [];
+    const client = {
+      callTool: async ({ name, arguments: args }: { name: string; arguments: any }) => {
+        calls.push({ name, arguments: args });
+        const sc = data[name] ?? {};
+        return { content: [{ type: 'text', text: JSON.stringify(sc) }], structuredContent: sc };
+      },
+    };
+    return { ctx: { client, config: { url: 'x' } } as any, calls };
+  }
+
+  it('sweep deletes only llm-eval- prefixed entities', async () => {
+    const { ctx, calls } = fakeCtx({
+      listMonitors: { monitors: [{ id: 1, name: `${PREFIX}a` }, { id: 2, name: 'keep-me' }] },
+      listTags: { tags: [{ id: 5, name: `${PREFIX}prod` }, { id: 6, name: 'prod' }] },
+      getMaintenanceWindows: { maintenanceWindows: [{ id: 7, title: `${PREFIX}DB` }, { id: 8, title: 'real' }] },
+      listNotifications: { notifications: [{ id: 9, name: `${PREFIX}hook` }, { id: 10, name: 'pager' }] },
+      listStatusPages: { statusPages: [{ slug: `${PREFIX}page`, title: 'x' }, { slug: 'public', title: 'Public' }] },
+    });
+    const n = await sweep(ctx);
+    const deletes = calls.filter(c => c.name.startsWith('delete'));
+    expect(deletes).toEqual([
+      { name: 'deleteMonitor', arguments: { monitorID: 1 } },
+      { name: 'deleteTag', arguments: { tagID: 5 } },
+      { name: 'deleteMaintenance', arguments: { maintenanceID: 7 } },
+      { name: 'deleteNotification', arguments: { notificationID: 9 } },
+      { name: 'deleteStatusPage', arguments: { slug: `${PREFIX}page` } },
+    ]);
+    expect(n).toBe(5);
+  });
+});
+
+describe('call', () => {
+  it('throws with the tool text when the result is an error', async () => {
+    const ctx = { client: { callTool: async () => ({ isError: true, content: [{ type: 'text', text: 'nope' }] }) } } as any;
+    await expect(call(ctx, 'getMonitor', { monitorID: 1 })).rejects.toThrow(/nope/);
+  });
+
+  it('prefers structuredContent over text', async () => {
+    const ctx = { client: { callTool: async () => ({ content: [{ type: 'text', text: 'Monitor 3' }], structuredContent: { monitor: { id: 3 } } }) } } as any;
+    expect(await call(ctx, 'getMonitor', { monitorID: 3 })).toEqual({ monitor: { id: 3 } });
+  });
+});
