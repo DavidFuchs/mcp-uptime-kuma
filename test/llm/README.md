@@ -56,6 +56,10 @@ The Claude session is isolated:
 | empty temp working directory | the repo's `CLAUDE.md` / `AGENTS.md` are not loaded |
 | `UPTIME_KUMA_*` removed from the environment | the model can never reach your real instance |
 | `--no-session-persistence` | runs do not show up in your session history |
+| `UPTIME_KUMA_URL` must be `localhost` / `127.0.0.1` | the model gets delete tools; set `LLM_EVAL_ALLOW_REMOTE=1` only for a disposable remote test instance |
+
+Preflight runs one tiny session first and stops with exit code 2, before any scenario, if
+`claude` is missing, not logged in, or the MCP server does not connect.
 
 `--bare` is not used because it refuses the Claude Code login and accepts only
 `ANTHROPIC_API_KEY`. Checked with Claude Code 2.1.311: with these flags the MCP tools are
