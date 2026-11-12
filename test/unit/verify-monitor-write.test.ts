@@ -15,7 +15,7 @@ import { createMockSocket, injectSocket, injectMonitorListCache } from './helper
  */
 
 // createServer() registers a SIGINT and a SIGTERM handler per instance and never removes
-// them (src/server.ts), so a file that builds one server per test trips Node's default
+// them (src/kuma-session.ts), so a file that builds one server per test trips Node's default
 // 10-listener warning. Pre-existing and not what this file is testing — just raise the cap
 // rather than let it print noise over the results.
 process.setMaxListeners(50);

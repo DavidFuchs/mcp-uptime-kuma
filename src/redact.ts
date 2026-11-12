@@ -89,6 +89,14 @@ export function isSecretKey(key: string): boolean {
   return SECRET_KEY_PATTERN.test(key);
 }
 
+const isAsciiLetter = (c: number): boolean => (c >= 97 && c <= 122) || (c >= 65 && c <= 90);
+/** A character a URL scheme may contain after its first letter: a letter, a digit, `+`, `.` or `-`. */
+const isSchemeChar = (c: number): boolean =>
+  isAsciiLetter(c) || (c >= 48 && c <= 57) || c === 43 || c === 45 || c === 46;
+/** Where userinfo stops: `/`, `?`, `#`, `@` or whitespace. */
+const endsUserinfo = (c: number, char: string): boolean =>
+  c === 47 || c === 63 || c === 35 || c === 64 || ((c <= 32 || c >= 128) && /\s/.test(char));
+
 /**
  * Scrubs `scheme://user:pass@` credentials out of a string, whether the whole value is a
  * URL or a URL quoted inside a larger message.
@@ -96,17 +104,54 @@ export function isSecretKey(key: string): boolean {
  * A monitor `url`, a `dockerDaemon` TCP endpoint and every entry of `rabbitmqNodes` carry
  * inline credentials that no field NAME reveals, and a heartbeat `msg` can echo the
  * monitor's own URL mid-sentence ("connect ETIMEDOUT to http://admin:s3cret@host"). One
- * regex covers both: it masks the userinfo of every occurrence and leaves the scheme, host
+ * scan covers both: it masks the userinfo of every occurrence and leaves the scheme, host
  * and surrounding text byte-for-byte intact, so the endpoint stays readable and a
  * `rabbitmqNodes` entry stays a valid URL. Working on the raw string rather than parsing it
  * also means a value that is not a clean URL still has its credentials scrubbed.
+ *
+ * Finds what the pattern `([a-z][a-z0-9+.-]*:\/\/)([^/?#\s@]+)@` (case-insensitive) would, by
+ * scanning rather than with that regex.
+ *
+ * The regex took time that grew with the square of the text's length: on a long run of
+ * letters it retried the scheme from every position, and each try read to the end of the run.
+ * 300,000 letters took over a minute, and a heartbeat message can carry whatever the monitored
+ * server answered with. Here each `://` is found once, and the scan back over the scheme and
+ * forward over the userinfo never crosses the next `://`, so every character is read a bounded
+ * number of times.
  */
-const URL_USERINFO = /([a-z][a-z0-9+.-]*:\/\/)([^/?#\s@]+)@/gi;
 export function redactUrlCredentials(value: string): string {
-  return value.replace(URL_USERINFO, (_match, scheme: string, userinfo: string) => {
-    const masked = userinfo.includes(':') ? `${SECRET_MARKER}:${SECRET_MARKER}` : SECRET_MARKER;
-    return `${scheme}${masked}@`;
-  });
+  let out = '';
+  let copied = 0; // value up to here is already in `out`; also where the previous match ended
+  let searchFrom = 0;
+
+  for (;;) {
+    const separator = value.indexOf('://', searchFrom);
+    if (separator === -1) break;
+    searchFrom = separator + 1;
+
+    // The scheme is the run of scheme characters ending at the separator. It has to start
+    // with a letter, so the run needs one somewhere; anything before that letter stays as text.
+    let hasLetter = false;
+    for (let i = separator - 1; i >= copied && isSchemeChar(value.charCodeAt(i)); i--) {
+      if (isAsciiLetter(value.charCodeAt(i))) {
+        hasLetter = true;
+        break;
+      }
+    }
+    if (!hasLetter) continue;
+
+    const userinfoStart = separator + 3;
+    let end = userinfoStart;
+    while (end < value.length && !endsUserinfo(value.charCodeAt(end), value[end])) end++;
+    if (end === userinfoStart || value[end] !== '@') continue;
+
+    const masked = value.slice(userinfoStart, end).includes(':') ? `${SECRET_MARKER}:${SECRET_MARKER}` : SECRET_MARKER;
+    out += `${value.slice(copied, userinfoStart)}${masked}@`;
+    copied = end + 1;
+    searchFrom = copied;
+  }
+
+  return copied === 0 ? value : out + value.slice(copied);
 }
 
 /**
