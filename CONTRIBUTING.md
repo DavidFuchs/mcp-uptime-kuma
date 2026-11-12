@@ -135,6 +135,8 @@ mcp-uptime-kuma/
 │   ├── types/                  # TypeScript type definitions
 │   └── version.ts              # Runtime version information
 ├── test/                       # Test files and infrastructure
+├── scripts/                    # Maintenance scripts
+├── docker-mcp-catalog/         # Entry for the Docker MCP Catalog (server.yaml, tools.json)
 ├── .github/                    # GitHub workflows and configurations
 ├── docker-compose.yml          # Docker Compose configuration
 ├── Dockerfile                  # Docker image definition
@@ -145,9 +147,28 @@ mcp-uptime-kuma/
 
 ## Development Tips
 
-- Tools live in `src/tools/`, one file per area. To add one, register it in the matching file and add its name to `READ_ONLY_TOOLS` or `WRITE_TOOLS` in `src/tools/registration.ts` (a test fails if it is in neither)
+- Tools live in `src/tools/`, one file per area. To add one, register it in the matching file and add its name to `READ_ONLY_TOOLS` or `WRITE_TOOLS` in `src/tools/registration.ts` (a test fails if it is in neither). Then run `npm run build && npm run docker-catalog:tools` to update the Docker MCP Catalog's tool list (CI fails if it is stale)
 - The Uptime Kuma client in `src/uptime-kuma-client.ts` handles the WebSocket connection and retrieves monitor and heartbeat data
 - Use `npm run dev` or `npm run dev:http` for development with hot reload
+
+## Docker MCP Catalog
+
+`docker-mcp-catalog/uptime-kuma/` holds this server's entry for the
+[Docker MCP Catalog](https://github.com/docker/mcp-registry), mirroring the
+`servers/uptime-kuma/` folder of that repository. Docker builds the image itself from the
+commit pinned in `server.yaml` and publishes it as `mcp/uptime-kuma`.
+
+- **`tools.json`** lists the tools, because the catalog can't run this server without an
+  Uptime Kuma login. It's generated from the built server by `npm run docker-catalog:tools`;
+  don't edit it by hand.
+- **Releases** need nothing here. A nightly job in Docker's repository opens PRs that move the
+  pinned commit forward.
+- **When the tool list changes**, regenerate `tools.json` here, then copy it to
+  `servers/uptime-kuma/tools.json` in a PR to `docker/mcp-registry`.
+- **When submitting or updating the entry**, set `source.commit` in `server.yaml` to the
+  `main` commit being submitted, copy both files into `servers/uptime-kuma/` in a fork of
+  `docker/mcp-registry`, and follow its CONTRIBUTING guide (`task build -- --tools uptime-kuma`,
+  then `task catalog -- uptime-kuma` to try it in Docker Desktop).
 
 ## Submitting Changes
 
