@@ -558,6 +558,46 @@ const TYPE_FIELDS_DESCRIPTION =
   'Call getMonitorTypeFields with the type for the names, meanings and allowed values — they are validated, and an unknown name is refused. ' +
   'getMonitor returns these fields at the top level of the monitor; to change one, pass it here.';
 
+/**
+ * The config to send to saveStatusPage: the caller's changes over the stored page (Uptime
+ * Kuma's StatusPage.toJSON()), in the shape the handler checks.
+ *
+ * - slug is always set: the handler reads config.slug, not its own slug argument.
+ * - logo: the handler stores config.logo as the icon, while toJSON returns it as `icon`.
+ * - analyticsType must be null or a known provider, so a missing or empty one becomes null
+ *   (an unknown provider is left for Uptime Kuma to refuse by name).
+ * - domainNameList must be an array.
+ */
+export function mergeStatusPageConfig(
+  slug: string,
+  stored: Record<string, unknown>,
+  changes: Record<string, unknown>,
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...stored, ...changes, slug };
+  merged.logo = changes.logo ?? changes.icon ?? stored.icon;
+  if (merged.analyticsType === undefined || merged.analyticsType === '') merged.analyticsType = null;
+  const domains = merged.domainNameList;
+  merged.domainNameList = Array.isArray(domains) ? domains : typeof domains === 'string' && domains ? [domains] : [];
+  return merged;
+}
+
+/** The groups a status page has now, in the shape saveStatusPage takes, so they survive a save. */
+function keepGroups(groups: unknown[]): Array<Record<string, unknown>> {
+  return groups.map((raw) => {
+    const g = raw as Record<string, unknown>;
+    const monitors = Array.isArray(g.monitorList) ? (g.monitorList as Array<Record<string, unknown>>) : [];
+    return {
+      id: g.id,
+      name: g.name,
+      monitorList: monitors.map((m) => ({
+        id: m.id,
+        ...(m.sendUrl !== undefined ? { sendUrl: m.sendUrl } : {}),
+        ...(m.url !== undefined ? { url: m.url } : {}),
+      })),
+    };
+  });
+}
+
 const DRAFT_07_DIALECT = 'http://json-schema.org/draft-07/schema#';
 const DIALECT_2020_12 = 'https://json-schema.org/draft/2020-12/schema';
 
@@ -1510,7 +1550,9 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
     mqtt: ['hostname', 'port', 'mqttTopic'],
     'grpc-keyword': ['grpcUrl', 'grpcProtobuf', 'grpcServiceName', 'grpcMethod', 'keyword'],
     'kafka-producer': ['kafkaProducerBrokers', 'kafkaProducerTopic', 'kafkaProducerMessage'],
-    radius: ['hostname', 'radiusUsername', 'radiusPassword', 'radiusSecret'],
+    // Both station IDs are sent in every request, and Uptime Kuma's RADIUS library cannot encode
+    // an unset one, so without them every check fails. The web form requires both.
+    radius: ['hostname', 'radiusUsername', 'radiusPassword', 'radiusSecret', 'radiusCalledStationId', 'radiusCallingStationId'],
     rabbitmq: ['rabbitmqNodes'],
     smtp: ['hostname'],
     // radiusPassword is the community string here; see snmpCommunity in MONITOR_FIELD_ALIASES.
@@ -3455,7 +3497,7 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
     'listStatusPages',
     {
       title: 'List Status Pages',
-      description: 'Returns all configured status pages with their slug, title, visibility, and custom domain settings.',
+      description: 'Returns all configured status pages with their slug, title, visibility, and custom domain settings. Uptime Kuma only sends this list when a client logs in, so a page created or deleted by another client (or the web UI) since then may be missing or still listed; changes made through this server are reflected at once. getStatusPage with a slug always reads the page fresh.',
       inputSchema: {},
       outputSchema: {
         statusPages: z.array(StatusPageSchema).describe('Array of status page configurations'),
@@ -3482,7 +3524,7 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
     'getStatusPage',
     {
       title: 'Get Status Page',
-      description: 'Returns the full configuration of a status page by slug, including the ordered list of groups, the monitors inside each group, and active incidents. Only works for published status pages (fetches the public `/api/status-page/{slug}` endpoint).',
+      description: 'Returns the full configuration of a status page by slug, including the ordered list of groups, the monitors inside each group, and active incidents. Works for unpublished pages too.',
       inputSchema: {
         slug: z.string().describe('The status page slug (the URL-safe identifier)'),
       },
@@ -3550,11 +3592,11 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
     'updateStatusPage',
     {
       title: 'Update Status Page',
-      description: 'Updates an existing status page. Pass the full config (title, description, theme, published, etc.) and the full publicGroupList — both are replaced wholesale. Each group has a name, weight, and monitorList of [{id}]. Use getStatusPage first to read current state before modifying.',
+      description: 'Updates an existing status page. config holds only the settings to change; everything else keeps its stored value. publicGroupList, when given, replaces all of the page\'s groups (a group not in it is deleted; include a group\'s id to keep it rather than recreate it); omit it to keep the groups as they are. Each group has a name and a monitorList of [{id}]. Use getStatusPage first to read current state before modifying.',
       inputSchema: {
         slug: z.string().describe('The status page slug (immutable identifier)'),
-        config: z.record(z.string(), z.unknown()).describe('Full status page config (title, description, theme, published, showTags, showPoweredBy, domainNameList, customCSS, footerText, icon, etc.)'),
-        publicGroupList: z.array(z.record(z.string(), z.unknown())).optional().describe('Ordered groups. Each: {name, weight, monitorList: [{id}]}. Defaults to empty list.'),
+        config: z.record(z.string(), z.unknown()).optional().describe('The settings to change, merged onto the stored page: title, description, theme, published, showTags, showPoweredBy, domainNameList, customCSS, footerText, icon, etc. Omit to change only the groups.'),
+        publicGroupList: z.array(z.record(z.string(), z.unknown())).optional().describe('Ordered groups, replacing all current ones. Each: {id?, name, monitorList: [{id}]}. Omit to keep the current groups.'),
         imgDataUrl: z.string().optional().describe('Icon as data URL. Omit or pass empty string to keep existing.'),
       },
       outputSchema: {
@@ -3566,12 +3608,33 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
       await authenticateClient();
 
       try {
-        const response = await client.updateStatusPage(
-          slug,
-          config,
-          publicGroupList ?? [],
-          imgDataUrl ?? ''
-        );
+        // Uptime Kuma's saveStatusPage replaces every field from config and every group from the
+        // list, so a partial update has to be merged onto the stored page here.
+        let stored: Record<string, unknown>;
+        try {
+          stored = await client.getStatusPageConfig(slug);
+        } catch (e) {
+          throw new Error(`status page "${slug}" not found (${e instanceof Error ? e.message : String(e)}). listStatusPages shows the slugs.`);
+        }
+        const merged = mergeStatusPageConfig(slug, stored, config ?? {});
+
+        let groups: Array<Record<string, unknown>>;
+        if (publicGroupList) {
+          groups = publicGroupList.map((g) => ({ ...g, monitorList: Array.isArray(g.monitorList) ? g.monitorList : [] }));
+        } else {
+          let current: Awaited<ReturnType<typeof client.getStatusPage>>;
+          try {
+            current = await client.getStatusPage(slug);
+          } catch (e) {
+            throw new Error(
+              `could not read the current groups of "${slug}" to keep them (${e instanceof Error ? e.message : String(e)}). ` +
+              'Pass publicGroupList with every group the page should have: Uptime Kuma deletes the groups that are not in it.'
+            );
+          }
+          groups = keepGroups(current.publicGroupList ?? []);
+        }
+
+        const response = await client.updateStatusPage(slug, merged, groups, imgDataUrl ?? '');
         return {
           content: [{ type: 'text', text: response.msg || `Status page ${slug} updated` }],
           structuredContent: { ok: response.ok, msg: response.msg },

@@ -59,7 +59,10 @@ const MINIMAL: Record<string, Record<string, unknown>> = {
     kafkaProducerTopic: 'uptime',
     kafkaProducerMessage: 'ping',
   },
-  radius: { hostname: 'radius.internal', radiusUsername: 'probe', radiusPassword: 'pw', radiusSecret: 'shared' },
+  radius: {
+    hostname: 'radius.internal', radiusUsername: 'probe', radiusPassword: 'pw', radiusSecret: 'shared',
+    radiusCalledStationId: 'AA-BB-CC-DD-EE-FF:corp', radiusCallingStationId: '11-22-33-44-55-66',
+  },
   rabbitmq: { rabbitmqNodes: ['https://rabbit.internal:15672'] },
   smtp: { hostname: 'mail.internal' },
   snmp: { hostname: 'switch.internal', snmpOid: '1.3.6.1.2.1.1.3.0', snmpCommunity: 'public', expectedValue: '1' },

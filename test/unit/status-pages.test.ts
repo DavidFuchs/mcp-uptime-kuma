@@ -131,7 +131,8 @@ describe('UptimeKumaClient - Status Page Operations', () => {
       expect(result.ok).toBe(true);
       expect(result.config?.slug).toBe('test');
       expect(result.publicGroupList).toHaveLength(1);
-      expect(fetchSpy).toHaveBeenCalledWith('http://localhost:3001/api/status-page/test');
+      // A unique query bypasses Uptime Kuma's 5 minute cache of this route.
+      expect(fetchSpy).toHaveBeenCalledWith(expect.stringMatching(/^http:\/\/localhost:3001\/api\/status-page\/test\?_=\d+$/));
 
       fetchSpy.mockRestore();
     });
@@ -172,9 +173,76 @@ describe('UptimeKumaClient - Status Page Operations', () => {
       } as unknown as Response);
 
       await client.getStatusPage('my page');
-      expect(fetchSpy).toHaveBeenCalledWith('http://localhost:3001/api/status-page/my%20page');
+      // A unique query bypasses Uptime Kuma's 5 minute cache of this route.
+      expect(fetchSpy).toHaveBeenCalledWith(expect.stringMatching(/^http:\/\/localhost:3001\/api\/status-page\/my%20page\?_=\d+$/));
 
       fetchSpy.mockRestore();
     });
+  });
+});
+
+/**
+ * Found by the LLM eval: Uptime Kuma sends statusPageList only at login, so the cache behind
+ * listStatusPages never saw a page added, saved or deleted afterwards. The eval's own cleanup
+ * missed a page it had created, and the next run found it already there.
+ */
+describe('UptimeKumaClient - status page list stays current', () => {
+  let client: UptimeKumaClient;
+  const stored = (slug: string, title: string) => ({ id: 1, slug, title, published: true, domainNameList: [] });
+
+  beforeEach(() => {
+    client = new UptimeKumaClient('http://localhost:3001');
+    (client as any).statusPageListCache = { old: stored('old', 'Old') };
+  });
+
+  it('getStatusPageConfig reads the full config over the socket', async () => {
+    const { socket } = createMockSocket({
+      getStatusPage: (slug, callback) => (callback as Function)({ ok: true, config: stored(slug as string, 'Fresh') }),
+    });
+    injectSocket(client, socket);
+    expect(await client.getStatusPageConfig('acme')).toMatchObject({ slug: 'acme', title: 'Fresh' });
+  });
+
+  it('getStatusPageConfig rejects when the page does not exist', async () => {
+    const { socket } = createMockSocket({ getStatusPage: (_slug, callback) => (callback as Function)({ ok: false, msg: 'No slug?' }) });
+    injectSocket(client, socket);
+    await expect(client.getStatusPageConfig('nope')).rejects.toThrow('No slug?');
+  });
+
+  it('a created page is listed straight away', async () => {
+    const { socket } = createMockSocket({
+      addStatusPage: (_title, _slug, callback) => (callback as Function)({ ok: true }),
+      getStatusPage: (slug, callback) => (callback as Function)({ ok: true, config: stored(slug as string, 'New page') }),
+    });
+    injectSocket(client, socket);
+    await client.createStatusPage('New page', 'new-page');
+    expect(client.getStatusPageList().map(p => p.slug).sort()).toEqual(['new-page', 'old']);
+  });
+
+  it('a created page is still listed when reading it back fails', async () => {
+    const { socket } = createMockSocket({
+      addStatusPage: (_title, _slug, callback) => (callback as Function)({ ok: true }),
+      getStatusPage: (_slug, callback) => (callback as Function)({ ok: false, msg: 'boom' }),
+    });
+    injectSocket(client, socket);
+    await client.createStatusPage('New page', 'new-page');
+    expect(client.getStatusPageList().find(p => p.slug === 'new-page')).toMatchObject({ slug: 'new-page', title: 'New page' });
+  });
+
+  it('a saved page is listed with its new values', async () => {
+    const { socket } = createMockSocket({
+      saveStatusPage: (_slug, _config, _img, _groups, callback) => (callback as Function)({ ok: true }),
+      getStatusPage: (slug, callback) => (callback as Function)({ ok: true, config: stored(slug as string, 'Renamed') }),
+    });
+    injectSocket(client, socket);
+    await client.updateStatusPage('old', { slug: 'old', title: 'Renamed' });
+    expect(client.getStatusPageList()).toEqual([expect.objectContaining({ slug: 'old', title: 'Renamed' })]);
+  });
+
+  it('a deleted page is no longer listed', async () => {
+    const { socket } = createMockSocket({ deleteStatusPage: (_slug, callback) => (callback as Function)({ ok: true }) });
+    injectSocket(client, socket);
+    await client.deleteStatusPage('old');
+    expect(client.getStatusPageList()).toEqual([]);
   });
 });

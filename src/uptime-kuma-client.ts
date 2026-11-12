@@ -1725,6 +1725,41 @@ export class UptimeKumaClient {
   }
 
   /**
+   * The full stored config of one status page, over the authenticated socket (Uptime Kuma's
+   * StatusPage.toJSON(): every field saveStatusPage takes, including domainNameList, but not
+   * the groups).
+   */
+  getStatusPageConfig(slug: string): Promise<StatusPage & Record<string, unknown>> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+      this.socket.emit('getStatusPage', slug, (response: ApiResponse & { config?: StatusPage }) => {
+        if (response.ok && response.config) {
+          resolve(response.config as StatusPage & Record<string, unknown>);
+        } else {
+          reject(new Error(response.msg || `Status page ${slug} not found`));
+        }
+      });
+    });
+  }
+
+  /**
+   * Uptime Kuma sends statusPageList only at login, so a page added, saved or deleted since is
+   * missing or out of date in the cache unless it is updated here. The entry is updated at once
+   * from what is known, then replaced with the stored config when that arrives; a page that
+   * cannot be read back keeps the known values.
+   */
+  private refreshStatusPageCache(slug: string, known: Partial<StatusPage>): void {
+    this.statusPageListCache[slug] = { ...(this.statusPageListCache[slug] ?? {}), ...known, slug } as StatusPage;
+    this.getStatusPageConfig(slug).then(
+      (config) => { if (this.statusPageListCache[slug]) this.statusPageListCache[slug] = config; },
+      () => { /* keep the known values */ },
+    );
+  }
+
+  /**
    * Get full details of a single status page, including publicGroupList with monitors
    * and any active incidents. Uses the public HTTP API (`/api/status-page/{slug}`),
    * which returns the same data the status page UI renders — richer than the
@@ -1740,7 +1775,9 @@ export class UptimeKumaClient {
   }> {
     try {
       const baseUrl = this.url.replace(/\/$/, '');
-      const res = await fetch(`${baseUrl}/api/status-page/${encodeURIComponent(slug)}`);
+      // Uptime Kuma caches this route for 5 minutes and only clears that on a save, so a page
+      // read after other changes (a monitor deleted, say) could be stale. Unique query, fresh read.
+      const res = await fetch(`${baseUrl}/api/status-page/${encodeURIComponent(slug)}?_=${Date.now()}`);
       if (res.status === 404) {
         return { ok: false, msg: `Status page ${slug} not found` };
       }
@@ -1784,6 +1821,7 @@ export class UptimeKumaClient {
       this.socket.emit('addStatusPage', title, slug, (response: ApiResponse) => {
         if (response.ok) {
           this.safeLog('info', `Successfully created status page ${slug}`);
+          this.refreshStatusPageCache(slug, { title });
           resolve(response);
         } else {
           reject(new Error(response.msg || `Failed to create status page ${slug}`));
@@ -1816,6 +1854,9 @@ export class UptimeKumaClient {
       this.socket.emit('saveStatusPage', slug, config, imgDataUrl, publicGroupList, (response: ApiResponse) => {
         if (response.ok) {
           this.safeLog('info', `Successfully updated status page ${slug}`);
+          const newSlug = typeof config.slug === 'string' && config.slug ? config.slug : slug;
+          if (newSlug !== slug) delete this.statusPageListCache[slug];
+          this.refreshStatusPageCache(newSlug, config as Partial<StatusPage>);
           resolve(response);
         } else {
           reject(new Error(response.msg || `Failed to update status page ${slug}`));
@@ -1840,6 +1881,7 @@ export class UptimeKumaClient {
       this.socket.emit('deleteStatusPage', slug, (response: ApiResponse) => {
         if (response.ok) {
           this.safeLog('info', `Successfully deleted status page ${slug}`);
+          delete this.statusPageListCache[slug];
           resolve(response);
         } else {
           reject(new Error(response.msg || `Failed to delete status page ${slug}`));
