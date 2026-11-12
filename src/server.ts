@@ -13,6 +13,7 @@ import {
   rehydrateSecrets,
   rehydrateUrlCredentials,
 } from './redact.js';
+import { presentNotification } from './utils/notification-view.js';
 import { VERSION } from './version.js';
 
 /**
@@ -1216,7 +1217,7 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
     'getSettings',
     {
       title: 'Get Settings',
-      description: 'Retrieves the current Uptime Kuma server settings including timezone, authentication status, primary base URL, and other configuration options.',
+      description: 'Retrieves the current Uptime Kuma server settings, such as timezone, primary base URL and data retention. Uptime Kuma only returns settings that have been saved, so a setting missing from the result (for example primaryBaseURL) has never been set.',
       inputSchema: {
         includeSecrets: includeSecretsParam
       },
@@ -1468,10 +1469,10 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
   // 5 s for snmp, 10 s for ping, 1 s for kafka-producer and 48 s otherwise, held to 80% of the
   // interval by clampTimeout() for every type but ping. Storing it at creation also means
   // Uptime Kuma's runtime fallback for a 0 timeout, whose unit handling is wrong, never runs.
-  // push never polls and group has no request of its own, so both correctly keep 0.
+  // push and group never use it, but the form stores 48 for them too, and a stored 0 reads as
+  // the broken value the timeout description warns about.
   const FORM_TIMEOUT_DEFAULTS: Record<string, number> = { snmp: 5, ping: 10, 'kafka-producer': 1 };
-  const defaultTimeoutForInterval = (type: string, interval?: number): number | undefined => {
-    if (type === 'push' || type === 'group') return undefined;
+  const defaultTimeoutForInterval = (type: string, interval?: number): number => {
     const timeout = FORM_TIMEOUT_DEFAULTS[type] ?? 48;
     // Monitor.validate() rejects a ping timeout outside PING_GLOBAL_TIMEOUT_MIN/MAX (1..300).
     if (type === 'ping') return timeout;
@@ -1709,11 +1710,29 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
     });
   };
 
-  const pushURLFor = (token: unknown): string => {
+  /**
+   * The ping URL of a push monitor, built the way Uptime Kuma's own UI builds it: from the
+   * Primary Base URL setting when one is set, else from the address this server connects with.
+   * `note` says which, so the caller can tell the user whether the host may need changing.
+   */
+  const pushURLFor = async (token: unknown): Promise<{ url: string; note: string }> => {
+    let primary = '';
+    try {
+      const value = (await client.getSettings()).data?.primaryBaseURL;
+      if (typeof value === 'string') primary = value.trim();
+    } catch {
+      // Settings are a nicety here; the connection URL still works where this server runs.
+    }
+    const base = primary || config.url;
     // A loop, not /\/+$/: that pattern backtracks quadratically on a long run of slashes.
-    let end = config.url.length;
-    while (end > 0 && config.url[end - 1] === '/') end--;
-    return `${config.url.slice(0, end)}/api/push/${token}?status=up&msg=OK&ping=`;
+    let end = base.length;
+    while (end > 0 && base[end - 1] === '/') end--;
+    return {
+      url: `${base.slice(0, end)}/api/push/${token}?status=up&msg=OK&ping=`,
+      note: primary
+        ? 'The host is Uptime Kuma\'s Primary Base URL setting.'
+        : 'No Primary Base URL is set in Uptime Kuma, so the host is the address this MCP server connects with. If the sender reaches Uptime Kuma at another address, use that host instead, or set the Primary Base URL under Settings → General in Uptime Kuma (this MCP server cannot change settings).',
+    };
   };
 
   /**
@@ -1788,7 +1807,7 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
     }
     // Never leave timeout at 0 — see the schema description for why that is a ~13 hour
     // timeout rather than a default.
-    if (!timeoutIsCallers && type !== 'push' && type !== 'group') {
+    if (!timeoutIsCallers) {
       const stored = Number(monitor.timeout) || 0;
       if (!stored) {
         applied.timeout = defaultTimeoutForInterval(type, monitor.interval as number | undefined);
@@ -1983,7 +2002,7 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
     description: z.string().nullable().optional().describe('Free-text description shown on the monitor page'),
     active: z.boolean().optional().describe('Whether the monitor starts checking immediately (default: true). Pass false to create it paused.'),
     resendInterval: numeric(z.number()).optional().describe('Resend notification every N checks while down (0 = disabled, the default)'),
-    timeout: numeric(z.number()).nullable().optional().describe('Request timeout in SECONDS. Omit for the web form\'s default: 48, or 10 for ping, 5 for snmp and 1 for kafka-producer, at most 0.8 x interval. Avoid 0: Uptime Kuma\'s runtime fallback for a stored 0 computes interval * 1000 * 0.8 and then multiplies by 1000 again, yielding a ~13 hour timeout, so the monitor can never report DOWN against a host that accepts the connection and never answers.'),
+    timeout: numeric(z.number()).nullable().optional().describe('Request timeout in SECONDS. Omit for the web form\'s default: 48, or 10 for ping, 5 for snmp and 1 for kafka-producer, at most 0.8 x interval. Avoid 0: Uptime Kuma\'s runtime fallback for a stored 0 computes interval * 1000 * 0.8 and then multiplies by 1000 again, yielding a ~13 hour timeout, so the monitor can never report DOWN against a host that accepts the connection and never answers. Push and group monitors do not use it; a 0 stored on one of those is harmless.'),
     jsonPath: z.string().optional().describe('JSONata expression for json-query monitors. Must resolve to a primitive.'),
     jsonPathOperator: z.enum(['>', '>=', '<', '<=', '==', '!=', 'contains']).optional().describe('Comparison operator for json-query monitors. UP while value <operator> expectedValue.'),
     expectedValue: z.coerce.string().optional().describe('Threshold the json-query result is compared against. Stored as a string.'),
@@ -2236,8 +2255,9 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
         }
         if (requested.type === 'push' && requested.pushToken) {
           structuredContent.pushToken = requested.pushToken;
-          structuredContent.pushURL = pushURLFor(requested.pushToken);
-          text += `\n\nPush monitor ${response.monitorID}: point the sender at (GET, not POST)\n  ${structuredContent.pushURL}\nThis URL contains a secret — treat it as a credential.${generatedPushToken ? ' The token was generated because Uptime Kuma only ever generates one in its own web UI.' : ''}`;
+          const push = await pushURLFor(requested.pushToken);
+          structuredContent.pushURL = push.url;
+          text += `\n\nPush monitor ${response.monitorID}: point the sender at (GET, not POST)\n  ${push.url}\n${push.note} This URL contains a secret — treat it as a credential.${generatedPushToken ? ' The token was generated because Uptime Kuma only ever generates one in its own web UI.' : ''}`;
         }
 
         if (verifyProblem) {
@@ -2425,8 +2445,9 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
         const pushToken = (merged as unknown as Record<string, unknown>).pushToken;
         if (typeChanged && defined.type === 'push' && pushToken) {
           structuredContent.pushToken = pushToken;
-          structuredContent.pushURL = pushURLFor(pushToken);
-          text += `\n\nMonitor ${monitorID} is now a push monitor: point the sender at (GET, not POST)\n  ${structuredContent.pushURL}\nThis URL contains a secret — treat it as a credential.`;
+          const push = await pushURLFor(pushToken);
+          structuredContent.pushURL = push.url;
+          text += `\n\nMonitor ${monitorID} is now a push monitor: point the sender at (GET, not POST)\n  ${push.url}\n${push.note} This URL contains a secret — treat it as a credential.`;
         }
 
         if (verifyProblem) {
@@ -2483,7 +2504,7 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
     'listNotifications',
     {
       title: 'List Notifications',
-      description: 'Returns all configured notification channels (Slack, ntfy, Discord, email, webhooks, etc.). To attach a channel to a monitor you only need its id — the credentials in `config` are withheld by default and the names of the withheld fields are listed in `redactedConfigKeys`.',
+      description: 'Returns all configured notification channels (Slack, ntfy, Discord, email, webhooks, etc.), each with its `type` and its type-specific settings in `config`. To attach a channel to a monitor you only need its id — the credentials in `config` are withheld by default and the names of the withheld fields are listed in `redactedConfigKeys`.',
       inputSchema: {
         includeSecrets: includeSecretsParam
       },
@@ -2499,9 +2520,10 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
         const raw = client.getNotificationList();
         // getNotificationList() returns references into notificationListCache, so this
         // must not mutate — redactNotifications builds new objects.
-        const notifications = wantsSecrets(includeSecrets)
-          ? raw
+        const rows = wantsSecrets(includeSecrets)
+          ? (raw as unknown as Record<string, unknown>[])
           : redactNotifications(raw as unknown as Record<string, unknown>[]);
+        const notifications = rows.map(presentNotification);
         return {
           content: [{ type: 'text', text: JSON.stringify(notifications, null, 2) }],
           structuredContent: { notifications, count: notifications.length },

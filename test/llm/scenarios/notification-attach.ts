@@ -16,7 +16,7 @@ export default defineScenario({
     const { notifications = [] } = await call(ctx, 'listNotifications', { includeSecrets: true });
     const n = (notifications as any[]).find(x => x.name === NAME);
     if (!n) return [expectThat(`notification "${NAME}" exists`, false)];
-    // Uptime Kuma keeps the type and its settings in `config`, a JSON string.
+    // listNotifications returns config as an object; servers before the eval-findings fix sent a JSON string.
     const config = typeof n.config === 'string' ? JSON.parse(n.config) : (n.config ?? {});
     const m = await getMonitor(ctx, seed.checkout);
     const attached = Object.entries(m.notificationIDList ?? {}).some(([id, on]) => Number(id) === n.id && on);
