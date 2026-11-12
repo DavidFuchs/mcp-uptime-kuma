@@ -49,3 +49,22 @@ export async function sweep(ctx: TestContext): Promise<number> {
 
   return deleted;
 }
+
+/** Full monitor record, type-specific fields and secrets included. */
+export async function getMonitor(ctx: TestContext, monitorID: number): Promise<any> {
+  const { monitor } = await call(ctx, 'getMonitor', { monitorID, includeTypeSpecificFields: true, includeSecrets: true });
+  return monitor;
+}
+
+/** The monitor with exactly this name, read in full, or undefined. */
+export async function findMonitor(ctx: TestContext, name: string): Promise<any | undefined> {
+  const { monitors = [] } = await call(ctx, 'listMonitors');
+  const m = (monitors as any[]).find(x => x.name === name);
+  return m ? getMonitor(ctx, m.id) : undefined;
+}
+
+/** Creates a monitor through the scripted client and returns its ID. */
+export async function createMonitor(ctx: TestContext, args: Record<string, unknown>): Promise<number> {
+  const { monitorID } = await call(ctx, 'createMonitor', args);
+  return Number(monitorID);
+}
