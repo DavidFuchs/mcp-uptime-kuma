@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import { isSecretKey, redactSecrets } from '../../src/redact.js';
 import type { RunResult } from './scenario.js';
 
 export interface SummaryRow {
@@ -43,6 +44,15 @@ export function summarize(results: RunResult[], minPassRate: number): Summary {
   };
 }
 
+/**
+ * Masks `key=value` pairs whose key names a secret (the server's own isSecretKey), so a failed
+ * check's detail never prints a credential. Scenario values are fixtures, but console output
+ * gets pasted into issues and CI logs.
+ */
+export function maskSecretPairs(text: string): string {
+  return text.replace(/([A-Za-z_][\w.-]*)=(\S+)/g, (whole, key: string) => (isSecretKey(key) ? `${key}=***` : whole));
+}
+
 const truncate = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
 export function formatConsole(summary: Summary, results: RunResult[]): string {
@@ -71,13 +81,13 @@ export function formatConsole(summary: Summary, results: RunResult[]): string {
   for (const r of notable) {
     lines.push('');
     lines.push(`── ${r.scenarioId} #${r.run}: ${r.outcome}${r.degraded ? ' (degraded)' : ''}`);
-    if (r.errorMessage) lines.push(`   error: ${r.errorMessage}`);
-    for (const a of r.assertions.filter(a => !a.ok)) lines.push(`   ✗ ${a.label}${a.detail ? ` — ${a.detail}` : ''}`);
+    if (r.errorMessage) lines.push(`   error: ${maskSecretPairs(r.errorMessage)}`);
+    for (const a of r.assertions.filter(a => !a.ok)) lines.push(`   ✗ ${a.label}${a.detail ? ` — ${maskSecretPairs(a.detail)}` : ''}`);
     for (const reason of r.degradedReasons) lines.push(`   ⚠ ${reason}`);
     if (r.trace) {
       r.trace.toolCalls.forEach((c, i) => {
-        const input = truncate(JSON.stringify(c.input ?? {}), 80);
-        const mark = c.isError ? `✗ ${truncate(c.resultText.replace(/\s+/g, ' '), 100)}` : '✓';
+        const input = truncate(JSON.stringify(redactSecrets(c.input ?? {})), 80);
+        const mark = c.isError ? `✗ ${truncate(maskSecretPairs(c.resultText.replace(/\s+/g, ' ')), 100)}` : '✓';
         lines.push(`   ${String(i + 1).padStart(2)}. ${c.name} ${input} ${mark}`);
       });
       if (r.trace.rawPath) lines.push(`   trace: ${r.trace.rawPath}`);

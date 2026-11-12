@@ -7,7 +7,7 @@ import { runClaude, assertProbeTrace, abortActiveClaude, type Trace } from './cl
 import { classify, type RunResult, type Scenario, type Assertion } from './scenario.js';
 import { sweep } from './kuma.js';
 import { parseArgs, selectScenarios, type LlmArgs } from './args.js';
-import { summarize, formatConsole, writeResults } from './report.js';
+import { summarize, formatConsole, writeResults, maskSecretPairs } from './report.js';
 import { scenarios as allScenarios } from './scenarios/index.js';
 
 /**
@@ -184,7 +184,7 @@ async function main(): Promise<number> {
         results.push(r);
         const icon = r.outcome === 'pass' ? (r.degraded ? '⚠' : '✓') : r.outcome === 'fail' ? '✗' : '!';
         const calls = r.trace ? `${r.trace.toolCalls.length} calls` : '';
-        console.log(`  ${icon} ${scenario.id} #${n} ${r.outcome} ${calls}${r.errorMessage ? ` — ${r.errorMessage}` : ''}`);
+        console.log(`  ${icon} ${scenario.id} #${n} ${r.outcome} ${calls}${r.errorMessage ? ` — ${maskSecretPairs(r.errorMessage)}` : ''}`);
       }
     }
   } finally {
