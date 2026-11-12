@@ -133,8 +133,8 @@ export const strictSchemaTests: Array<{ name: string; fn: TestFn }> = [
           await client.callTool({ name: 'getMonitor', arguments: { monitorID } }) as CallToolResult,
           'getMonitor'
         ));
-        if (Number(after.timeout) !== 240) {
-          throw new Error(`timeout is now ${JSON.stringify(after.timeout)}, expected the original 240`);
+        if (Number(after.timeout) !== 48) {
+          throw new Error(`timeout is now ${JSON.stringify(after.timeout)}, expected the original 48`);
         }
         console.log('  ✓ #65: timeout:"" rejected and the stored value left intact');
       } finally {

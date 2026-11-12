@@ -100,8 +100,7 @@ describe('certificate and domain expiry notification toggles (#110)', () => {
     expect(lastWrite).toMatchObject({ expiryNotification: true, domainExpiryNotification: false });
   });
 
-  it('createMonitor leaves the toggles out when the caller did not pass them', async () => {
-    // Older Uptime Kuma 2.0 has no domain_expiry_notification column to import into.
+  it('createMonitor applies the web form defaults when the caller did not pass the toggles', async () => {
     const { client } = await connectServer();
 
     await client.callTool({
@@ -109,7 +108,10 @@ describe('certificate and domain expiry notification toggles (#110)', () => {
       arguments: { name: 'New', type: 'http', url: 'https://example.com' },
     });
 
-    expect(lastWrite).not.toHaveProperty('expiryNotification');
+    // The form sends false; the expiry_notification column would otherwise store true.
+    expect(lastWrite).toMatchObject({ expiryNotification: false });
+    // The form's true is also the column default, and Uptime Kuma 2.0 has no
+    // domain_expiry_notification column to import into, so it is left out.
     expect(lastWrite).not.toHaveProperty('domainExpiryNotification');
   });
 
