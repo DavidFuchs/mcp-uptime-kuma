@@ -439,6 +439,9 @@ describe('type-specific monitor fields (#112)', () => {
     // and described on both tools they were 23.7 KB and 23.0 KB, against about 7 KB each before
     // #112. Those fields now go in typeFields and are described by getMonitorTypeFields. If this
     // fails, the new field belongs in typeFields rather than the cap being raised.
+    //
+    // The annotations are left out of the measurement: they are the same few hints on every
+    // tool, read by the client rather than added per field, so they are not what the cap guards.
     it.each([
       ['createMonitor', 8500],
       ['updateMonitor', 7500],
@@ -446,7 +449,8 @@ describe('type-specific monitor fields (#112)', () => {
       const { client } = await connectServer();
       const { tools } = await client.listTools();
 
-      expect(JSON.stringify(tools.find((t) => t.name === toolName)).length).toBeLessThan(cap);
+      const { annotations: _annotations, ...tool } = tools.find((t) => t.name === toolName)!;
+      expect(JSON.stringify(tool).length).toBeLessThan(cap);
     });
 
     it('advertises no safe-integer bounds, and keeps the ones a field declares', async () => {

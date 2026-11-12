@@ -19,6 +19,7 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for [U
 - **Real-time Monitoring**: Access monitors, heartbeats, uptime, and responsiveness metrics via Socket.IO with instant status change notifications.
 - **Context-Friendly**: Returns only essential data by default to avoid overwhelming LLM context windows.
 - **Multiple Transports**: Supports stdio (local) and streamable HTTP (remote) transports.
+- **Annotated Tools**: Every tool says whether it only reads, and whether it deletes or replaces, so your MCP client can run reads unattended and ask before the rest.
 
 ## Quick Start
 
@@ -282,6 +283,7 @@ upgrading cannot break an existing deployment - the server warns at startup in t
 | `HOST` | `0.0.0.0` | Address to bind. Set to `127.0.0.1` when running locally outside a container. |
 | `PORT` | `3000` | Port to listen on. |
 | `TRUST_PROXY` | unset (no trust) | Trust `X-Forwarded-For` from a reverse proxy in front of the server, so the rate limiter keys on the real client IP instead of the proxy's. Accepts a hop count (`1`), `true`/`false`, or an IP/subnet list - see [Express's `trust proxy` docs](https://expressjs.com/en/guide/behind-proxies.html). |
+| `RATE_LIMIT_MAX` | `1000` | Requests allowed per client IP every 15 minutes; beyond that the server answers `429`. Every tool call is one request, so a busy agent makes hundreds. Set to `0` to turn the limit off, for example when your reverse proxy already limits. |
 
 `/health` is deliberately left unauthenticated so container healthchecks and load balancer
 probes keep working. It reports nothing but liveness.
@@ -340,7 +342,7 @@ ALLOWED_ORIGIN=https://librechat.example.com,http://localhost:5173
 ### Running behind a reverse proxy
 
 Without `TRUST_PROXY`, Express sees every request as coming from the proxy's IP, so the
-rate limiter puts all of your clients in one shared 100-request bucket and starts
+rate limiter puts all of your clients in one shared bucket (`RATE_LIMIT_MAX`) and starts
 returning spurious `429`s once traffic from any of them adds up.
 
 Set `TRUST_PROXY` to the number of proxy hops in front of the server so it reads the

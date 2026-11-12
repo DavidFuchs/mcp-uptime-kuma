@@ -15,13 +15,22 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # A release runs on its tag. A manual run is on a branch, which has no version of its own.
       - name: Extract version from tag
         id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=dev-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Inject version into code
         run: |
           echo "export const VERSION = '${{ steps.version.outputs.VERSION }}';" > src/version.ts
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -47,6 +56,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

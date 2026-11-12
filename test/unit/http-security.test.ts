@@ -4,6 +4,8 @@ import {
   parseAllowedOrigins,
   createOriginMiddleware,
   createAuthMiddleware,
+  parseRateLimitMax,
+  DEFAULT_RATE_LIMIT_MAX,
 } from '../../src/http-security.js';
 
 /**
@@ -238,5 +240,21 @@ describe('createAuthMiddleware', () => {
     const s = stub({ authorization: 'Bearer wrong' });
     createAuthMiddleware(TOKEN)(s.req, s.res, s.next);
     expect(JSON.stringify({ body: s.body, headers: s.headers })).not.toContain(TOKEN);
+  });
+});
+
+describe('parseRateLimitMax', () => {
+  it('defaults when unset or blank', () => {
+    expect(parseRateLimitMax(undefined)).toBe(DEFAULT_RATE_LIMIT_MAX);
+    expect(parseRateLimitMax('  ')).toBe(DEFAULT_RATE_LIMIT_MAX);
+  });
+
+  it('reads a whole number, with 0 meaning no limit', () => {
+    expect(parseRateLimitMax('250')).toBe(250);
+    expect(parseRateLimitMax(' 0 ')).toBe(0);
+  });
+
+  it.each(['-1', '1.5', 'unlimited', '10k', 'true'])('refuses %s rather than guessing', (value) => {
+    expect(() => parseRateLimitMax(value)).toThrow(/RATE_LIMIT_MAX/);
   });
 });

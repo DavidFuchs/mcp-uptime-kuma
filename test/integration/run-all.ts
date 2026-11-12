@@ -3,7 +3,7 @@ import {
   loadTestConfig,
   validateTestConfig,
   runTestSuite,
-  TestContext,
+  type TestContext,
 } from './helpers.js';
 import { settingsTests } from './settings.test.js';
 import { monitorTests } from './monitors.test.js';

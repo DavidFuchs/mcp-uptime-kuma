@@ -19,6 +19,7 @@ const beat = (id: number, time: string, extra: Record<string, unknown> = {}) => 
   status: 1,
   time,
   msg: `beat-${id}`,
+  important: false,
   ...extra,
 });
 
@@ -28,6 +29,7 @@ const liveBeat = (time: string, extra: Record<string, unknown> = {}) => ({
   status: 1,
   time,
   msg: 'live',
+  important: false,
   ...extra,
 });
 

@@ -1,6 +1,6 @@
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { TestFn, extractText, extractID } from './helpers.js';
+import { type TestFn, extractText, extractID } from './helpers.js';
 import { UptimeKumaClient } from '../../src/uptime-kuma-client.js';
 
 /**

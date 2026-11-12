@@ -20,6 +20,8 @@ services:
       # Only needed for browser-based MCP clients; native clients send no Origin header.
       # Defaults to '*', which performs no Origin validation.
 #      - ALLOWED_ORIGIN=https://your-browser-client.example.com
+      # Requests allowed per client IP every 15 minutes. Defaults to 1000; 0 turns the limit off.
+#      - RATE_LIMIT_MAX=1000
     ports:
       - "3000:3000"
     # Override default CMD to use streamable HTTP transport instead of stdio

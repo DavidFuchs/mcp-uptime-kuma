@@ -1,6 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 import { fileURLToPath } from 'url';
-import { loadTestConfig, TestConfig } from './helpers.js';
+import { loadTestConfig, type TestConfig } from './helpers.js';
 
 /**
  * Makes sure the test Uptime Kuma instance has an admin account that the credentials in

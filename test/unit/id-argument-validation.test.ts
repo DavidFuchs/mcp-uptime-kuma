@@ -109,7 +109,7 @@ describe('required ID arguments (#65)', () => {
       if (!shape) continue;
 
       for (const [field, fieldSchema] of Object.entries(shape)) {
-        if (!idField.test(field) || fieldSchema.isOptional()) continue;
+        if (!idField.test(field) || (fieldSchema as z.ZodType).isOptional()) continue;
         checked++;
 
         for (const junk of [null, '', [], true]) {
