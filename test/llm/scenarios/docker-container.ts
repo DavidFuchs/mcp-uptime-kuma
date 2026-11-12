@@ -1,5 +1,5 @@
 import { defineScenario, expectThat, PREFIX } from '../scenario.js';
-import { call, findMonitor } from '../kuma.js';
+import { call, findMonitor, hostAndPort } from '../kuma.js';
 
 const HOST = `${PREFIX}build-box`;
 const NAME = `${PREFIX}web container`;
@@ -18,7 +18,7 @@ export default defineScenario({
     return [
       expectThat(`docker host "${HOST}" exists`, !!host),
       expectThat('host type tcp', host?.dockerType === 'tcp', `dockerType=${host?.dockerType}`),
-      expectThat('daemon address', String(host?.dockerDaemon ?? '').includes('10.0.0.9:2375'), `dockerDaemon=${host?.dockerDaemon}`),
+      expectThat('daemon address', (({ host: h, port }) => h === '10.0.0.9' && port === '2375')(hostAndPort(host?.dockerDaemon)), `dockerDaemon=${host?.dockerDaemon}`),
       expectThat(`monitor "${NAME}" exists`, !!m),
       expectThat('type docker', m?.type === 'docker', `type=${m?.type}`),
       expectThat('container web', m?.docker_container === 'web', `docker_container=${m?.docker_container}`),

@@ -85,3 +85,18 @@ export async function createMonitor(ctx: TestContext, args: Record<string, unkno
   const { monitorID } = await call(ctx, 'createMonitor', args);
   return Number(monitorID);
 }
+
+/**
+ * The host and port of an address stored with or without a scheme ("mqtt://broker:1883",
+ * "tcp://10.0.0.9:2375", "broker.example.com"). Checks compare these exactly: a substring test
+ * would also accept "mqtt://evil.test/broker.example.com".
+ */
+export function hostAndPort(value: unknown): { host: string; port: string } {
+  const text = String(value ?? '').trim();
+  try {
+    const url = new URL(text.includes('://') ? text : `x://${text}`);
+    return { host: url.hostname.toLowerCase(), port: url.port };
+  } catch {
+    return { host: '', port: '' };
+  }
+}

@@ -1,5 +1,5 @@
 import { defineScenario, expectThat, PREFIX } from '../scenario.js';
-import { findMonitor } from '../kuma.js';
+import { findMonitor, hostAndPort } from '../kuma.js';
 
 const NAME = `${PREFIX}Sensor feed`;
 
@@ -15,7 +15,7 @@ export default defineScenario({
     if (!m) return [expectThat(`monitor "${NAME}" exists`, false)];
     return [
       expectThat('type is mqtt', m.type === 'mqtt', `type=${m.type}`),
-      expectThat('broker host', String(m.hostname ?? '').includes('broker.example.com'), `hostname=${m.hostname}`),
+      expectThat('broker host', hostAndPort(m.hostname).host === 'broker.example.com', `hostname=${m.hostname}`),
       expectThat('port 1883', m.port === 1883, `port=${m.port}`),
       expectThat('topic', m.mqttTopic === 'sensors/+/status', `mqttTopic=${m.mqttTopic}`),
       expectThat('username', m.mqttUsername === 'probe', `mqttUsername=${m.mqttUsername}`),

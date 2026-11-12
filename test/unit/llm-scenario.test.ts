@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { classify, expectThat, PREFIX } from '../llm/scenario.js';
-import { sweep, call } from '../llm/kuma.js';
+import { sweep, call, hostAndPort } from '../llm/kuma.js';
 import type { Trace, ToolCall } from '../llm/claude-driver.js';
 
 const trace = (calls: Partial<ToolCall>[] = [], resultSubtype = 'success'): Trace => ({
@@ -172,5 +172,23 @@ describe('call', () => {
   it('prefers structuredContent over text', async () => {
     const ctx = { client: { callTool: async () => ({ content: [{ type: 'text', text: 'Monitor 3' }], structuredContent: { monitor: { id: 3 } } }) } } as any;
     expect(await call(ctx, 'getMonitor', { monitorID: 3 })).toEqual({ monitor: { id: 3 } });
+  });
+});
+
+describe('hostAndPort', () => {
+  it('reads host and port with or without a scheme', () => {
+    expect(hostAndPort('mqtt://broker.example.com:1883')).toEqual({ host: 'broker.example.com', port: '1883' });
+    expect(hostAndPort('broker.example.com')).toEqual({ host: 'broker.example.com', port: '' });
+    expect(hostAndPort('tcp://10.0.0.9:2375')).toEqual({ host: '10.0.0.9', port: '2375' });
+  });
+
+  it('does not take a host that only appears in the path or as a prefix', () => {
+    expect(hostAndPort('mqtt://evil.test/broker.example.com').host).toBe('evil.test');
+    expect(hostAndPort('mqtt://broker.example.com.evil.test').host).toBe('broker.example.com.evil.test');
+  });
+
+  it('returns an empty host for something that is not an address', () => {
+    expect(hostAndPort(undefined).host).toBe('');
+    expect(hostAndPort('not a host').host).toBe('');
   });
 });
