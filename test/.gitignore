@@ -3,3 +3,6 @@
 
 # Test data
 test/integration/data/
+
+# LLM eval results
+llm/results/
