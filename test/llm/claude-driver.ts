@@ -52,6 +52,24 @@ export class ClaudeTimeoutError extends Error {
   }
 }
 
+export class ClaudeAbortedError extends Error {
+  constructor() {
+    super('claude session aborted');
+    this.name = 'ClaudeAbortedError';
+  }
+}
+
+// The session in flight, if any. claude runs in its own process group (so a timeout can take
+// the MCP server down with it), which also means a terminal's Ctrl+C never reaches it.
+let activeAbort: (() => void) | null = null;
+
+/** Kills the running claude session and its process group. Returns whether one was running. */
+export function abortActiveClaude(): boolean {
+  if (!activeAbort) return false;
+  activeAbort();
+  return true;
+}
+
 export function buildMcpConfig(config: TestConfig, repoRoot: string): object {
   const env: Record<string, string> = { UPTIME_KUMA_URL: config.url };
   if (config.username) env.UPTIME_KUMA_USERNAME = config.username;
@@ -197,10 +215,12 @@ export async function runClaude(opts: ClaudeRunOptions): Promise<Trace> {
       const fail = (e: unknown) => {
         if (settled) return;
         settled = true;
+        activeAbort = null;
         clearTimeout(timer);
         killGroup();
         reject(e);
       };
+      activeAbort = () => fail(new ClaudeAbortedError());
       // raw is only ever ended in 'close', after the last stdout chunk, so no write can follow it.
       raw.on('error', fail);
       child.stdout.on('data', (d: Buffer) => { out += d.toString(); if (!raw.writableEnded) raw.write(d); });
@@ -209,6 +229,7 @@ export async function runClaude(opts: ClaudeRunOptions): Promise<Trace> {
       child.on('error', fail);
       child.on('close', c => {
         clearTimeout(timer);
+        if (!settled) activeAbort = null;
         raw.end(() => {
           if (settled) return;
           settled = true;

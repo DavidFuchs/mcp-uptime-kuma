@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { parseArgs, selectScenarios } from '../llm/args.js';
 import { summarize, formatConsole } from '../llm/report.js';
-import { preflight, PreflightError, assertTestInstance } from '../llm/run-llm.js';
+import { preflight, PreflightError, assertTestInstance, createInterruptHandler } from '../llm/run-llm.js';
 import { defineScenario, expectThat, type RunResult } from '../llm/scenario.js';
 
 const sc = (id: string, tags: string[]) =>
@@ -116,5 +116,20 @@ describe('assertTestInstance', () => {
     expect(() => assertTestInstance('https://kuma.example.com', {})).toThrow(/kuma\.example\.com.*LLM_EVAL_ALLOW_REMOTE/s);
     expect(() => assertTestInstance('not a url', {})).toThrow();
     expect(() => assertTestInstance('https://kuma.example.com', { LLM_EVAL_ALLOW_REMOTE: '1' })).not.toThrow();
+  });
+});
+
+describe('createInterruptHandler', () => {
+  it('aborts the running session on the first signal and exits on the second', () => {
+    let aborts = 0;
+    const exits: number[] = [];
+    const { state, onSignal } = createInterruptHandler({ abort: () => { aborts++; return true; }, exit: code => { exits.push(code); } });
+    expect(state.interrupted).toBe(false);
+    onSignal();
+    expect(state.interrupted).toBe(true);
+    expect(aborts).toBe(1);
+    expect(exits).toEqual([]);
+    onSignal();
+    expect(exits).toEqual([130]);
   });
 });

@@ -2,7 +2,8 @@
 # Shared Docker test infrastructure for the integration and LLM eval runners.
 #
 # Source this file, then:
-#   trap infra_down EXIT INT TERM
+#   trap infra_down EXIT
+#   trap 'exit 130' INT TERM
 #   infra_up || exit 1
 #
 # Sourcing registers no traps and changes no directories.
@@ -64,7 +65,7 @@ infra_up() {
     # instance, so copy it and carry on.
     if [ ! -f "$INFRA_DIR/.env.test" ]; then
         echo "📄 No .env.test found, creating it from .env.test.example"
-        cp "$INFRA_DIR/.env.test.example" "$INFRA_DIR/.env.test"
+        cp "$INFRA_DIR/.env.test.example" "$INFRA_DIR/.env.test" || return 1
     fi
 
     # Start test infrastructure

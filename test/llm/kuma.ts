@@ -22,17 +22,31 @@ export async function call(ctx: TestContext, tool: string, args: Record<string, 
 
 const hasPrefix = (v: unknown) => typeof v === 'string' && v.startsWith(PREFIX);
 
-/** Deletes every monitor, tag, maintenance window, notification and status page whose name/title/slug has the prefix. Returns the number deleted. */
+/**
+ * Deletes every monitor, tag, maintenance window, notification, status page and docker host
+ * whose name/title/slug has the prefix. Returns the number deleted.
+ */
 export async function sweep(ctx: TestContext): Promise<number> {
   let deleted = 0;
   const del = async (tool: string, args: Record<string, unknown>) => {
-    await call(ctx, tool, args);
-    deleted++;
+    try {
+      await call(ctx, tool, args);
+      deleted++;
+    } catch (e) {
+      // Deleting a group can take its children with it, so a later delete may find nothing.
+      if (!/not found/i.test((e as Error).message)) throw e;
+    }
   };
 
   const { monitors = [] } = await call(ctx, 'listMonitors');
-  // Children before groups, so deleting a group never trips over a child already gone.
-  const ours = (monitors as any[]).filter(m => hasPrefix(m.name)).sort((a, b) => (b.parent ? 1 : 0) - (a.parent ? 1 : 0));
+  const byId = new Map((monitors as any[]).map(m => [m.id, m]));
+  const depth = (m: any): number => {
+    let d = 0;
+    for (let p = m.parent, seen = 0; p != null && byId.has(p) && seen < 100; p = byId.get(p).parent, seen++) d++;
+    return d;
+  };
+  // Deepest first, so a group is only deleted once everything under it is gone.
+  const ours = (monitors as any[]).filter(m => hasPrefix(m.name)).sort((a, b) => depth(b) - depth(a));
   for (const m of ours) await del('deleteMonitor', { monitorID: m.id });
 
   const { tags = [] } = await call(ctx, 'listTags');
@@ -46,6 +60,9 @@ export async function sweep(ctx: TestContext): Promise<number> {
 
   const { statusPages = [] } = await call(ctx, 'listStatusPages');
   for (const p of statusPages as any[]) if (hasPrefix(p.slug) || hasPrefix(p.title)) await del('deleteStatusPage', { slug: p.slug });
+
+  const { dockerHosts = [] } = await call(ctx, 'listDockerHosts');
+  for (const h of dockerHosts as any[]) if (hasPrefix(h.name)) await del('deleteDockerHost', { dockerHostID: h.id });
 
   return deleted;
 }

@@ -11,6 +11,8 @@ import {
   runClaude,
   ClaudeTimeoutError,
   assertProbeTrace,
+  abortActiveClaude,
+  ClaudeAbortedError,
 } from '../llm/claude-driver.js';
 import { classify } from '../llm/scenario.js';
 
@@ -212,6 +214,35 @@ describe('runClaude', () => {
         config: { url: 'http://localhost:3001', username: 'a', password: 'b' },
         rawPath: join(dir, 'no-such-dir', 'raw.jsonl'),
       })).rejects.toThrow(/ENOENT/);
+    } finally {
+      if (prev === undefined) delete process.env.CLAUDE_BIN; else process.env.CLAUDE_BIN = prev;
+    }
+  });
+
+  it('abortActiveClaude kills the running session and its process group', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'llm-driver-test-'));
+    const bin = join(dir, 'slow-claude');
+    const pidFile = join(dir, 'grandchild.pid');
+    // A grandchild in the same group, standing in for the MCP server claude starts.
+    writeFileSync(bin, `#!/bin/sh\nsleep 30 &\necho $! > "${pidFile}"\nsleep 30\n`);
+    chmodSync(bin, 0o755);
+    const prev = process.env.CLAUDE_BIN;
+    process.env.CLAUDE_BIN = bin;
+    try {
+      const run = runClaude({
+        prompt: 'p', model: 'sonnet', maxBudgetUsd: 0.1, timeoutMs: 20_000,
+        config: { url: 'http://localhost:3001', username: 'a', password: 'b' },
+        rawPath: join(dir, 'raw.jsonl'),
+      });
+      await new Promise(r => setTimeout(r, 300));
+      const started = Date.now();
+      expect(abortActiveClaude()).toBe(true);
+      await expect(run).rejects.toBeInstanceOf(ClaudeAbortedError);
+      expect(Date.now() - started).toBeLessThan(2000);
+      const grandchild = Number(readFileSync(pidFile, 'utf8'));
+      await new Promise(r => setTimeout(r, 100));
+      expect(() => process.kill(grandchild, 0)).toThrow();
+      expect(abortActiveClaude()).toBe(false);
     } finally {
       if (prev === undefined) delete process.env.CLAUDE_BIN; else process.env.CLAUDE_BIN = prev;
     }
