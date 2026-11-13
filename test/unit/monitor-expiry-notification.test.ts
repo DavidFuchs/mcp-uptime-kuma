@@ -9,8 +9,6 @@ import { UptimeKumaClient } from '../../src/uptime-kuma-client.js';
  * Kuma's add and editMonitor handlers both accept, but neither write tool declared them.
  */
 
-process.setMaxListeners(50);
-
 const EXISTING_MONITOR = {
   id: 7,
   name: 'Existing',

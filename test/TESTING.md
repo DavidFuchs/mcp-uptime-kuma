@@ -16,6 +16,7 @@ by hand; see [llm/README.md](llm/README.md).
 ```bash
 npm test              # run once
 npm run test:watch    # re-run on change
+npm run test:coverage # run once and report coverage of src/
 ```
 
 These use Vitest. Each test builds the MCP server in-process and replaces the Uptime Kuma

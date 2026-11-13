@@ -1,6 +1,7 @@
 node_modules/
 dist/
 *.log
+coverage/
 .DS_Store
 .env
 .mcpregistry_*_token

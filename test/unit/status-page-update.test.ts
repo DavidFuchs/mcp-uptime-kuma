@@ -12,8 +12,6 @@ import { UptimeKumaClient } from '../../src/uptime-kuma-client.js';
  * every group on the page. Agents needed up to 7 attempts to update a page.
  */
 
-process.setMaxListeners(100);
-
 // What Uptime Kuma's authenticated getStatusPage returns (StatusPage.toJSON()).
 const STORED = {
   id: 3,

@@ -524,8 +524,8 @@ export function registerMonitorWriteTools(ctx: ToolContext): void {
         Object.assign(defined, authApplied);
         // Ensure retryInterval is valid — Kuma rejects values < 1 on edit even if
         // it stored 0 during creation (pre-existing monitors or older defaults)
-        if (!merged.retryInterval || (merged as any).retryInterval < 1) {
-          (merged as any).retryInterval = (merged as any).interval || 60;
+        if (!merged.retryInterval || merged.retryInterval < 1) {
+          merged.retryInterval = merged.interval || 60;
         }
         const response = await client.updateMonitor(merged as unknown as Record<string, unknown>);
 

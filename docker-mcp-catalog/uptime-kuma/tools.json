@@ -645,7 +645,7 @@
       {
         "name": "status",
         "type": "string",
-        "desc": "Filter by current heartbeat status. Comma-separated for multiple statuses. 0=DOWN, 1=UP, 2=PENDING, 3=MAINTENANCE. Examples: \"0\", \"1\", \"0,2\"",
+        "desc": "Filter by current heartbeat status, by number or name. Comma-separated for multiple statuses. 0=down, 1=up, 2=pending, 3=maintenance. Examples: \"down\", \"0\", \"down,pending\". Any other value is an error.",
         "optional": true
       }
     ],

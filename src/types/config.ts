@@ -1,5 +1,3 @@
-import { z } from 'zod';
-
 /**
  * Configuration interface for Uptime Kuma
  */

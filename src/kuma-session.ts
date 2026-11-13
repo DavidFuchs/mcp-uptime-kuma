@@ -113,16 +113,9 @@ export function createKumaSession(config: UptimeKumaConfig): KumaSession {
     }
   };
 
-  // Clean up on shutdown
-  process.on('SIGINT', () => {
-    client.disconnect();
-    process.exit(0);
-  });
-
-  process.on('SIGTERM', () => {
-    client.disconnect();
-    process.exit(0);
-  });
+  // No signal handlers here. Shutting down is the entry point's job: a handler registered by
+  // the session ran ahead of the entry point's own and exited the process before the HTTP
+  // transport could close its listener and let requests in flight finish.
 
   return {
     client,

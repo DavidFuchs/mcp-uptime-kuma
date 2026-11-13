@@ -168,7 +168,7 @@ export function registerStatusPageTools(ctx: ToolContext): void {
         try {
           stored = await client.getStatusPageConfig(slug);
         } catch (e) {
-          throw new Error(`status page "${slug}" not found (${e instanceof Error ? e.message : String(e)}). listStatusPages shows the slugs.`);
+          throw new Error(`status page "${slug}" not found (${e instanceof Error ? e.message : String(e)}). listStatusPages shows the slugs.`, { cause: e });
         }
         const merged = mergeStatusPageConfig(slug, stored, config ?? {});
 
@@ -182,7 +182,8 @@ export function registerStatusPageTools(ctx: ToolContext): void {
           } catch (e) {
             throw new Error(
               `could not read the current groups of "${slug}" to keep them (${e instanceof Error ? e.message : String(e)}). ` +
-              'Pass publicGroupList with every group the page should have: Uptime Kuma deletes the groups that are not in it.'
+              'Pass publicGroupList with every group the page should have: Uptime Kuma deletes the groups that are not in it.',
+              { cause: e }
             );
           }
           groups = keepGroups(current.publicGroupList ?? []);

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { UptimeKumaClient } from '../../src/uptime-kuma-client.js';
 import { createMockSocket, createDisconnectedSocket, injectSocket, injectNotificationListCache } from './helpers.js';
 

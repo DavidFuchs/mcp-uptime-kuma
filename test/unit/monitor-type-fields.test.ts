@@ -11,8 +11,6 @@ import { redactSecrets, SECRET_MARKER } from '../../src/redact.js';
  * could be created but not configured, and then failed every check.
  */
 
-process.setMaxListeners(400);
-
 /**
  * Every field Uptime Kuma 2.5.10's `editMonitor` handler reads off the payload
  * (server/server.js, the `bean.x = monitor.y` block), by the name it READS — `saveResponse`,

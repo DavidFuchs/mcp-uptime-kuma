@@ -155,7 +155,7 @@ export function registerMonitorReadTools(ctx: ToolContext): void {
         // listMonitors — but the #65 parent filter only reached listMonitors, leaving the tool
         // the instructions send callers to FIRST unable to answer it.
         parentId: numeric(z.number().int()).nullable().optional().describe('Filter to the DIRECT children of this group monitor. Pass null for top-level monitors (those with no parent). Not recursive — use the group\'s own childrenIDs to walk deeper.'),
-        status: z.string().optional().describe('Filter by current heartbeat status. Comma-separated for multiple statuses. 0=DOWN, 1=UP, 2=PENDING, 3=MAINTENANCE. Examples: "0", "1", "0,2"')
+        status: z.string().optional().describe('Filter by current heartbeat status, by number or name. Comma-separated for multiple statuses. 0=down, 1=up, 2=pending, 3=maintenance. Examples: "down", "0", "down,pending". Any other value is an error.')
       },
       outputSchema: { 
         summaries: z.array(MonitorSummarySchema).describe('Array of monitor summaries'),

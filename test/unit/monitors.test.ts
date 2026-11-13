@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { UptimeKumaClient } from '../../src/uptime-kuma-client.js';
 import {
   createMockSocket,
@@ -442,6 +442,33 @@ describe('UptimeKumaClient - Monitor CRUD Operations', () => {
       const down = client.getMonitorSummary({ status: '0' });
       expect(down).toHaveLength(1);
       expect(down[0].name).toBe('API');
+    });
+
+    it.each([
+      ['down', ['API']],
+      ['DOWN', ['API']],
+      ['up', ['Web']],
+      [' Up , down ', ['Web', 'API']],
+      ['0,up', ['Web', 'API']],
+      ['pending', []],
+      ['maintenance', []],
+    ])('filters by status name %j', (status, expected) => {
+      const names = client.getMonitorSummary({ status }).map((s) => s.name);
+      expect(names.sort()).toEqual([...expected].sort());
+    });
+
+    // An unknown status used to be dropped, leaving no filter at all: "what is down?" asked
+    // with a word the filter did not know came back as every monitor.
+    it.each(['broken', '7', '0,nope', '-1', '1.5'])('refuses the unknown status %j', (status) => {
+      expect(() => client.getMonitorSummary({ status })).toThrow(/status/i);
+    });
+
+    it('names the accepted statuses when it refuses one', () => {
+      expect(() => client.getMonitorSummary({ status: 'broken' })).toThrow(/"broken".*down.*up.*pending.*maintenance/is);
+    });
+
+    it('treats a blank status as no filter', () => {
+      expect(client.getMonitorSummary({ status: ' ' })).toHaveLength(2);
     });
 
     it('includes uptime and avgPing data', () => {

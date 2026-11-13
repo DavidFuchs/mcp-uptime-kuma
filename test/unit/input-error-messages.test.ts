@@ -12,8 +12,6 @@ import { UptimeKumaClient } from '../../src/uptime-kuma-client.js';
  * that calls safeParse() directly therefore keeps passing while callers get Zod's defaults.
  */
 
-process.setMaxListeners(50);
-
 async function callTool(name: string, args: Record<string, unknown>): Promise<string> {
   const { server } = await createServer({
     url: 'http://localhost:3001',

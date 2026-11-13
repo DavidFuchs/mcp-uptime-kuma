@@ -10,6 +10,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { createServer } from './server.js';
 import { createHttpApp, type HttpApp } from './http-app.js';
 import { parseExtraHeaders } from './extra-headers.js';
+import { parsePort, listenUrl } from './http-listen.js';
 import type { UptimeKumaConfig } from './types/index.js';
 
 /**
@@ -156,7 +157,9 @@ async function runStdio(config: UptimeKumaConfig) {
 // Run with the streamable HTTP transport (stateless mode - no session management)
 async function runHttp(config: UptimeKumaConfig) {
   let httpApp: HttpApp;
+  let port: number;
   try {
+    port = parsePort(process.env.PORT);
     httpApp = await createHttpApp(config);
   } catch (error) {
     console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
@@ -170,16 +173,17 @@ async function runHttp(config: UptimeKumaConfig) {
     console.error(`[MCP] Initial authentication failed, will retry on demand: ${error}`);
   });
 
-  const port = parseInt(process.env.PORT || '3000');
-
   // Defaults to all interfaces. The MCP spec prefers binding to loopback for a local
   // server, but this image's whole purpose is to be reached from outside its container,
   // where 0.0.0.0 is mandatory — so the safer value is offered rather than imposed.
   const host = process.env.HOST || '0.0.0.0';
 
   const httpServer = app.listen(port, host, () => {
-    console.log(`mcp-uptime-kuma server running on http://localhost:${port}/mcp`);
-    console.log(`Health check available at http://localhost:${port}/health`);
+    // The port actually bound, which is not the one asked for when that was 0.
+    const address = httpServer.address();
+    const boundPort = address !== null && typeof address === 'object' ? address.port : port;
+    console.log(`mcp-uptime-kuma server running on ${listenUrl(host, boundPort, '/mcp')}`);
+    console.log(`Health check available at ${listenUrl(host, boundPort, '/health')}`);
 
     // Warn rather than refuse to start. Both settings default to permissive so that
     // upgrading cannot break a working deployment, which makes an unprotected server the
@@ -202,11 +206,16 @@ async function runHttp(config: UptimeKumaConfig) {
     process.exit(1);
   });
 
-  // Graceful shutdown
+  // Graceful shutdown: stop accepting requests, let those in flight finish, then drop the
+  // connection to Uptime Kuma, which would otherwise keep the process alive.
+  let shuttingDown = false;
   const shutdown = () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     console.log('\n[MCP] Shutting down gracefully...');
     httpServer.close(() => {
       console.log('[MCP] Server closed');
+      try { session.client.disconnect(); } catch { /* best effort on the way out */ }
       process.exit(0);
     });
     
@@ -233,7 +242,6 @@ async function main() {
   }
 }
 
-main();
-
-// Also export the server creation function for programmatic use
-export { createServer } from './server.js';
+// This file is the command-line program and nothing else: loading it starts a server. To build
+// a server in your own code, import the package itself, which resolves to server.js.
+await main();
