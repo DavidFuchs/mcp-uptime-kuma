@@ -1,7 +1,7 @@
 # check=skip=SecretsUsedInArgOrEnv
 # Build stage. Runs on the build machine's own architecture whatever the target: its output
 # is JavaScript, so nothing here needs emulating.
-FROM --platform=$BUILDPLATFORM node:22-alpine AS builder
+FROM --platform=$BUILDPLATFORM node:25-alpine AS builder
 
 # Accept version as build argument
 ARG VERSION=dev
@@ -25,7 +25,7 @@ RUN sed -i "s/0\.0\.0-dev/${VERSION}/" src/version.ts
 RUN npm run build
 
 # Production stage
-FROM node:22-alpine
+FROM node:25-alpine
 
 # Accept version as build argument (must be redeclared per stage)
 ARG VERSION=dev
