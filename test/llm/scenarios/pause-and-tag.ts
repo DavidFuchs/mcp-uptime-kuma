@@ -8,8 +8,16 @@ export default defineScenario({
   description: 'Find a monitor by loose name among similar ones, pause it and tag it',
   tags: ['monitors', 'tags'],
   async setup(ctx) {
-    const billing = await createMonitor(ctx, { name: `${PREFIX}Billing API`, type: 'http', url: 'https://example.com/billing' });
-    const marketing = await createMonitor(ctx, { name: `${PREFIX}Marketing Site`, type: 'http', url: 'https://example.com' });
+    const billing = await createMonitor(ctx, {
+      name: `${PREFIX}Billing API`,
+      type: 'http',
+      url: 'https://example.com/billing',
+    });
+    const marketing = await createMonitor(ctx, {
+      name: `${PREFIX}Marketing Site`,
+      type: 'http',
+      url: 'https://example.com',
+    });
     await call(ctx, 'addTag', { name: TAG, color: '#2563eb' });
     return { billing, marketing };
   },

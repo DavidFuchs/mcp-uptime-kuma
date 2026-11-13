@@ -21,7 +21,10 @@ const STORED_WINDOW = {
   active: true,
   intervalDay: 1,
   dateRange: ['2026-07-26T11:32', '2045-07-26T12:32'],
-  timeRange: [{ hours: 4, minutes: 30, seconds: 0 }, { hours: 6, minutes: 30, seconds: 0 }],
+  timeRange: [
+    { hours: 4, minutes: 30, seconds: 0 },
+    { hours: 6, minutes: 30, seconds: 0 },
+  ],
   weekdays: [3],
   daysOfMonth: [],
   timezone: 'America/New_York',
@@ -61,21 +64,29 @@ describe('maintenance tools', () => {
     vi.spyOn(UptimeKumaClient.prototype, 'login').mockResolvedValue({ ok: true } as never);
     vi.spyOn(UptimeKumaClient.prototype, 'getSettings').mockResolvedValue({ ok: true, data: {} } as never);
 
-    createMaintenance = vi.spyOn(UptimeKumaClient.prototype, 'createMaintenance')
+    createMaintenance = vi
+      .spyOn(UptimeKumaClient.prototype, 'createMaintenance')
       .mockResolvedValue({ ok: true, msg: 'successAdded', maintenanceID: 4 } as never);
-    editMaintenance = vi.spyOn(UptimeKumaClient.prototype, 'editMaintenance')
+    editMaintenance = vi
+      .spyOn(UptimeKumaClient.prototype, 'editMaintenance')
       .mockResolvedValue({ ok: true, msg: 'Saved.', maintenanceID: 4 } as never);
-    fetchMaintenance = vi.spyOn(UptimeKumaClient.prototype, 'fetchMaintenance')
+    fetchMaintenance = vi
+      .spyOn(UptimeKumaClient.prototype, 'fetchMaintenance')
       .mockResolvedValue({ ...STORED_WINDOW } as never);
-    setMonitorMaintenance = vi.spyOn(UptimeKumaClient.prototype, 'setMonitorMaintenance')
+    setMonitorMaintenance = vi
+      .spyOn(UptimeKumaClient.prototype, 'setMonitorMaintenance')
       .mockResolvedValue({ ok: true } as never);
-    getMonitorMaintenance = vi.spyOn(UptimeKumaClient.prototype, 'getMonitorMaintenance')
+    getMonitorMaintenance = vi
+      .spyOn(UptimeKumaClient.prototype, 'getMonitorMaintenance')
       .mockResolvedValue([] as never);
-    refreshMaintenanceList = vi.spyOn(UptimeKumaClient.prototype, 'refreshMaintenanceList')
+    refreshMaintenanceList = vi
+      .spyOn(UptimeKumaClient.prototype, 'refreshMaintenanceList')
       .mockResolvedValue([{ ...STORED_WINDOW }] as never);
-    deleteMaintenance = vi.spyOn(UptimeKumaClient.prototype, 'deleteMaintenance')
+    deleteMaintenance = vi
+      .spyOn(UptimeKumaClient.prototype, 'deleteMaintenance')
       .mockResolvedValue({ ok: true, msg: 'successDeleted' } as never);
-    pauseMaintenance = vi.spyOn(UptimeKumaClient.prototype, 'pauseMaintenance')
+    pauseMaintenance = vi
+      .spyOn(UptimeKumaClient.prototype, 'pauseMaintenance')
       .mockResolvedValue({ ok: true, msg: 'successPaused' } as never);
   });
 
@@ -85,24 +96,32 @@ describe('maintenance tools', () => {
 
   describe('createMaintenance', () => {
     it('sends active, dateRange and timezoneOption, which jsonToBean needs and the old tool left out', async () => {
-      fetchMaintenance.mockResolvedValue({ id: 4, title: 'Diun', strategy: 'manual', active: true, timezoneOption: 'UTC' } as never);
-      const { client } = await connectServer();
-
-      const result = await client.callTool({
-        name: 'createMaintenance',
-        arguments: { title: 'Diun', strategy: 'manual', timezone: 'UTC' },
-      }) as CallToolResult;
-
-      expect(result.isError).toBeFalsy();
-      expect(createMaintenance).toHaveBeenCalledWith(expect.objectContaining({
+      fetchMaintenance.mockResolvedValue({
+        id: 4,
         title: 'Diun',
         strategy: 'manual',
         active: true,
-        dateRange: [],
-        weekdays: [],
-        daysOfMonth: [],
         timezoneOption: 'UTC',
-      }));
+      } as never);
+      const { client } = await connectServer();
+
+      const result = (await client.callTool({
+        name: 'createMaintenance',
+        arguments: { title: 'Diun', strategy: 'manual', timezone: 'UTC' },
+      })) as CallToolResult;
+
+      expect(result.isError).toBeFalsy();
+      expect(createMaintenance).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Diun',
+          strategy: 'manual',
+          active: true,
+          dateRange: [],
+          weekdays: [],
+          daysOfMonth: [],
+          timezoneOption: 'UTC',
+        })
+      );
       expect(createMaintenance.mock.calls[0][0]).not.toHaveProperty('timezone');
     });
 
@@ -111,10 +130,10 @@ describe('maintenance tools', () => {
       getMonitorMaintenance.mockResolvedValue([3, 9] as never);
       const { client } = await connectServer();
 
-      const result = await client.callTool({
+      const result = (await client.callTool({
         name: 'createMaintenance',
         arguments: { title: 'Diun', strategy: 'manual', monitorIDs: [9, 3, 9] },
-      }) as CallToolResult;
+      })) as CallToolResult;
 
       expect(result.isError).toBeFalsy();
       expect(setMonitorMaintenance).toHaveBeenCalledWith(4, [3, 9]);
@@ -125,10 +144,10 @@ describe('maintenance tools', () => {
       fetchMaintenance.mockResolvedValue({ id: 4, title: 'Diun', strategy: 'manual', active: true } as never);
       const { client } = await connectServer();
 
-      const result = await client.callTool({
+      const result = (await client.callTool({
         name: 'createMaintenance',
         arguments: { title: 'Diun', strategy: 'manual' },
-      }) as CallToolResult;
+      })) as CallToolResult;
 
       expect(setMonitorMaintenance).not.toHaveBeenCalled();
       expect(textOf(result)).toMatch(/suppresses nothing/);
@@ -139,10 +158,10 @@ describe('maintenance tools', () => {
       getMonitorMaintenance.mockResolvedValue([3] as never);
       const { client } = await connectServer();
 
-      const result = await client.callTool({
+      const result = (await client.callTool({
         name: 'createMaintenance',
         arguments: { title: 'Diun', strategy: 'manual', monitorIDs: [3, 9] },
-      }) as CallToolResult;
+      })) as CallToolResult;
 
       expect(result.isError).toBe(true);
       expect(textOf(result)).toMatch(/covers \[3\] rather than the requested \[3, 9\]/);
@@ -151,32 +170,61 @@ describe('maintenance tools', () => {
     });
 
     it('sends cron and durationMinutes for a cron window', async () => {
-      fetchMaintenance.mockResolvedValue({ id: 4, title: 'Nightly', strategy: 'cron', active: true, cron: '30 3 * * *', durationMinutes: 45 } as never);
-      const { client } = await connectServer();
-
-      const result = await client.callTool({
-        name: 'createMaintenance',
-        arguments: { title: 'Nightly', strategy: 'cron', cron: '30 3 * * *', durationMinutes: 45 },
-      }) as CallToolResult;
-
-      expect(result.isError).toBeFalsy();
-      expect(createMaintenance).toHaveBeenCalledWith(expect.objectContaining({
+      fetchMaintenance.mockResolvedValue({
+        id: 4,
+        title: 'Nightly',
         strategy: 'cron',
+        active: true,
         cron: '30 3 * * *',
         durationMinutes: 45,
-      }));
+      } as never);
+      const { client } = await connectServer();
+
+      const result = (await client.callTool({
+        name: 'createMaintenance',
+        arguments: { title: 'Nightly', strategy: 'cron', cron: '30 3 * * *', durationMinutes: 45 },
+      })) as CallToolResult;
+
+      expect(result.isError).toBeFalsy();
+      expect(createMaintenance).toHaveBeenCalledWith(
+        expect.objectContaining({
+          strategy: 'cron',
+          cron: '30 3 * * *',
+          durationMinutes: 45,
+        })
+      );
     });
 
     it.each([
       [{ title: 'x', strategy: 'single' }, /single maintenance window needs dateRange/],
       [{ title: 'x', strategy: 'recurring-weekday', weekdays: [1] }, /needs timeRange/],
-      [{ title: 'x', strategy: 'recurring-weekday', timeRange: [{ hours: 1, minutes: 0 }, { hours: 2, minutes: 0 }] }, /needs at least one entry in weekdays/],
-      [{ title: 'x', strategy: 'recurring-interval', timeRange: [{ hours: 1, minutes: 0 }, { hours: 2, minutes: 0 }] }, /needs intervalDay/],
+      [
+        {
+          title: 'x',
+          strategy: 'recurring-weekday',
+          timeRange: [
+            { hours: 1, minutes: 0 },
+            { hours: 2, minutes: 0 },
+          ],
+        },
+        /needs at least one entry in weekdays/,
+      ],
+      [
+        {
+          title: 'x',
+          strategy: 'recurring-interval',
+          timeRange: [
+            { hours: 1, minutes: 0 },
+            { hours: 2, minutes: 0 },
+          ],
+        },
+        /needs intervalDay/,
+      ],
       [{ title: 'x', strategy: 'cron', durationMinutes: 60 }, /cron maintenance window needs cron and durationMinutes/],
     ])('refuses an incomplete schedule before calling Uptime Kuma: %j', async (args, message) => {
       const { client } = await connectServer();
 
-      const result = await client.callTool({ name: 'createMaintenance', arguments: args }) as CallToolResult;
+      const result = (await client.callTool({ name: 'createMaintenance', arguments: args })) as CallToolResult;
 
       expect(result.isError).toBe(true);
       expect(textOf(result)).toMatch(message);
@@ -191,10 +239,10 @@ describe('maintenance tools', () => {
         .mockResolvedValueOnce({ ...STORED_WINDOW, title: 'Renamed' } as never);
       const { client } = await connectServer();
 
-      const result = await client.callTool({
+      const result = (await client.callTool({
         name: 'updateMaintenance',
         arguments: { maintenanceID: 4, title: 'Renamed' },
-      }) as CallToolResult;
+      })) as CallToolResult;
 
       expect(result.isError).toBeFalsy();
       const sent = editMaintenance.mock.calls[0][0] as Record<string, unknown>;
@@ -221,10 +269,10 @@ describe('maintenance tools', () => {
         .mockResolvedValueOnce({ ...cronWindow, title: 'Renamed' } as never);
       const { client } = await connectServer();
 
-      const result = await client.callTool({
+      const result = (await client.callTool({
         name: 'updateMaintenance',
         arguments: { maintenanceID: 4, title: 'Renamed' },
-      }) as CallToolResult;
+      })) as CallToolResult;
 
       expect(result.isError).toBeFalsy();
       expect(editMaintenance.mock.calls[0][0]).toMatchObject({
@@ -240,10 +288,10 @@ describe('maintenance tools', () => {
       fetchMaintenance.mockResolvedValue({ ...STORED_WINDOW } as never);
       const { client } = await connectServer();
 
-      const result = await client.callTool({
+      const result = (await client.callTool({
         name: 'updateMaintenance',
         arguments: { maintenanceID: 4, title: 'Renamed' },
-      }) as CallToolResult;
+      })) as CallToolResult;
 
       expect(result.isError).toBe(true);
       expect(textOf(result)).toMatch(/title: asked for "Renamed", server reports "Weekly restart"/);
@@ -253,10 +301,10 @@ describe('maintenance tools', () => {
       getMonitorMaintenance.mockResolvedValue([] as never);
       const { client } = await connectServer();
 
-      const result = await client.callTool({
+      const result = (await client.callTool({
         name: 'updateMaintenance',
         arguments: { maintenanceID: 4, monitorIDs: [] },
-      }) as CallToolResult;
+      })) as CallToolResult;
 
       expect(result.isError).toBeFalsy();
       expect(editMaintenance).not.toHaveBeenCalled();
@@ -267,10 +315,10 @@ describe('maintenance tools', () => {
       refreshMaintenanceList.mockResolvedValue([] as never);
       const { client } = await connectServer();
 
-      const result = await client.callTool({
+      const result = (await client.callTool({
         name: 'updateMaintenance',
         arguments: { maintenanceID: 99, title: 'x' },
-      }) as CallToolResult;
+      })) as CallToolResult;
 
       expect(result.isError).toBe(true);
       expect(textOf(result)).toMatch(/Maintenance window 99 not found/);
@@ -280,10 +328,10 @@ describe('maintenance tools', () => {
     it('refuses a call with nothing to change', async () => {
       const { client } = await connectServer();
 
-      const result = await client.callTool({
+      const result = (await client.callTool({
         name: 'updateMaintenance',
         arguments: { maintenanceID: 4 },
-      }) as CallToolResult;
+      })) as CallToolResult;
 
       expect(result.isError).toBe(true);
       expect(textOf(result)).toMatch(/Nothing to update/);
@@ -295,10 +343,10 @@ describe('maintenance tools', () => {
       fetchMaintenance.mockResolvedValue({ ...STORED_WINDOW, active: true } as never);
       const { client } = await connectServer();
 
-      const result = await client.callTool({
+      const result = (await client.callTool({
         name: 'pauseMaintenance',
         arguments: { maintenanceID: 4 },
-      }) as CallToolResult;
+      })) as CallToolResult;
 
       expect(pauseMaintenance).toHaveBeenCalledWith(4);
       expect(result.isError).toBe(true);
@@ -309,10 +357,10 @@ describe('maintenance tools', () => {
       fetchMaintenance.mockResolvedValue({ ...STORED_WINDOW, active: false } as never);
       const { client } = await connectServer();
 
-      const result = await client.callTool({
+      const result = (await client.callTool({
         name: 'pauseMaintenance',
         arguments: { maintenanceID: 4 },
-      }) as CallToolResult;
+      })) as CallToolResult;
 
       expect(result.isError).toBeFalsy();
       expect(result.structuredContent).toMatchObject({ maintenanceID: 4, active: false });
@@ -324,10 +372,10 @@ describe('maintenance tools', () => {
       refreshMaintenanceList.mockResolvedValue([] as never);
       const { client } = await connectServer();
 
-      const result = await client.callTool({
+      const result = (await client.callTool({
         name: 'deleteMaintenance',
         arguments: { maintenanceID: 99 },
-      }) as CallToolResult;
+      })) as CallToolResult;
 
       expect(result.isError).toBe(true);
       expect(textOf(result)).toMatch(/not found/);
@@ -338,25 +386,23 @@ describe('maintenance tools', () => {
       refreshMaintenanceList.mockResolvedValue([{ ...STORED_WINDOW }] as never);
       const { client } = await connectServer();
 
-      const result = await client.callTool({
+      const result = (await client.callTool({
         name: 'deleteMaintenance',
         arguments: { maintenanceID: 4 },
-      }) as CallToolResult;
+      })) as CallToolResult;
 
       expect(result.isError).toBe(true);
       expect(textOf(result)).toMatch(/still listed/);
     });
 
     it('confirms a delete that landed', async () => {
-      refreshMaintenanceList
-        .mockResolvedValueOnce([{ ...STORED_WINDOW }] as never)
-        .mockResolvedValueOnce([] as never);
+      refreshMaintenanceList.mockResolvedValueOnce([{ ...STORED_WINDOW }] as never).mockResolvedValueOnce([] as never);
       const { client } = await connectServer();
 
-      const result = await client.callTool({
+      const result = (await client.callTool({
         name: 'deleteMaintenance',
         arguments: { maintenanceID: 4 },
-      }) as CallToolResult;
+      })) as CallToolResult;
 
       expect(result.isError).toBeFalsy();
       expect(deleteMaintenance).toHaveBeenCalledWith(4);
@@ -369,11 +415,13 @@ describe('maintenance tools', () => {
       getMonitorMaintenance.mockResolvedValue([3, 9] as never);
       const { client } = await connectServer();
 
-      const result = await client.callTool({ name: 'getMaintenanceWindows', arguments: {} }) as CallToolResult;
+      const result = (await client.callTool({ name: 'getMaintenanceWindows', arguments: {} })) as CallToolResult;
 
       expect(result.isError).toBeFalsy();
-      expect((result.structuredContent as { maintenanceWindows: unknown[] }).maintenanceWindows[0])
-        .toMatchObject({ id: 4, monitorIDs: [3, 9] });
+      expect((result.structuredContent as { maintenanceWindows: unknown[] }).maintenanceWindows[0]).toMatchObject({
+        id: 4,
+        monitorIDs: [3, 9],
+      });
     });
   });
 });

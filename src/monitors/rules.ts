@@ -6,7 +6,10 @@ import { randomBytes, randomInt } from 'node:crypto';
 import type { UptimeKumaClient } from '../uptime-kuma-client.js';
 import { rehydrateUrlCredentials } from '../redact.js';
 import {
-  MONITOR_TYPE_NAMES, HOST_CHANGED_MARKER_ERROR, DNS_RECORD_TYPES, unknownMonitorTypeMessage,
+  MONITOR_TYPE_NAMES,
+  HOST_CHANGED_MARKER_ERROR,
+  DNS_RECORD_TYPES,
+  unknownMonitorTypeMessage,
 } from './fields.js';
 
 // Names this server accepts for a value Uptime Kuma keeps under a name nobody would guess.
@@ -47,9 +50,7 @@ export const assertMongoQueryIsJson = (type: unknown, query: unknown): void => {
 export const assertDnsRecordType = (type: unknown, recordType: unknown): void => {
   const supported = DNS_RECORD_TYPES[String(type)];
   if (!supported || recordType === undefined || recordType === null || supported.includes(String(recordType))) return;
-  throw new Error(
-    `A ${type} monitor cannot query ${recordType} records. It supports ${supported.join(', ')}.`
-  );
+  throw new Error(`A ${type} monitor cannot query ${recordType} records. It supports ${supported.join(', ')}.`);
 };
 
 export const normaliseMonitorAliases = (fields: Record<string, unknown>): Record<string, unknown> => {
@@ -128,7 +129,14 @@ export const REQUIRED_MONITOR_FIELDS: Record<string, string[]> = {
   'kafka-producer': ['kafkaProducerBrokers', 'kafkaProducerTopic', 'kafkaProducerMessage'],
   // Both station IDs are sent in every request, and Uptime Kuma's RADIUS library cannot encode
   // an unset one, so without them every check fails. The web form requires both.
-  radius: ['hostname', 'radiusUsername', 'radiusPassword', 'radiusSecret', 'radiusCalledStationId', 'radiusCallingStationId'],
+  radius: [
+    'hostname',
+    'radiusUsername',
+    'radiusPassword',
+    'radiusSecret',
+    'radiusCalledStationId',
+    'radiusCallingStationId',
+  ],
   rabbitmq: ['rabbitmqNodes'],
   smtp: ['hostname'],
   // radiusPassword is the community string here; see snmpCommunity in MONITOR_FIELD_ALIASES.
@@ -165,7 +173,14 @@ export const HTTP_AUTH_METHODS: Record<string, { fields: string[]; needs: string
   },
   bearer: { fields: ['bearer_token'], needs: ['bearer_token'] },
   'oauth2-cc': {
-    fields: ['oauth_token_url', 'oauth_client_id', 'oauth_client_secret', 'oauth_scopes', 'oauth_audience', 'oauth_auth_method'],
+    fields: [
+      'oauth_token_url',
+      'oauth_client_id',
+      'oauth_client_secret',
+      'oauth_scopes',
+      'oauth_audience',
+      'oauth_auth_method',
+    ],
     needs: ['oauth_token_url', 'oauth_client_id', 'oauth_client_secret'],
   },
   mtls: { fields: ['tlsCert', 'tlsKey', 'tlsCa'], needs: ['tlsCert', 'tlsKey'] },
@@ -221,13 +236,13 @@ export const applyHttpAuthRules = (
     if (implied.length === 0) {
       throw new Error(
         `${sentCredentials.join(', ')} ${sentCredentials.length > 1 ? 'do' : 'does'} nothing on a monitor with no authMethod. ` +
-        'Pass authMethod along with the credentials it needs.'
+          'Pass authMethod along with the credentials it needs.'
       );
     }
     if (implied.length > 1) {
       throw new Error(
         `${sentCredentials.join(', ')} belong to different authentication methods (${implied.join(', ')}), and ` +
-        'Uptime Kuma only sends the credentials of one. Pass authMethod to say which.'
+          'Uptime Kuma only sends the credentials of one. Pass authMethod to say which.'
       );
     }
     applied.authMethod = implied[0];
@@ -243,8 +258,8 @@ export const applyHttpAuthRules = (
   if (ignored.length > 0) {
     throw new Error(
       `This monitor's authMethod is '${method}', which does not send ${ignored.join(', ')} — Uptime Kuma would ` +
-      `save ${ignored.length > 1 ? 'them' : 'it'} and never use ${ignored.length > 1 ? 'them' : 'it'}. ` +
-      'Pass the authMethod those credentials belong to, or drop them.'
+        `save ${ignored.length > 1 ? 'them' : 'it'} and never use ${ignored.length > 1 ? 'them' : 'it'}. ` +
+        'Pass the authMethod those credentials belong to, or drop them.'
     );
   }
   const missing = spec.needs.filter((f) => isBlank(monitor[f]));
@@ -280,7 +295,7 @@ export const rehydrateMonitorUrl = (fields: Record<string, unknown>, stored: unk
   if (restored.missing) {
     throw new Error(
       '"***" in the url is the redaction marker, not a credential, and the monitor has no stored url ' +
-      'credentials to restore it from. Pass the real credentials, or leave them out of the url.'
+        'credentials to restore it from. Pass the real credentials, or leave them out of the url.'
     );
   }
   fields.url = restored.value;
@@ -320,8 +335,8 @@ export const rehydrateRabbitmqNodes = (fields: Record<string, unknown>, stored: 
     if (restored.missing) {
       throw new Error(
         `"***" in the rabbitmqNodes entry for ${at ?? 'an unparseable URL'} is the redaction marker, not a credential, ` +
-        'and there is no stored node at that address to restore it from. Pass the real credentials, or use ' +
-        'rabbitmqUsername and rabbitmqPassword instead.'
+          'and there is no stored node at that address to restore it from. Pass the real credentials, or use ' +
+          'rabbitmqUsername and rabbitmqPassword instead.'
       );
     }
     return restored.value;
@@ -333,7 +348,11 @@ export const rehydrateRabbitmqNodes = (fields: Record<string, unknown>, stored: 
  * Primary Base URL setting when one is set, else from the address this server connects with.
  * `note` says which, so the caller can tell the user whether the host may need changing.
  */
-export const pushURLFor = async (client: UptimeKumaClient, kumaUrl: string, token: unknown): Promise<{ url: string; note: string }> => {
+export const pushURLFor = async (
+  client: UptimeKumaClient,
+  kumaUrl: string,
+  token: unknown
+): Promise<{ url: string; note: string }> => {
   let primary = '';
   try {
     const value = (await client.getSettings()).data?.primaryBaseURL;
@@ -348,7 +367,7 @@ export const pushURLFor = async (client: UptimeKumaClient, kumaUrl: string, toke
   return {
     url: `${base.slice(0, end)}/api/push/${token}?status=up&msg=OK&ping=`,
     note: primary
-      ? 'The host is Uptime Kuma\'s Primary Base URL setting.'
+      ? "The host is Uptime Kuma's Primary Base URL setting."
       : 'No Primary Base URL is set in Uptime Kuma, so the host is the address this MCP server connects with. If the sender reaches Uptime Kuma at another address, use that host instead, or set the Primary Base URL under Settings → General in Uptime Kuma (this MCP server cannot change settings).',
   };
 };
@@ -377,7 +396,8 @@ export const applyMonitorTypeRules = (
     if (isBlank(monitor.location)) applied.location = 'world';
     // Also the form's default. The column has none, and the check passes it to the
     // Globalping API as the query type as it is, null included.
-    if ((applied.subtype ?? monitor.subtype) === 'dns' && isBlank(monitor.dns_resolve_type)) applied.dns_resolve_type = 'A';
+    if ((applied.subtype ?? monitor.subtype) === 'dns' && isBlank(monitor.dns_resolve_type))
+      applied.dns_resolve_type = 'A';
     required.push((applied.subtype ?? monitor.subtype) === 'http' ? 'url' : 'hostname');
   }
   if (type === 'sftp') {
@@ -388,7 +408,7 @@ export const applyMonitorTypeRules = (
   if (missing.length > 0) {
     throw new Error(
       `A ${type} monitor needs ${missing.join(', ')}. Without ${missing.length > 1 ? 'them' : 'it'} ` +
-      `Uptime Kuma saves the monitor and then fails every check. getMonitorTypeFields {"type": "${type}"} describes each field.`
+        `Uptime Kuma saves the monitor and then fails every check. getMonitorTypeFields {"type": "${type}"} describes each field.`
     );
   }
   assertMongoQueryIsJson(type, monitor.databaseQuery);
@@ -439,15 +459,13 @@ export const applyMonitorTypeRules = (
   return applied;
 };
 
-export const asText = (v: unknown): string | null =>
-  v === null || v === undefined || v === '' ? null : String(v);
-export const asNumber = (v: unknown): number | null =>
-  v === null || v === undefined || v === '' ? null : Number(v);
+export const asText = (v: unknown): string | null => (v === null || v === undefined || v === '' ? null : String(v));
+export const asNumber = (v: unknown): number | null => (v === null || v === undefined || v === '' ? null : Number(v));
 
 // Lists and objects Uptime Kuma stores as JSON text and parses again on read.
 export const asJson = (v: unknown): string | null => (v === null || v === undefined ? null : JSON.stringify(v));
 
-export const TYPE_FIELD_HINT = 'See #112 — the monitor\'s check depends on this field.';
+export const TYPE_FIELD_HINT = "See #112 — the monitor's check depends on this field.";
 
 // Uptime Kuma answers a boolean column as true/false from toJSON() and 0/1 from a raw row.
 export const asFlag = (v: unknown): number => (v ? 1 : 0);
@@ -482,8 +500,7 @@ export const VERIFIED_MONITOR_FIELDS: Record<string, VerifiedField> = {
     // Monitor.validate() rounds a ping timeout to whole seconds, so 47.5 -> 48 is correct
     // rather than a failure. Anything else must match exactly.
     equals: (wanted, stored) =>
-      wanted === stored ||
-      (typeof wanted === 'number' && typeof stored === 'number' && Math.round(wanted) === stored),
+      wanted === stored || (typeof wanted === 'number' && typeof stored === 'number' && Math.round(wanted) === stored),
     hint: 'timeout is stored in SECONDS, and a stored 0 is not "no timeout": Uptime Kuma\'s runtime fallback turns it into ~13 hours, so the monitor can never report DOWN against a black-holed endpoint.',
   },
   type: {
@@ -504,30 +521,48 @@ export const VERIFIED_MONITOR_FIELDS: Record<string, VerifiedField> = {
     hint: 'See #106 — a database monitor with no connection string fails every check.',
   },
   databaseQuery: { read: asText, hint: 'See #106.' },
-  radiusPassword: { read: asText, secret: true, hint: 'See #106 — the mysql monitor reads its password from this field.' },
+  radiusPassword: {
+    read: asText,
+    secret: true,
+    hint: 'See #106 — the mysql monitor reads its password from this field.',
+  },
   ...Object.fromEntries(
     [
-      'basic_auth_user', 'oauth_token_url',
-      'mqttTopic', 'mqttUsername',
-      'grpcUrl', 'grpcServiceName', 'grpcMethod',
+      'basic_auth_user',
+      'oauth_token_url',
+      'mqttTopic',
+      'mqttUsername',
+      'grpcUrl',
+      'grpcServiceName',
+      'grpcMethod',
       'kafkaProducerTopic',
       'radiusUsername',
       'rabbitmqUsername',
-      'snmpOid', 'snmpVersion',
+      'snmpOid',
+      'snmpVersion',
       'game',
-      'subtype', 'location',
-      'sshUsername', 'sshAuthMethod',
+      'subtype',
+      'location',
+      'sshUsername',
+      'sshAuthMethod',
     ].map((f) => [f, { read: asText, hint: TYPE_FIELD_HINT }])
   ),
   ...Object.fromEntries(
     [
-      'basic_auth_pass', 'bearer_token', 'oauth_client_id', 'oauth_client_secret',
-      'tlsCert', 'tlsKey', 'tlsCa',
+      'basic_auth_pass',
+      'bearer_token',
+      'oauth_client_id',
+      'oauth_client_secret',
+      'tlsCert',
+      'tlsKey',
+      'tlsCa',
       'mqttPassword',
       'radiusSecret',
       'rabbitmqPassword',
       'gamedigToken',
-      'sshPassword', 'sshPrivateKey', 'sshPassphrase',
+      'sshPassword',
+      'sshPrivateKey',
+      'sshPassphrase',
     ].map((f) => [f, { read: asText, secret: true, hint: TYPE_FIELD_HINT }])
   ),
   authMethod: {
@@ -596,8 +631,8 @@ export const verifyMonitorWrite = async (
     mismatches.push(
       spec.secret
         ? `${field}: sent a ${wanted === null ? 'null' : `${String(wanted).length}-character`} value, server reports ` +
-          `${stored === null ? 'nothing stored' : `a different ${String(stored).length}-character value`} ` +
-          `(value withheld — it is a credential). ${spec.hint}`
+            `${stored === null ? 'nothing stored' : `a different ${String(stored).length}-character value`} ` +
+            `(value withheld — it is a credential). ${spec.hint}`
         : `${field}: asked for ${JSON.stringify(wanted)}, server reports ${JSON.stringify(stored)}. ${spec.hint}`
     );
   }

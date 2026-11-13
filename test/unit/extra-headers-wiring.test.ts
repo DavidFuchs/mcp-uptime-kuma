@@ -27,7 +27,9 @@ afterEach(async () => {
 /** A stand-in upstream that resolves with the headers of the first Socket.IO request. */
 async function startUpstream(): Promise<{ url: string; firstRequest: Promise<IncomingHttpHeaders> }> {
   let resolveFirst!: (headers: IncomingHttpHeaders) => void;
-  const firstRequest = new Promise<IncomingHttpHeaders>((r) => { resolveFirst = r; });
+  const firstRequest = new Promise<IncomingHttpHeaders>((r) => {
+    resolveFirst = r;
+  });
 
   const server = createServer((req, res) => {
     if (req.url?.startsWith('/socket.io/')) resolveFirst(req.headers);
@@ -42,9 +44,7 @@ async function startUpstream(): Promise<{ url: string; firstRequest: Promise<Inc
 
 /** Runs a src/ entry point under tsx with a clean Uptime Kuma environment. */
 function run(script: string, args: string[], env: Record<string, string>) {
-  const baseEnv = Object.fromEntries(
-    Object.entries(process.env).filter(([k]) => !k.startsWith('UPTIME_KUMA_'))
-  );
+  const baseEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('UPTIME_KUMA_')));
   const child = spawn(process.execPath, ['--import', 'tsx', script, ...args], {
     cwd: repoRoot,
     env: { ...baseEnv, MCP_TEST_MODE: '1', ...env },
@@ -53,8 +53,12 @@ function run(script: string, args: string[], env: Record<string, string>) {
   children.push(child);
 
   let output = '';
-  child.stdout!.on('data', (d) => { output += d; });
-  child.stderr!.on('data', (d) => { output += d; });
+  child.stdout!.on('data', (d) => {
+    output += d;
+  });
+  child.stderr!.on('data', (d) => {
+    output += d;
+  });
   const exited = new Promise<number | null>((r) => child.on('exit', (code) => r(code)));
 
   return { exited, output: () => output };
@@ -92,14 +96,18 @@ describe('UPTIME_KUMA_HEADERS wiring', () => {
   it.each([
     ['the MCP server', 'src/index.ts', ['-t', 'stdio']],
     ['mcp-uptime-kuma-get-jwt', 'src/get-jwt.ts', ['http://127.0.0.1:1', 'admin', 'password']],
-  ])('%s refuses to start on malformed headers without printing them', async (_label, script, args) => {
-    const proc = run(script, args, {
-      UPTIME_KUMA_URL: 'http://127.0.0.1:1',
-      UPTIME_KUMA_HEADERS: `CF-Access-Client-Secret=${SECRET}`,
-    });
+  ])(
+    '%s refuses to start on malformed headers without printing them',
+    async (_label, script, args) => {
+      const proc = run(script, args, {
+        UPTIME_KUMA_URL: 'http://127.0.0.1:1',
+        UPTIME_KUMA_HEADERS: `CF-Access-Client-Secret=${SECRET}`,
+      });
 
-    expect(await proc.exited).toBe(1);
-    expect(proc.output()).toMatch(/UPTIME_KUMA_HEADERS/);
-    expect(proc.output()).not.toContain(SECRET);
-  }, 30_000);
+      expect(await proc.exited).toBe(1);
+      expect(proc.output()).toMatch(/UPTIME_KUMA_HEADERS/);
+      expect(proc.output()).not.toContain(SECRET);
+    },
+    30_000
+  );
 });

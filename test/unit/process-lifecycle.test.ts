@@ -15,9 +15,7 @@ afterEach(() => {
 
 /** Runs node under tsx with no Uptime Kuma settings inherited from the developer's shell. */
 function run(args: string[], env: Record<string, string> = {}) {
-  const baseEnv = Object.fromEntries(
-    Object.entries(process.env).filter(([k]) => !k.startsWith('UPTIME_KUMA_'))
-  );
+  const baseEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('UPTIME_KUMA_')));
   const child = spawn(process.execPath, ['--import', 'tsx', ...args], {
     cwd: repoRoot,
     env: { ...baseEnv, MCP_TEST_MODE: '1', ...env },
@@ -26,8 +24,12 @@ function run(args: string[], env: Record<string, string> = {}) {
   children.push(child);
 
   let output = '';
-  child.stdout!.on('data', (d) => { output += d; });
-  child.stderr!.on('data', (d) => { output += d; });
+  child.stdout!.on('data', (d) => {
+    output += d;
+  });
+  child.stderr!.on('data', (d) => {
+    output += d;
+  });
   const exited = new Promise<number | null>((r) => child.on('exit', (code) => r(code)));
 
   const waitForOutput = async (pattern: RegExp) => {
@@ -54,28 +56,38 @@ describe('signal handling', () => {
   it('a Kuma session leaves the process signal handlers to the entry point', () => {
     const before = { int: process.listenerCount('SIGINT'), term: process.listenerCount('SIGTERM') };
 
-    createKumaSession({ url: 'http://127.0.0.1:1', username: undefined, password: undefined, token: undefined, jwtToken: undefined });
+    createKumaSession({
+      url: 'http://127.0.0.1:1',
+      username: undefined,
+      password: undefined,
+      token: undefined,
+      jwtToken: undefined,
+    });
 
     // A handler here runs ahead of the entry point's own and exits before it can close anything.
     expect(process.listenerCount('SIGINT')).toBe(before.int);
     expect(process.listenerCount('SIGTERM')).toBe(before.term);
   });
 
-  it.each(['SIGTERM', 'SIGINT'] as const)('the HTTP transport closes its listener on %s before exiting', async (signal) => {
-    const port = await freePort();
-    const proc = run(['src/index.ts', '-t', 'streamable-http'], {
-      UPTIME_KUMA_URL: 'http://127.0.0.1:1',
-      HOST: '127.0.0.1',
-      PORT: String(port),
-    });
-    await proc.waitForOutput(/server running/);
+  it.each(['SIGTERM', 'SIGINT'] as const)(
+    'the HTTP transport closes its listener on %s before exiting',
+    async (signal) => {
+      const port = await freePort();
+      const proc = run(['src/index.ts', '-t', 'streamable-http'], {
+        UPTIME_KUMA_URL: 'http://127.0.0.1:1',
+        HOST: '127.0.0.1',
+        PORT: String(port),
+      });
+      await proc.waitForOutput(/server running/);
 
-    proc.child.kill(signal);
+      proc.child.kill(signal);
 
-    expect(await proc.exited).toBe(0);
-    expect(proc.output()).toMatch(/Shutting down gracefully/);
-    expect(proc.output()).toMatch(/Server closed/);
-  }, 30_000);
+      expect(await proc.exited).toBe(0);
+      expect(proc.output()).toMatch(/Shutting down gracefully/);
+      expect(proc.output()).toMatch(/Server closed/);
+    },
+    30_000
+  );
 });
 
 describe('the HTTP transport at startup', () => {
@@ -113,18 +125,24 @@ describe('the container healthcheck', () => {
   it.each([
     ['passes', 200, 0],
     ['fails', 503, 1],
-  ])('%s when /health answers %i', async (_label, status, exitCode) => {
-    const server = createServer((_req, res) => { res.writeHead(status).end(); });
-    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
-    const { port } = server.address() as AddressInfo;
+  ])(
+    '%s when /health answers %i',
+    async (_label, status, exitCode) => {
+      const server = createServer((_req, res) => {
+        res.writeHead(status).end();
+      });
+      await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+      const { port } = server.address() as AddressInfo;
 
-    try {
-      const proc = run(['src/healthcheck.ts', `http://127.0.0.1:${port}/health`]);
-      expect(await proc.exited).toBe(exitCode);
-    } finally {
-      await new Promise((r) => server.close(r));
-    }
-  }, 30_000);
+      try {
+        const proc = run(['src/healthcheck.ts', `http://127.0.0.1:${port}/health`]);
+        expect(await proc.exited).toBe(exitCode);
+      } finally {
+        await new Promise((r) => server.close(r));
+      }
+    },
+    30_000
+  );
 
   it('fails when nothing is listening', async () => {
     const proc = run(['src/healthcheck.ts', `http://127.0.0.1:${await freePort()}/health`]);
@@ -134,7 +152,9 @@ describe('the container healthcheck', () => {
 
 describe('the package entry point', () => {
   it('can be imported for createServer without starting a server', async () => {
-    const { main } = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { main: string };
+    const { main } = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as {
+      main: string;
+    };
     // package.json names the compiled file; the same module in src/ is what tsx can load here.
     const source = main.replace(/^dist\//, './src/').replace(/\.js$/, '.ts');
 

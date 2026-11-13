@@ -14,22 +14,41 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
 
 describe('stdio transport with a broken stdout pipe', () => {
   it('shuts down quietly instead of crashing on EPIPE', async () => {
-    const child = spawn(process.execPath, [join(root, 'node_modules/tsx/dist/cli.mjs'), join(root, 'src/index.ts'), '-t', 'stdio'], {
-      // Nothing listens here, so startup auth fails fast; the server keeps running regardless.
-      env: { ...process.env, UPTIME_KUMA_URL: 'http://127.0.0.1:9', UPTIME_KUMA_USERNAME: 'u', UPTIME_KUMA_PASSWORD: 'p' },
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
+    const child = spawn(
+      process.execPath,
+      [join(root, 'node_modules/tsx/dist/cli.mjs'), join(root, 'src/index.ts'), '-t', 'stdio'],
+      {
+        // Nothing listens here, so startup auth fails fast; the server keeps running regardless.
+        env: {
+          ...process.env,
+          UPTIME_KUMA_URL: 'http://127.0.0.1:9',
+          UPTIME_KUMA_USERNAME: 'u',
+          UPTIME_KUMA_PASSWORD: 'p',
+        },
+        stdio: ['pipe', 'pipe', 'pipe'],
+      }
+    );
     let stderr = '';
-    child.stderr.on('data', d => { stderr += d.toString(); });
+    child.stderr.on('data', (d) => {
+      stderr += d.toString();
+    });
 
-    const exited = new Promise<number | null>(resolve => child.on('exit', code => resolve(code)));
+    const exited = new Promise<number | null>((resolve) => child.on('exit', (code) => resolve(code)));
     // Give the server time to start, then close the read end of its stdout and make it write.
-    await new Promise(r => setTimeout(r, 2500));
+    await new Promise((r) => setTimeout(r, 2500));
     child.stdout.destroy();
-    const request = { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } } };
+    const request = {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } },
+    };
     child.stdin.write(JSON.stringify(request) + '\n');
 
-    const code = await Promise.race([exited, new Promise<'still running'>(r => setTimeout(() => r('still running'), 8000))]);
+    const code = await Promise.race([
+      exited,
+      new Promise<'still running'>((r) => setTimeout(() => r('still running'), 8000)),
+    ]);
     if (code === 'still running') child.kill('SIGKILL');
 
     expect(stderr).not.toContain("Unhandled 'error' event");

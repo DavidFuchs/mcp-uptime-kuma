@@ -22,7 +22,12 @@ export function presentNotification(row: Record<string, unknown>): Record<string
     }
   }
   out.config = config;
-  if (out.type === undefined && config && typeof config === 'object' && typeof (config as Record<string, unknown>).type === 'string') {
+  if (
+    out.type === undefined &&
+    config &&
+    typeof config === 'object' &&
+    typeof (config as Record<string, unknown>).type === 'string'
+  ) {
     out.type = (config as Record<string, unknown>).type;
   }
   return out;

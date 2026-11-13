@@ -11,7 +11,13 @@ import { createKumaSession } from '../../src/server.js';
  * parallel, so that was a routine failure rather than an edge case.
  */
 
-const CONFIG = { url: 'http://localhost:3001', username: undefined, password: undefined, token: undefined, jwtToken: undefined };
+const CONFIG = {
+  url: 'http://localhost:3001',
+  username: undefined,
+  password: undefined,
+  token: undefined,
+  jwtToken: undefined,
+};
 
 let listening: Server | undefined;
 afterEach(async () => {
@@ -23,7 +29,9 @@ afterEach(async () => {
 async function start(env: Record<string, string | undefined> = {}) {
   const session = createKumaSession(CONFIG);
   let release!: () => void;
-  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   let logins = 0;
   session.authenticateClient = async () => {
     logins++;
@@ -49,7 +57,12 @@ async function start(env: Record<string, string | undefined> = {}) {
 }
 
 const listTools = (id: number) => ({ jsonrpc: '2.0', id, method: 'tools/list' });
-const callTool = (id: number, name: string) => ({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: {} } });
+const callTool = (id: number, name: string) => ({
+  jsonrpc: '2.0',
+  id,
+  method: 'tools/call',
+  params: { name, arguments: {} },
+});
 
 describe('streamable HTTP transport', () => {
   it('answers a request that arrives while another is still in flight', async () => {
@@ -61,14 +74,14 @@ describe('streamable HTTP transport', () => {
 
     const fast = await post(listTools(2));
     expect(fast.status).toBe(200);
-    const listed = await fast.json() as { id: number; result: { tools: unknown[] } };
+    const listed = (await fast.json()) as { id: number; result: { tools: unknown[] } };
     expect(listed.id).toBe(2);
     expect(listed.result.tools.length).toBeGreaterThan(0);
 
     release();
     const slowResponse = await slow;
     expect(slowResponse.status).toBe(200);
-    expect((await slowResponse.json() as { id: number }).id).toBe(1);
+    expect(((await slowResponse.json()) as { id: number }).id).toBe(1);
   });
 
   it('answers many simultaneous requests, each with its own id', async () => {

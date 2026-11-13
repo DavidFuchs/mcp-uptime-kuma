@@ -155,7 +155,7 @@ describe('monitor type rules shared by createMonitor and updateMonitor', () => {
       expect(updateMonitor).not.toHaveBeenCalled();
     });
 
-    it('refuses the snake_case spellings of the new type\'s fields and names the accepted ones', async () => {
+    it("refuses the snake_case spellings of the new type's fields and names the accepted ones", async () => {
       const result = await update({
         type: 'json-query',
         json_path: 'status',
@@ -326,10 +326,40 @@ describe('monitor type rules shared by createMonitor and updateMonitor', () => {
 
       // server/monitor-types/* plus the types handled inline in server/model/monitor.js.
       for (const type of [
-        'http', 'keyword', 'json-query', 'port', 'ping', 'dns', 'docker', 'push', 'group', 'steam', 'radius',
-        'kafka-producer', 'gamedig', 'globalping', 'grpc-keyword', 'manual', 'mongodb', 'mqtt', 'mysql', 'ntp',
-        'oracledb', 'pm2', 'postgres', 'rabbitmq', 'real-browser', 'redis', 'sftp', 'sip-options', 'smtp', 'snmp',
-        'sqlserver', 'system-service', 'tailscale-ping', 'websocket-upgrade',
+        'http',
+        'keyword',
+        'json-query',
+        'port',
+        'ping',
+        'dns',
+        'docker',
+        'push',
+        'group',
+        'steam',
+        'radius',
+        'kafka-producer',
+        'gamedig',
+        'globalping',
+        'grpc-keyword',
+        'manual',
+        'mongodb',
+        'mqtt',
+        'mysql',
+        'ntp',
+        'oracledb',
+        'pm2',
+        'postgres',
+        'rabbitmq',
+        'real-browser',
+        'redis',
+        'sftp',
+        'sip-options',
+        'smtp',
+        'snmp',
+        'sqlserver',
+        'system-service',
+        'tailscale-ping',
+        'websocket-upgrade',
       ]) {
         expect(types).toContain(type);
       }

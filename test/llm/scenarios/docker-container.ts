@@ -13,12 +13,16 @@ export default defineScenario({
     `and monitor its container named "web" as "${NAME}". Don't worry if the host can't be reached from here.`,
   async check(ctx) {
     const { dockerHosts = [] } = await call(ctx, 'listDockerHosts', { includeSecrets: true });
-    const host = (dockerHosts as any[]).find(h => h.name === HOST);
+    const host = (dockerHosts as any[]).find((h) => h.name === HOST);
     const m = await findMonitor(ctx, NAME);
     return [
       expectThat(`docker host "${HOST}" exists`, !!host),
       expectThat('host type tcp', host?.dockerType === 'tcp', `dockerType=${host?.dockerType}`),
-      expectThat('daemon address', (({ host: h, port }) => h === '10.0.0.9' && port === '2375')(hostAndPort(host?.dockerDaemon)), `dockerDaemon=${host?.dockerDaemon}`),
+      expectThat(
+        'daemon address',
+        (({ host: h, port }) => h === '10.0.0.9' && port === '2375')(hostAndPort(host?.dockerDaemon)),
+        `dockerDaemon=${host?.dockerDaemon}`
+      ),
       expectThat(`monitor "${NAME}" exists`, !!m),
       expectThat('type docker', m?.type === 'docker', `type=${m?.type}`),
       expectThat('container web', m?.docker_container === 'web', `docker_container=${m?.docker_container}`),

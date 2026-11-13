@@ -8,28 +8,63 @@ import { numeric, requiredId } from './schema.js';
 export function registerMaintenanceTools(ctx: ToolContext): void {
   const { server, client, authenticateClient } = ctx;
 
-  const MAINTENANCE_STRATEGIES = ['single', 'recurring-interval', 'recurring-weekday', 'recurring-day-of-month', 'cron', 'manual'] as const;
+  const MAINTENANCE_STRATEGIES = [
+    'single',
+    'recurring-interval',
+    'recurring-weekday',
+    'recurring-day-of-month',
+    'cron',
+    'manual',
+  ] as const;
 
   // The schedule fields shared by createMaintenance and updateMaintenance. Each tool applies
   // its own optionality: create requires title and strategy, update requires neither.
   const maintenanceScheduleFields = {
     description: z.string().optional().describe('Description or reason for the maintenance'),
-    timezone: z.string().optional().describe('Timezone the dates and times are in (e.g. "America/New_York", "UTC"). Omit to follow the server timezone.'),
-    dateRange: z.array(z.string()).optional().describe('[start, end] as local wall-clock times in the window\'s timezone, e.g. ["2026-10-08T10:00", "2026-10-08T12:00"] — the format Uptime Kuma\'s own UI stores. Required for single; optional bounds for recurring strategies; ignored for manual.'),
-    timeRange: z.array(z.object({ hours: numeric(z.number().int().min(0).max(23)), minutes: numeric(z.number().int().min(0).max(59)) })).optional()
-      .describe('Daily [{hours, minutes}, {hours, minutes}] start and end. Required for the recurring-* strategies, ignored otherwise.'),
-    weekdays: z.array(numeric(z.number().int().min(0).max(6))).optional()
+    timezone: z
+      .string()
+      .optional()
+      .describe(
+        'Timezone the dates and times are in (e.g. "America/New_York", "UTC"). Omit to follow the server timezone.'
+      ),
+    dateRange: z
+      .array(z.string())
+      .optional()
+      .describe(
+        '[start, end] as local wall-clock times in the window\'s timezone, e.g. ["2026-10-08T10:00", "2026-10-08T12:00"] — the format Uptime Kuma\'s own UI stores. Required for single; optional bounds for recurring strategies; ignored for manual.'
+      ),
+    timeRange: z
+      .array(
+        z.object({ hours: numeric(z.number().int().min(0).max(23)), minutes: numeric(z.number().int().min(0).max(59)) })
+      )
+      .optional()
+      .describe(
+        'Daily [{hours, minutes}, {hours, minutes}] start and end. Required for the recurring-* strategies, ignored otherwise.'
+      ),
+    weekdays: z
+      .array(numeric(z.number().int().min(0).max(6)))
+      .optional()
       .describe('Days of week (0=Sunday … 6=Saturday) for recurring-weekday strategy'),
-    daysOfMonth: z.array(numeric(z.number().int().min(1).max(31))).optional()
+    daysOfMonth: z
+      .array(numeric(z.number().int().min(1).max(31)))
+      .optional()
       .describe('Days of month (1-31) for recurring-day-of-month strategy'),
-    intervalDay: numeric(z.number().int().positive()).optional()
+    intervalDay: numeric(z.number().int().positive())
+      .optional()
       .describe('Interval in days for recurring-interval strategy'),
-    cron: z.string().optional()
+    cron: z
+      .string()
+      .optional()
       .describe('Cron expression for when the window starts, e.g. "30 3 * * *" (03:30 daily), for the cron strategy'),
-    durationMinutes: numeric(z.number().int().positive()).optional()
+    durationMinutes: numeric(z.number().int().positive())
+      .optional()
       .describe('How long each window lasts, in minutes, for the cron strategy'),
-    monitorIDs: z.array(numeric(z.number().int().nonnegative())).optional()
-      .describe('IDs of the monitors this window suppresses. A window with no monitors suppresses nothing. On update this REPLACES the current list; pass [] to detach all.'),
+    monitorIDs: z
+      .array(numeric(z.number().int().nonnegative()))
+      .optional()
+      .describe(
+        'IDs of the monitors this window suppresses. A window with no monitors suppresses nothing. On update this REPLACES the current list; pass [] to detach all.'
+      ),
   };
 
   /**
@@ -191,7 +226,9 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
   const requireMaintenance = async (maintenanceID: number): Promise<void> => {
     const list = await client.refreshMaintenanceList();
     if (!list.some((w) => w.id === maintenanceID)) {
-      throw new Error(`Maintenance window ${maintenanceID} not found. Use getMaintenanceWindows to list the windows that exist.`);
+      throw new Error(
+        `Maintenance window ${maintenanceID} not found. Use getMaintenanceWindows to list the windows that exist.`
+      );
     }
   };
 
@@ -205,7 +242,8 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
     'getMaintenanceWindows',
     {
       title: 'Get Maintenance Windows',
-      description: 'Returns all maintenance windows defined in Uptime Kuma, each with monitorIDs — the monitors it suppresses. A window with an empty monitorIDs list suppresses nothing.',
+      description:
+        'Returns all maintenance windows defined in Uptime Kuma, each with monitorIDs — the monitors it suppresses. A window with an empty monitorIDs list suppresses nothing.',
       inputSchema: {},
       outputSchema: {
         maintenanceWindows: z.array(MaintenanceSchema).describe('Array of maintenance windows'),
@@ -237,12 +275,21 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
     'createMaintenance',
     {
       title: 'Create Maintenance',
-      description: 'Schedules a new maintenance window. During maintenance, the monitors in monitorIDs are suppressed and show MAINTENANCE status instead of DOWN. A window created without monitorIDs suppresses nothing. Use strategy "manual" for a window you switch on and off with resumeMaintenance / pauseMaintenance.',
+      description:
+        'Schedules a new maintenance window. During maintenance, the monitors in monitorIDs are suppressed and show MAINTENANCE status instead of DOWN. A window created without monitorIDs suppresses nothing. Use strategy "manual" for a window you switch on and off with resumeMaintenance / pauseMaintenance.',
       inputSchema: {
         title: z.string().describe('Title of the maintenance window'),
-        strategy: z.enum(MAINTENANCE_STRATEGIES)
-          .describe('Scheduling strategy: single=one-time, recurring-interval=every N days, recurring-weekday=specific weekdays, recurring-day-of-month=specific dates, cron=starts on a cron expression and lasts durationMinutes, manual=on whenever active'),
-        active: z.boolean().optional().describe('Whether the window is active (default: true). For a manual window, active means in maintenance right now.'),
+        strategy: z
+          .enum(MAINTENANCE_STRATEGIES)
+          .describe(
+            'Scheduling strategy: single=one-time, recurring-interval=every N days, recurring-weekday=specific weekdays, recurring-day-of-month=specific dates, cron=starts on a cron expression and lasts durationMinutes, manual=on whenever active'
+          ),
+        active: z
+          .boolean()
+          .optional()
+          .describe(
+            'Whether the window is active (default: true). For a manual window, active means in maintenance right now.'
+          ),
         ...maintenanceScheduleFields,
       },
       outputSchema: {
@@ -299,7 +346,8 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
     'updateMaintenance',
     {
       title: 'Update Maintenance',
-      description: 'Updates an existing maintenance window. Only the fields you provide are changed (the server merges them with the stored window). monitorIDs replaces the full monitor list. To switch a window on or off use pauseMaintenance / resumeMaintenance.',
+      description:
+        'Updates an existing maintenance window. Only the fields you provide are changed (the server merges them with the stored window). monitorIDs replaces the full monitor list. To switch a window on or off use pauseMaintenance / resumeMaintenance.',
       inputSchema: {
         maintenanceID: requiredId('The ID of the maintenance window to update'),
         title: z.string().optional().describe('Title of the maintenance window'),
@@ -412,7 +460,10 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
           };
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          throw new McpError(ErrorCode.InternalError, `Failed to ${active ? 'resume' : 'pause'} maintenance window: ${errorMessage}`);
+          throw new McpError(
+            ErrorCode.InternalError,
+            `Failed to ${active ? 'resume' : 'pause'} maintenance window: ${errorMessage}`
+          );
         }
       }
     );
@@ -436,7 +487,8 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
     'deleteMaintenance',
     {
       title: 'Delete Maintenance',
-      description: 'Permanently deletes a maintenance window. Its monitors return to normal alerting. Use getMaintenanceWindows to find the ID.',
+      description:
+        'Permanently deletes a maintenance window. Its monitors return to normal alerting. Use getMaintenanceWindows to find the ID.',
       inputSchema: {
         maintenanceID: requiredId('The ID of the maintenance window to delete'),
       },

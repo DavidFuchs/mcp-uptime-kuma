@@ -16,7 +16,7 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
   {
     name: 'listMonitors returns array',
     fn: async ({ client }) => {
-      const result = await client.callTool({ name: 'listMonitors', arguments: {} }) as CallToolResult;
+      const result = (await client.callTool({ name: 'listMonitors', arguments: {} })) as CallToolResult;
       const text = extractText(result, 'listMonitors');
       const monitors = JSON.parse(text);
       if (!Array.isArray(monitors)) throw new Error('Expected array');
@@ -26,7 +26,7 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
   {
     name: 'listMonitorTypes returns supported types',
     fn: async ({ client }) => {
-      const result = await client.callTool({ name: 'listMonitorTypes', arguments: {} }) as CallToolResult;
+      const result = (await client.callTool({ name: 'listMonitorTypes', arguments: {} })) as CallToolResult;
       const text = extractText(result, 'listMonitorTypes');
       const types = JSON.parse(text);
       if (!Array.isArray(types) || types.length === 0) throw new Error('Expected non-empty array of types');
@@ -39,7 +39,7 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
   {
     name: 'getMonitorSummary returns summaries',
     fn: async ({ client }) => {
-      const result = await client.callTool({ name: 'getMonitorSummary', arguments: {} }) as CallToolResult;
+      const result = (await client.callTool({ name: 'getMonitorSummary', arguments: {} })) as CallToolResult;
       const text = extractText(result, 'getMonitorSummary');
       const summaries = JSON.parse(text);
       if (!Array.isArray(summaries)) throw new Error('Expected array');
@@ -50,7 +50,7 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
     name: 'createMonitor → getMonitor → deleteMonitor lifecycle',
     fn: async ({ client }) => {
       // Create
-      const createResult = await client.callTool({
+      const createResult = (await client.callTool({
         name: 'createMonitor',
         arguments: {
           name: 'Integration Test - HTTP',
@@ -60,15 +60,15 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
           retryInterval: 30,
           maxretries: 2,
         },
-      }) as CallToolResult;
+      })) as CallToolResult;
       const monitorID = extractID(createResult, 'createMonitor', 'monitorID');
 
       try {
         // Get
-        const getResult = await client.callTool({
+        const getResult = (await client.callTool({
           name: 'getMonitor',
           arguments: { monitorID },
-        }) as CallToolResult;
+        })) as CallToolResult;
         const monitor = JSON.parse(extractText(getResult, 'getMonitor'));
         if (monitor.name !== 'Integration Test - HTTP') throw new Error('Name mismatch');
         if (monitor.type !== 'http') throw new Error('Type mismatch');
@@ -85,7 +85,7 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
     name: '#43: updateMonitor preserves retryInterval when omitted',
     fn: async ({ client }) => {
       // Create with explicit retryInterval
-      const createResult = await client.callTool({
+      const createResult = (await client.callTool({
         name: 'createMonitor',
         arguments: {
           name: 'Integration Test - Issue 43',
@@ -94,22 +94,22 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
           interval: 60,
           retryInterval: 45,
         },
-      }) as CallToolResult;
+      })) as CallToolResult;
       const monitorID = extractID(createResult, 'createMonitor', 'monitorID');
 
       try {
         // Update only URL — omit retryInterval
-        const updateResult = await client.callTool({
+        const updateResult = (await client.callTool({
           name: 'updateMonitor',
           arguments: { monitorID, url: 'https://example.org' },
-        }) as CallToolResult;
+        })) as CallToolResult;
         extractText(updateResult, 'updateMonitor'); // throws if error
 
         // Verify retryInterval preserved
-        const getResult = await client.callTool({
+        const getResult = (await client.callTool({
           name: 'getMonitor',
           arguments: { monitorID, includeTypeSpecificFields: true },
-        }) as CallToolResult;
+        })) as CallToolResult;
         const monitor = JSON.parse(extractText(getResult, 'getMonitor'));
 
         if (monitor.url !== 'https://example.org') throw new Error(`URL not updated: ${monitor.url}`);
@@ -127,7 +127,7 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
       // The schema should accept docker_container and docker_host
       // Even with an invalid docker_host ID, the MCP layer should pass them through
       // (the error should come from Kuma, not schema validation)
-      const createResult = await client.callTool({
+      const createResult = (await client.callTool({
         name: 'createMonitor',
         arguments: {
           name: 'Integration Test - Docker Issue 42',
@@ -135,7 +135,7 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
           docker_container: 'test-container',
           docker_host: 999,
         },
-      }) as CallToolResult;
+      })) as CallToolResult;
 
       const textContent = (createResult.content as any[])?.find((c: any) => c.type === 'text');
       if (!textContent || textContent.type !== 'text') {
@@ -147,7 +147,9 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
         try {
           const monitorID = extractID(createResult, 'createMonitor', 'monitorID');
           await client.callTool({ name: 'deleteMonitor', arguments: { monitorID } });
-        } catch { /* ignore cleanup failure */ }
+        } catch {
+          /* ignore cleanup failure */
+        }
         console.log(`  ✓ #42: docker monitor created and cleaned up`);
         return;
       }
@@ -165,7 +167,7 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
     name: 'pauseMonitor and resumeMonitor',
     fn: async ({ client }) => {
       // Create a monitor to pause/resume
-      const createResult = await client.callTool({
+      const createResult = (await client.callTool({
         name: 'createMonitor',
         arguments: {
           name: 'Integration Test - Pause/Resume',
@@ -173,41 +175,41 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
           url: 'https://example.com',
           interval: 300,
         },
-      }) as CallToolResult;
+      })) as CallToolResult;
       const monitorID = extractID(createResult, 'createMonitor', 'monitorID');
 
       try {
         // Pause
-        const pauseResult = await client.callTool({
+        const pauseResult = (await client.callTool({
           name: 'pauseMonitor',
           arguments: { monitorID },
-        }) as CallToolResult;
+        })) as CallToolResult;
         extractText(pauseResult, 'pauseMonitor');
 
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
 
         // Verify paused
-        const getResult1 = await client.callTool({
+        const getResult1 = (await client.callTool({
           name: 'getMonitor',
           arguments: { monitorID },
-        }) as CallToolResult;
+        })) as CallToolResult;
         const paused = JSON.parse(extractText(getResult1, 'getMonitor'));
         if (paused.active !== false) throw new Error('Monitor not paused');
 
         // Resume
-        const resumeResult = await client.callTool({
+        const resumeResult = (await client.callTool({
           name: 'resumeMonitor',
           arguments: { monitorID },
-        }) as CallToolResult;
+        })) as CallToolResult;
         extractText(resumeResult, 'resumeMonitor');
 
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
 
         // Verify resumed
-        const getResult2 = await client.callTool({
+        const getResult2 = (await client.callTool({
           name: 'getMonitor',
           arguments: { monitorID },
-        }) as CallToolResult;
+        })) as CallToolResult;
         const resumed = JSON.parse(extractText(getResult2, 'getMonitor'));
         if (resumed.active !== true) throw new Error('Monitor not resumed');
 
@@ -220,7 +222,7 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
   {
     name: '#58: createMonitor and updateMonitor persist description',
     fn: async ({ client }) => {
-      const createResult = await client.callTool({
+      const createResult = (await client.callTool({
         name: 'createMonitor',
         arguments: {
           name: 'Integration Test - Issue 58',
@@ -230,14 +232,16 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
           description: 'created with a description',
           active: false,
         },
-      }) as CallToolResult;
+      })) as CallToolResult;
       const monitorID = extractID(createResult, 'createMonitor', 'monitorID');
 
       try {
-        const created = JSON.parse(extractText(
-          await client.callTool({ name: 'getMonitor', arguments: { monitorID } }) as CallToolResult,
-          'getMonitor'
-        ));
+        const created = JSON.parse(
+          extractText(
+            (await client.callTool({ name: 'getMonitor', arguments: { monitorID } })) as CallToolResult,
+            'getMonitor'
+          )
+        );
         if (created.description !== 'created with a description') {
           throw new Error(`description not persisted on create: got ${JSON.stringify(created.description)}`);
         }
@@ -246,10 +250,12 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
         if (created.active !== false) throw new Error('active:false not honoured on create');
 
         await client.callTool({ name: 'updateMonitor', arguments: { monitorID, description: 'edited' } });
-        const edited = JSON.parse(extractText(
-          await client.callTool({ name: 'getMonitor', arguments: { monitorID } }) as CallToolResult,
-          'getMonitor'
-        ));
+        const edited = JSON.parse(
+          extractText(
+            (await client.callTool({ name: 'getMonitor', arguments: { monitorID } })) as CallToolResult,
+            'getMonitor'
+          )
+        );
         if (edited.description !== 'edited') {
           throw new Error(`description not persisted on update: got ${JSON.stringify(edited.description)}`);
         }
@@ -262,7 +268,7 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
   {
     name: '#60: json-query monitors are fully configurable',
     fn: async ({ client }) => {
-      const createResult = await client.callTool({
+      const createResult = (await client.callTool({
         name: 'createMonitor',
         arguments: {
           name: 'Integration Test - Issue 60 json-query',
@@ -274,25 +280,32 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
           jsonPathOperator: '>',
           expectedValue: 161061273600,
         },
-      }) as CallToolResult;
+      })) as CallToolResult;
       const monitorID = extractID(createResult, 'createMonitor', 'monitorID');
 
       try {
-        const m = JSON.parse(extractText(
-          await client.callTool({ name: 'getMonitor', arguments: { monitorID, includeTypeSpecificFields: true } }) as CallToolResult,
-          'getMonitor'
-        ));
+        const m = JSON.parse(
+          extractText(
+            (await client.callTool({
+              name: 'getMonitor',
+              arguments: { monitorID, includeTypeSpecificFields: true },
+            })) as CallToolResult,
+            'getMonitor'
+          )
+        );
         if (m.jsonPath !== '$.freeSpace') throw new Error(`jsonPath not persisted: ${JSON.stringify(m.jsonPath)}`);
-        if (m.jsonPathOperator !== '>') throw new Error(`jsonPathOperator not persisted: ${JSON.stringify(m.jsonPathOperator)}`);
-        if (String(m.expectedValue) !== '161061273600') throw new Error(`expectedValue not persisted: ${JSON.stringify(m.expectedValue)}`);
+        if (m.jsonPathOperator !== '>')
+          throw new Error(`jsonPathOperator not persisted: ${JSON.stringify(m.jsonPathOperator)}`);
+        if (String(m.expectedValue) !== '161061273600')
+          throw new Error(`expectedValue not persisted: ${JSON.stringify(m.expectedValue)}`);
 
         // The database column names, and the spelling used in #60, are refused by name rather
         // than accepted as a second spelling: nothing may be written, and the reply must say
         // which name to use.
-        const refused = await client.callTool({
+        const refused = (await client.callTool({
           name: 'updateMonitor',
           arguments: { monitorID, json_path: '$.total', json_path_operator: '<', expected_value: '42' },
-        }) as CallToolResult;
+        })) as CallToolResult;
         if (!refused.isError || !JSON.stringify(refused.content).includes("'jsonPath' for 'json_path'")) {
           throw new Error('snake_case spellings were not refused with the accepted name');
         }
@@ -300,10 +313,15 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
           name: 'updateMonitor',
           arguments: { monitorID, jsonPath: '$.total', jsonPathOperator: '<', expectedValue: '42' },
         });
-        const m2 = JSON.parse(extractText(
-          await client.callTool({ name: 'getMonitor', arguments: { monitorID, includeTypeSpecificFields: true } }) as CallToolResult,
-          'getMonitor'
-        ));
+        const m2 = JSON.parse(
+          extractText(
+            (await client.callTool({
+              name: 'getMonitor',
+              arguments: { monitorID, includeTypeSpecificFields: true },
+            })) as CallToolResult,
+            'getMonitor'
+          )
+        );
         if (m2.jsonPath !== '$.total' || m2.jsonPathOperator !== '<' || String(m2.expectedValue) !== '42') {
           throw new Error('the json-query triple was not updated');
         }
@@ -317,7 +335,7 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
     name: '#106: database monitors are configurable and keep their credentials',
     fn: async ({ client }) => {
       const connectionString = 'postgres://kuma:integration-pw@db.invalid:5432/app';
-      const createResult = await client.callTool({
+      const createResult = (await client.callTool({
         name: 'createMonitor',
         arguments: {
           name: 'Integration Test - Issue 106 postgres',
@@ -327,22 +345,27 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
           databaseConnectionString: connectionString,
           databaseQuery: 'SELECT 1',
         },
-      }) as CallToolResult;
+      })) as CallToolResult;
       const monitorID = extractID(createResult, 'createMonitor', 'monitorID');
 
-      const read = async (includeSecrets: boolean) => JSON.parse(extractText(
-        await client.callTool({
-          name: 'getMonitor',
-          arguments: { monitorID, includeTypeSpecificFields: true, includeSecrets },
-        }) as CallToolResult,
-        'getMonitor'
-      ));
+      const read = async (includeSecrets: boolean) =>
+        JSON.parse(
+          extractText(
+            (await client.callTool({
+              name: 'getMonitor',
+              arguments: { monitorID, includeTypeSpecificFields: true, includeSecrets },
+            })) as CallToolResult,
+            'getMonitor'
+          )
+        );
 
       try {
         const m = await read(true);
         if (m.databaseConnectionString !== connectionString) throw new Error('databaseConnectionString not persisted');
-        if (m.databaseQuery !== 'SELECT 1') throw new Error(`databaseQuery not persisted: ${JSON.stringify(m.databaseQuery)}`);
-        if ((await read(false)).databaseConnectionString !== '***') throw new Error('databaseConnectionString was not redacted');
+        if (m.databaseQuery !== 'SELECT 1')
+          throw new Error(`databaseQuery not persisted: ${JSON.stringify(m.databaseQuery)}`);
+        if ((await read(false)).databaseConnectionString !== '***')
+          throw new Error('databaseConnectionString was not redacted');
 
         // The read-edit-write loop: "***" comes back and must not overwrite the credential.
         await client.callTool({
@@ -350,7 +373,8 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
           arguments: { monitorID, databaseConnectionString: '***', databaseQuery: 'SELECT 2' },
         });
         const m2 = await read(true);
-        if (m2.databaseConnectionString !== connectionString) throw new Error('"***" overwrote databaseConnectionString');
+        if (m2.databaseConnectionString !== connectionString)
+          throw new Error('"***" overwrote databaseConnectionString');
         if (m2.databaseQuery !== 'SELECT 2') throw new Error('databaseQuery was not updated');
         console.log('  ✓ #106: connection string and query persist, redact, and survive a "***" round trip');
       } finally {
@@ -363,7 +387,7 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
     fn: async ({ client }) => {
       // Uptime Kuma's mysql monitor reads its password from radiusPassword. This proves the
       // server actually stores that column for a mysql monitor, which no unit test can.
-      const createResult = await client.callTool({
+      const createResult = (await client.callTool({
         name: 'createMonitor',
         arguments: {
           name: 'Integration Test - Issue 106 mysql',
@@ -373,16 +397,19 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
           databaseConnectionString: 'mysql://kuma@db.invalid:3306/app',
           databasePassword: 'integration-mysql-pw',
         },
-      }) as CallToolResult;
+      })) as CallToolResult;
       const monitorID = extractID(createResult, 'createMonitor', 'monitorID');
 
-      const read = async (includeSecrets: boolean) => JSON.parse(extractText(
-        await client.callTool({
-          name: 'getMonitor',
-          arguments: { monitorID, includeTypeSpecificFields: true, includeSecrets },
-        }) as CallToolResult,
-        'getMonitor'
-      ));
+      const read = async (includeSecrets: boolean) =>
+        JSON.parse(
+          extractText(
+            (await client.callTool({
+              name: 'getMonitor',
+              arguments: { monitorID, includeTypeSpecificFields: true, includeSecrets },
+            })) as CallToolResult,
+            'getMonitor'
+          )
+        );
 
       try {
         if ((await read(true)).radiusPassword !== 'integration-mysql-pw') {
@@ -397,7 +424,8 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
         }
 
         await client.callTool({ name: 'updateMonitor', arguments: { monitorID, databasePassword: 'rotated-pw' } });
-        if ((await read(true)).radiusPassword !== 'rotated-pw') throw new Error('databasePassword update did not persist');
+        if ((await read(true)).radiusPassword !== 'rotated-pw')
+          throw new Error('databasePassword update did not persist');
         console.log('  ✓ #106: mysql password stored as radiusPassword, redacted, kept on "***", updatable');
       } finally {
         await client.callTool({ name: 'deleteMonitor', arguments: { monitorID } });
@@ -407,10 +435,10 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
   {
     name: '#60: push monitors are created with a usable token and ping URL',
     fn: async ({ client }) => {
-      const createResult = await client.callTool({
+      const createResult = (await client.callTool({
         name: 'createMonitor',
         arguments: { name: 'Integration Test - Issue 60 push', type: 'push', interval: 3600 },
-      }) as CallToolResult;
+      })) as CallToolResult;
       const monitorID = extractID(createResult, 'createMonitor', 'monitorID');
 
       try {
@@ -424,10 +452,15 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
         // includeSecrets is required here (#59): pushToken reads "***" by default, and
         // comparing what was stored against what was returned needs the real value. This is
         // the canonical case for the opt-in — verifying a credential rather than listing it.
-        const stored = JSON.parse(extractText(
-          await client.callTool({ name: 'getMonitor', arguments: { monitorID, includeTypeSpecificFields: true, includeSecrets: true } }) as CallToolResult,
-          'getMonitor'
-        ));
+        const stored = JSON.parse(
+          extractText(
+            (await client.callTool({
+              name: 'getMonitor',
+              arguments: { monitorID, includeTypeSpecificFields: true, includeSecrets: true },
+            })) as CallToolResult,
+            'getMonitor'
+          )
+        );
         if (stored.pushToken !== sc.pushToken) throw new Error('stored push token does not match the returned one');
 
         // The whole point: the returned URL must actually be able to record a beat.
@@ -442,50 +475,78 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
   {
     name: '#63/#65: updateMonitor re-parents, and listMonitors filters by parent',
     fn: async ({ client }) => {
-      const groupID = extractID(await client.callTool({
-        name: 'createMonitor',
-        arguments: { name: 'Integration Test - Issue 63 group', type: 'group', interval: 300, active: false },
-      }) as CallToolResult, 'createMonitor', 'monitorID');
-      const monitorID = extractID(await client.callTool({
-        name: 'createMonitor',
-        arguments: { name: 'Integration Test - Issue 63 child', type: 'http', url: 'https://example.com', interval: 300, active: false },
-      }) as CallToolResult, 'createMonitor', 'monitorID');
+      const groupID = extractID(
+        (await client.callTool({
+          name: 'createMonitor',
+          arguments: { name: 'Integration Test - Issue 63 group', type: 'group', interval: 300, active: false },
+        })) as CallToolResult,
+        'createMonitor',
+        'monitorID'
+      );
+      const monitorID = extractID(
+        (await client.callTool({
+          name: 'createMonitor',
+          arguments: {
+            name: 'Integration Test - Issue 63 child',
+            type: 'http',
+            url: 'https://example.com',
+            interval: 300,
+            active: false,
+          },
+        })) as CallToolResult,
+        'createMonitor',
+        'monitorID'
+      );
 
       try {
         await client.callTool({ name: 'updateMonitor', arguments: { monitorID, parent: groupID } });
-        const moved = JSON.parse(extractText(
-          await client.callTool({ name: 'getMonitor', arguments: { monitorID } }) as CallToolResult,
-          'getMonitor'
-        ));
+        const moved = JSON.parse(
+          extractText(
+            (await client.callTool({ name: 'getMonitor', arguments: { monitorID } })) as CallToolResult,
+            'getMonitor'
+          )
+        );
         if (Number(moved.parent) !== groupID) {
           throw new Error(`re-parent did not persist: parent is ${JSON.stringify(moved.parent)}, expected ${groupID}`);
         }
 
-        const listed = JSON.parse(extractText(
-          await client.callTool({ name: 'listMonitors', arguments: { parentId: groupID } }) as CallToolResult,
-          'listMonitors'
-        ));
+        const listed = JSON.parse(
+          extractText(
+            (await client.callTool({ name: 'listMonitors', arguments: { parentId: groupID } })) as CallToolResult,
+            'listMonitors'
+          )
+        );
         if (!Array.isArray(listed) || listed.length !== 1 || Number(listed[0].id) !== monitorID) {
-          throw new Error(`parentId filter returned ${Array.isArray(listed) ? listed.length : 'non-array'} monitors, expected exactly the one child`);
+          throw new Error(
+            `parentId filter returned ${Array.isArray(listed) ? listed.length : 'non-array'} monitors, expected exactly the one child`
+          );
         }
 
         // The same filter on the tool the instructions send status questions to first —
         // "what's down in this group?" reaches getMonitorSummary, not listMonitors.
-        const summarised = JSON.parse(extractText(
-          await client.callTool({ name: 'getMonitorSummary', arguments: { parentId: groupID } }) as CallToolResult,
-          'getMonitorSummary'
-        ));
+        const summarised = JSON.parse(
+          extractText(
+            (await client.callTool({ name: 'getMonitorSummary', arguments: { parentId: groupID } })) as CallToolResult,
+            'getMonitorSummary'
+          )
+        );
         if (!Array.isArray(summarised) || summarised.length !== 1 || Number(summarised[0].id) !== monitorID) {
-          throw new Error(`getMonitorSummary parentId returned ${Array.isArray(summarised) ? summarised.length : 'non-array'} monitors, expected exactly the one child`);
+          throw new Error(
+            `getMonitorSummary parentId returned ${Array.isArray(summarised) ? summarised.length : 'non-array'} monitors, expected exactly the one child`
+          );
         }
 
         await client.callTool({ name: 'updateMonitor', arguments: { monitorID, parent: null } });
-        const back = JSON.parse(extractText(
-          await client.callTool({ name: 'getMonitor', arguments: { monitorID } }) as CallToolResult,
-          'getMonitor'
-        ));
+        const back = JSON.parse(
+          extractText(
+            (await client.callTool({ name: 'getMonitor', arguments: { monitorID } })) as CallToolResult,
+            'getMonitor'
+          )
+        );
         if (back.parent !== null) throw new Error('re-parent to top level did not persist');
-        console.log('  ✓ #63/#65: re-parent works both ways; parentId returns direct children on both list and summary');
+        console.log(
+          '  ✓ #63/#65: re-parent works both ways; parentId returns direct children on both list and summary'
+        );
       } finally {
         await client.callTool({ name: 'deleteMonitor', arguments: { monitorID } });
         await client.callTool({ name: 'deleteMonitor', arguments: { monitorID: groupID } });
@@ -495,16 +556,28 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
   {
     name: 'timeout defaults to the web form value instead of being stored as 0',
     fn: async ({ client }) => {
-      const monitorID = extractID(await client.callTool({
-        name: 'createMonitor',
-        arguments: { name: 'Integration Test - timeout default', type: 'http', url: 'https://example.com', interval: 300, active: false },
-      }) as CallToolResult, 'createMonitor', 'monitorID');
+      const monitorID = extractID(
+        (await client.callTool({
+          name: 'createMonitor',
+          arguments: {
+            name: 'Integration Test - timeout default',
+            type: 'http',
+            url: 'https://example.com',
+            interval: 300,
+            active: false,
+          },
+        })) as CallToolResult,
+        'createMonitor',
+        'monitorID'
+      );
 
       try {
-        const m = JSON.parse(extractText(
-          await client.callTool({ name: 'getMonitor', arguments: { monitorID } }) as CallToolResult,
-          'getMonitor'
-        ));
+        const m = JSON.parse(
+          extractText(
+            (await client.callTool({ name: 'getMonitor', arguments: { monitorID } })) as CallToolResult,
+            'getMonitor'
+          )
+        );
         // The form gives a new http monitor 48 s, held to 80% of the interval.
         if (Number(m.timeout) !== 48) {
           throw new Error(`expected timeout 48 (the web form default), got ${JSON.stringify(m.timeout)}`);
@@ -518,41 +591,64 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
   {
     name: '#110: updateMonitor changes the type in place and toggles expiry notifications',
     fn: async ({ client }) => {
-      const monitorID = extractID(await client.callTool({
-        name: 'createMonitor',
-        arguments: { name: 'Integration Test - Issue 110', type: 'ping', hostname: 'example.com', active: false },
-      }) as CallToolResult, 'createMonitor', 'monitorID');
+      const monitorID = extractID(
+        (await client.callTool({
+          name: 'createMonitor',
+          arguments: { name: 'Integration Test - Issue 110', type: 'ping', hostname: 'example.com', active: false },
+        })) as CallToolResult,
+        'createMonitor',
+        'monitorID'
+      );
 
-      const read = async () => JSON.parse(extractText(
-        await client.callTool({ name: 'getMonitor', arguments: { monitorID, includeTypeSpecificFields: true } }) as CallToolResult,
-        'getMonitor'
-      ));
+      const read = async () =>
+        JSON.parse(
+          extractText(
+            (await client.callTool({
+              name: 'getMonitor',
+              arguments: { monitorID, includeTypeSpecificFields: true },
+            })) as CallToolResult,
+            'getMonitor'
+          )
+        );
 
       try {
         // Uptime Kuma itself would save this and leave an http monitor with nothing to request.
-        const refused = await client.callTool({
+        const refused = (await client.callTool({
           name: 'updateMonitor',
           arguments: { monitorID, type: 'http' },
-        }) as CallToolResult;
+        })) as CallToolResult;
         if (!refused.isError) throw new Error('ping -> http without a url was not refused');
         if ((await read()).type !== 'ping') throw new Error('a refused type change still changed the type');
 
-        extractText(await client.callTool({
-          name: 'updateMonitor',
-          arguments: { monitorID, type: 'http', url: 'https://example.com', expiryNotification: true, domainExpiryNotification: true },
-        }) as CallToolResult, 'updateMonitor');
+        extractText(
+          (await client.callTool({
+            name: 'updateMonitor',
+            arguments: {
+              monitorID,
+              type: 'http',
+              url: 'https://example.com',
+              expiryNotification: true,
+              domainExpiryNotification: true,
+            },
+          })) as CallToolResult,
+          'updateMonitor'
+        );
         const http = await read();
         if (http.id !== monitorID || http.type !== 'http' || http.url !== 'https://example.com') {
-          throw new Error(`ping -> http did not land: ${JSON.stringify({ id: http.id, type: http.type, url: http.url })}`);
+          throw new Error(
+            `ping -> http did not land: ${JSON.stringify({ id: http.id, type: http.type, url: http.url })}`
+          );
         }
         if (http.expiryNotification !== true || http.domainExpiryNotification !== true) {
-          throw new Error(`expiry toggles not persisted: ${JSON.stringify({ expiryNotification: http.expiryNotification, domainExpiryNotification: http.domainExpiryNotification })}`);
+          throw new Error(
+            `expiry toggles not persisted: ${JSON.stringify({ expiryNotification: http.expiryNotification, domainExpiryNotification: http.domainExpiryNotification })}`
+          );
         }
 
-        const pushed = await client.callTool({
+        const pushed = (await client.callTool({
           name: 'updateMonitor',
           arguments: { monitorID, type: 'push' },
-        }) as CallToolResult;
+        })) as CallToolResult;
         extractText(pushed, 'updateMonitor');
         const { pushToken, pushURL } = (pushed.structuredContent ?? {}) as { pushToken?: string; pushURL?: string };
         if (!pushToken || !pushURL?.includes(pushToken)) {
@@ -569,25 +665,36 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
   {
     name: '#110: createMonitor sets the expiry notification toggles',
     fn: async ({ client }) => {
-      const monitorID = extractID(await client.callTool({
-        name: 'createMonitor',
-        arguments: {
-          name: 'Integration Test - Issue 110 create toggles',
-          type: 'http',
-          url: 'https://example.com',
-          expiryNotification: true,
-          domainExpiryNotification: true,
-          active: false,
-        },
-      }) as CallToolResult, 'createMonitor', 'monitorID');
+      const monitorID = extractID(
+        (await client.callTool({
+          name: 'createMonitor',
+          arguments: {
+            name: 'Integration Test - Issue 110 create toggles',
+            type: 'http',
+            url: 'https://example.com',
+            expiryNotification: true,
+            domainExpiryNotification: true,
+            active: false,
+          },
+        })) as CallToolResult,
+        'createMonitor',
+        'monitorID'
+      );
 
       try {
-        const m = JSON.parse(extractText(
-          await client.callTool({ name: 'getMonitor', arguments: { monitorID, includeTypeSpecificFields: true } }) as CallToolResult,
-          'getMonitor'
-        ));
+        const m = JSON.parse(
+          extractText(
+            (await client.callTool({
+              name: 'getMonitor',
+              arguments: { monitorID, includeTypeSpecificFields: true },
+            })) as CallToolResult,
+            'getMonitor'
+          )
+        );
         if (m.expiryNotification !== true || m.domainExpiryNotification !== true) {
-          throw new Error(`expiry toggles not persisted on create: ${JSON.stringify({ expiryNotification: m.expiryNotification, domainExpiryNotification: m.domainExpiryNotification })}`);
+          throw new Error(
+            `expiry toggles not persisted on create: ${JSON.stringify({ expiryNotification: m.expiryNotification, domainExpiryNotification: m.domainExpiryNotification })}`
+          );
         }
         console.log('  ✓ #110: expiry toggles persist on create');
       } finally {
@@ -598,44 +705,91 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
   {
     name: 'field audit: defaults and type-specific fields land as documented',
     fn: async ({ client }) => {
-      const create = async (args: Record<string, unknown>) => extractID(await client.callTool({
-        name: 'createMonitor',
-        arguments: { active: false, ...args },
-      }) as CallToolResult, 'createMonitor', 'monitorID');
-      const read = async (monitorID: number) => JSON.parse(extractText(
-        await client.callTool({ name: 'getMonitor', arguments: { monitorID, includeTypeSpecificFields: true } }) as CallToolResult,
-        'getMonitor'
-      ));
+      const create = async (args: Record<string, unknown>) =>
+        extractID(
+          (await client.callTool({
+            name: 'createMonitor',
+            arguments: { active: false, ...args },
+          })) as CallToolResult,
+          'createMonitor',
+          'monitorID'
+        );
+      const read = async (monitorID: number) =>
+        JSON.parse(
+          extractText(
+            (await client.callTool({
+              name: 'getMonitor',
+              arguments: { monitorID, includeTypeSpecificFields: true },
+            })) as CallToolResult,
+            'getMonitor'
+          )
+        );
       const ids: number[] = [];
 
       try {
         // The interval column defaults to 20; createMonitor advertises 60.
-        ids.push(await create({ name: 'Integration Test - audit port', type: 'port', hostname: 'example.com', port: 443, domainExpiryNotification: false }));
+        ids.push(
+          await create({
+            name: 'Integration Test - audit port',
+            type: 'port',
+            hostname: 'example.com',
+            port: 443,
+            domainExpiryNotification: false,
+          })
+        );
         const port = await read(ids[0]);
-        if (port.interval !== 60 || port.retryInterval !== 60 || port.timeout !== 48 || port.expiryNotification !== false) {
-          throw new Error(`not the web form defaults: ${JSON.stringify({ interval: port.interval, retryInterval: port.retryInterval, timeout: port.timeout, expiryNotification: port.expiryNotification })}`);
+        if (
+          port.interval !== 60 ||
+          port.retryInterval !== 60 ||
+          port.timeout !== 48 ||
+          port.expiryNotification !== false
+        ) {
+          throw new Error(
+            `not the web form defaults: ${JSON.stringify({ interval: port.interval, retryInterval: port.retryInterval, timeout: port.timeout, expiryNotification: port.expiryNotification })}`
+          );
         }
         // domainExpiryNotification belongs to port too, not only the HTTP types.
         if (port.domainExpiryNotification !== false) {
-          throw new Error(`domainExpiryNotification not persisted on a port monitor: ${JSON.stringify(port.domainExpiryNotification)}`);
+          throw new Error(
+            `domainExpiryNotification not persisted on a port monitor: ${JSON.stringify(port.domainExpiryNotification)}`
+          );
         }
 
         // A stored null oauth_auth_method fails every token request.
-        ids.push(await create({
-          name: 'Integration Test - audit oauth',
-          type: 'http',
-          url: 'https://example.com',
-          typeFields: { oauth_token_url: 'https://idp.example.com/token', oauth_client_id: 'id', oauth_client_secret: 'secret' },
-        }));
+        ids.push(
+          await create({
+            name: 'Integration Test - audit oauth',
+            type: 'http',
+            url: 'https://example.com',
+            typeFields: {
+              oauth_token_url: 'https://idp.example.com/token',
+              oauth_client_id: 'id',
+              oauth_client_secret: 'secret',
+            },
+          })
+        );
         const oauth = await read(ids[1]);
         if (oauth.authMethod !== 'oauth2-cc' || oauth.oauth_auth_method !== 'client_secret_basic') {
-          throw new Error(`oauth2-cc defaults not stored: ${JSON.stringify({ authMethod: oauth.authMethod, oauth_auth_method: oauth.oauth_auth_method })}`);
+          throw new Error(
+            `oauth2-cc defaults not stored: ${JSON.stringify({ authMethod: oauth.authMethod, oauth_auth_method: oauth.oauth_auth_method })}`
+          );
         }
 
         // A record type only globalping offers, and the A default for a dns measurement.
-        ids.push(await create({ name: 'Integration Test - audit globalping', type: 'globalping', hostname: 'example.com', typeFields: { subtype: 'dns' } }));
-        if ((await read(ids[2])).dns_resolve_type !== 'A') throw new Error('globalping dns did not default to A records');
-        const https = await client.callTool({ name: 'updateMonitor', arguments: { monitorID: ids[2], dns_resolve_type: 'HTTPS' } }) as CallToolResult;
+        ids.push(
+          await create({
+            name: 'Integration Test - audit globalping',
+            type: 'globalping',
+            hostname: 'example.com',
+            typeFields: { subtype: 'dns' },
+          })
+        );
+        if ((await read(ids[2])).dns_resolve_type !== 'A')
+          throw new Error('globalping dns did not default to A records');
+        const https = (await client.callTool({
+          name: 'updateMonitor',
+          arguments: { monitorID: ids[2], dns_resolve_type: 'HTTPS' },
+        })) as CallToolResult;
         if (https.isError || (await read(ids[2])).dns_resolve_type !== 'HTTPS') {
           throw new Error(`globalping HTTPS record type not stored: ${extractText(https, 'updateMonitor')}`);
         }
@@ -649,34 +803,55 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
   {
     name: '#110: converting a group is refused and its children stay attached',
     fn: async ({ client }) => {
-      const groupID = extractID(await client.callTool({
-        name: 'createMonitor',
-        arguments: { name: 'Integration Test - Issue 110 group', type: 'group', interval: 300, active: false },
-      }) as CallToolResult, 'createMonitor', 'monitorID');
-      const childID = extractID(await client.callTool({
-        name: 'createMonitor',
-        arguments: { name: 'Integration Test - Issue 110 child', type: 'http', url: 'https://example.com', parent: groupID, active: false },
-      }) as CallToolResult, 'createMonitor', 'monitorID');
+      const groupID = extractID(
+        (await client.callTool({
+          name: 'createMonitor',
+          arguments: { name: 'Integration Test - Issue 110 group', type: 'group', interval: 300, active: false },
+        })) as CallToolResult,
+        'createMonitor',
+        'monitorID'
+      );
+      const childID = extractID(
+        (await client.callTool({
+          name: 'createMonitor',
+          arguments: {
+            name: 'Integration Test - Issue 110 child',
+            type: 'http',
+            url: 'https://example.com',
+            parent: groupID,
+            active: false,
+          },
+        })) as CallToolResult,
+        'createMonitor',
+        'monitorID'
+      );
 
-      const read = async (monitorID: number) => JSON.parse(extractText(
-        await client.callTool({ name: 'getMonitor', arguments: { monitorID } }) as CallToolResult,
-        'getMonitor'
-      ));
+      const read = async (monitorID: number) =>
+        JSON.parse(
+          extractText(
+            (await client.callTool({ name: 'getMonitor', arguments: { monitorID } })) as CallToolResult,
+            'getMonitor'
+          )
+        );
 
       try {
-        const refused = await client.callTool({
+        const refused = (await client.callTool({
           name: 'updateMonitor',
           arguments: { monitorID: groupID, type: 'http', url: 'https://example.com' },
-        }) as CallToolResult;
+        })) as CallToolResult;
         if (!refused.isError) throw new Error('group -> http was not refused');
-        if ((await read(groupID)).type !== 'group') throw new Error('a refused conversion still changed the group\'s type');
+        if ((await read(groupID)).type !== 'group')
+          throw new Error("a refused conversion still changed the group's type");
         if ((await read(childID)).parent !== groupID) throw new Error('the child was detached from its group');
 
         // The read-edit-write loop sends the group's own type back.
-        extractText(await client.callTool({
-          name: 'updateMonitor',
-          arguments: { monitorID: groupID, type: 'group', name: 'Integration Test - Issue 110 group renamed' },
-        }) as CallToolResult, 'updateMonitor');
+        extractText(
+          (await client.callTool({
+            name: 'updateMonitor',
+            arguments: { monitorID: groupID, type: 'group', name: 'Integration Test - Issue 110 group renamed' },
+          })) as CallToolResult,
+          'updateMonitor'
+        );
         if ((await read(childID)).parent !== groupID) throw new Error('renaming the group detached its child');
 
         console.log('  ✓ #110: group conversion refused, child still attached; group -> group allowed');
@@ -689,37 +864,64 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
   {
     name: '#110: a type change stores a timeout Uptime Kuma can use',
     fn: async ({ client }) => {
-      const pushID = extractID(await client.callTool({
-        name: 'createMonitor',
-        arguments: { name: 'Integration Test - Issue 110 push', type: 'push', interval: 60, active: false },
-      }) as CallToolResult, 'createMonitor', 'monitorID');
-      const httpID = extractID(await client.callTool({
-        name: 'createMonitor',
-        arguments: { name: 'Integration Test - Issue 110 slow http', type: 'http', url: 'https://example.com', interval: 600, timeout: 480, active: false },
-      }) as CallToolResult, 'createMonitor', 'monitorID');
+      const pushID = extractID(
+        (await client.callTool({
+          name: 'createMonitor',
+          arguments: { name: 'Integration Test - Issue 110 push', type: 'push', interval: 60, active: false },
+        })) as CallToolResult,
+        'createMonitor',
+        'monitorID'
+      );
+      const httpID = extractID(
+        (await client.callTool({
+          name: 'createMonitor',
+          arguments: {
+            name: 'Integration Test - Issue 110 slow http',
+            type: 'http',
+            url: 'https://example.com',
+            interval: 600,
+            timeout: 480,
+            active: false,
+          },
+        })) as CallToolResult,
+        'createMonitor',
+        'monitorID'
+      );
 
-      const timeoutOf = async (monitorID: number) => Number(JSON.parse(extractText(
-        await client.callTool({ name: 'getMonitor', arguments: { monitorID } }) as CallToolResult,
-        'getMonitor'
-      )).timeout);
+      const timeoutOf = async (monitorID: number) =>
+        Number(
+          JSON.parse(
+            extractText(
+              (await client.callTool({ name: 'getMonitor', arguments: { monitorID } })) as CallToolResult,
+              'getMonitor'
+            )
+          ).timeout
+        );
 
       try {
         // A push monitor made before the form default was applied stores 0; carried over, Uptime
         // Kuma would treat it as ~13 hours. The conversion must end up at 48 either way.
-        extractText(await client.callTool({
-          name: 'updateMonitor',
-          arguments: { monitorID: pushID, type: 'http', url: 'https://example.com' },
-        }) as CallToolResult, 'updateMonitor');
+        extractText(
+          (await client.callTool({
+            name: 'updateMonitor',
+            arguments: { monitorID: pushID, type: 'http', url: 'https://example.com' },
+          })) as CallToolResult,
+          'updateMonitor'
+        );
         const fromPush = await timeoutOf(pushID);
-        if (fromPush !== 48) throw new Error(`push -> http: expected timeout 48 (the web form default), got ${fromPush}`);
+        if (fromPush !== 48)
+          throw new Error(`push -> http: expected timeout 48 (the web form default), got ${fromPush}`);
 
         // 480 is a valid http timeout, but Monitor.validate() rejects it for ping (1..300).
         const before = await timeoutOf(httpID);
         if (before !== 480) throw new Error(`expected the http monitor to start with timeout 480, got ${before}`);
-        extractText(await client.callTool({
-          name: 'updateMonitor',
-          arguments: { monitorID: httpID, type: 'ping', hostname: 'example.com' },
-        }) as CallToolResult, 'updateMonitor');
+        extractText(
+          (await client.callTool({
+            name: 'updateMonitor',
+            arguments: { monitorID: httpID, type: 'ping', hostname: 'example.com' },
+          })) as CallToolResult,
+          'updateMonitor'
+        );
         const asPing = await timeoutOf(httpID);
         if (asPing !== 300) throw new Error(`http -> ping: expected timeout 300, got ${asPing}`);
 

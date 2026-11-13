@@ -65,16 +65,12 @@ describe('UptimeKumaClient - Notification Operations', () => {
       });
       injectSocket(client, socket);
 
-      await expect(
-        client.addNotification({ name: 'Bad', type: 'unknown' })
-      ).rejects.toThrow('Invalid config');
+      await expect(client.addNotification({ name: 'Bad', type: 'unknown' })).rejects.toThrow('Invalid config');
     });
 
     it('rejects when not connected', async () => {
       injectSocket(client, createDisconnectedSocket());
-      await expect(
-        client.addNotification({ name: 'x', type: 'slack' })
-      ).rejects.toThrow('Not connected to server');
+      await expect(client.addNotification({ name: 'x', type: 'slack' })).rejects.toThrow('Not connected to server');
     });
   });
 

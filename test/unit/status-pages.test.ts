@@ -54,11 +54,9 @@ describe('UptimeKumaClient - Status Page Operations', () => {
       });
       injectSocket(client, socket);
 
-      const result = await client.updateStatusPage(
-        'test-page',
-        { title: 'Updated' },
-        [{ name: 'Services', weight: 1, monitorList: [{ id: 1 }] }]
-      );
+      const result = await client.updateStatusPage('test-page', { title: 'Updated' }, [
+        { name: 'Services', weight: 1, monitorList: [{ id: 1 }] },
+      ]);
       expect(result.ok).toBe(true);
     });
 
@@ -246,7 +244,9 @@ describe('UptimeKumaClient - status page list stays current', () => {
   });
 
   it('getStatusPageConfig rejects when the page does not exist', async () => {
-    const { socket } = createMockSocket({ getStatusPage: (_slug, callback) => (callback as Function)({ ok: false, msg: 'No slug?' }) });
+    const { socket } = createMockSocket({
+      getStatusPage: (_slug, callback) => (callback as Function)({ ok: false, msg: 'No slug?' }),
+    });
     injectSocket(client, socket);
     await expect(client.getStatusPageConfig('nope')).rejects.toThrow('No slug?');
   });
@@ -254,11 +254,17 @@ describe('UptimeKumaClient - status page list stays current', () => {
   it('a created page is listed straight away', async () => {
     const { socket } = createMockSocket({
       addStatusPage: (_title, _slug, callback) => (callback as Function)({ ok: true }),
-      getStatusPage: (slug, callback) => (callback as Function)({ ok: true, config: stored(slug as string, 'New page') }),
+      getStatusPage: (slug, callback) =>
+        (callback as Function)({ ok: true, config: stored(slug as string, 'New page') }),
     });
     injectSocket(client, socket);
     await client.createStatusPage('New page', 'new-page');
-    expect(client.getStatusPageList().map(p => p.slug).sort()).toEqual(['new-page', 'old']);
+    expect(
+      client
+        .getStatusPageList()
+        .map((p) => p.slug)
+        .sort()
+    ).toEqual(['new-page', 'old']);
   });
 
   it('a created page is still listed when reading it back fails', async () => {
@@ -268,13 +274,17 @@ describe('UptimeKumaClient - status page list stays current', () => {
     });
     injectSocket(client, socket);
     await client.createStatusPage('New page', 'new-page');
-    expect(client.getStatusPageList().find(p => p.slug === 'new-page')).toMatchObject({ slug: 'new-page', title: 'New page' });
+    expect(client.getStatusPageList().find((p) => p.slug === 'new-page')).toMatchObject({
+      slug: 'new-page',
+      title: 'New page',
+    });
   });
 
   it('a saved page is listed with its new values', async () => {
     const { socket } = createMockSocket({
       saveStatusPage: (_slug, _config, _img, _groups, callback) => (callback as Function)({ ok: true }),
-      getStatusPage: (slug, callback) => (callback as Function)({ ok: true, config: stored(slug as string, 'Renamed') }),
+      getStatusPage: (slug, callback) =>
+        (callback as Function)({ ok: true, config: stored(slug as string, 'Renamed') }),
     });
     injectSocket(client, socket);
     await client.updateStatusPage('old', { slug: 'old', title: 'Renamed' });
@@ -282,7 +292,9 @@ describe('UptimeKumaClient - status page list stays current', () => {
   });
 
   it('a deleted page is no longer listed', async () => {
-    const { socket } = createMockSocket({ deleteStatusPage: (_slug, callback) => (callback as Function)({ ok: true }) });
+    const { socket } = createMockSocket({
+      deleteStatusPage: (_slug, callback) => (callback as Function)({ ok: true }),
+    });
     injectSocket(client, socket);
     await client.deleteStatusPage('old');
     expect(client.getStatusPageList()).toEqual([]);

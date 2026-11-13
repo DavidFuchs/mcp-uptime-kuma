@@ -26,7 +26,11 @@ export const MONITOR_TYPES = [
   { type: 'smtp', description: 'SMTP server connectivity check' },
   { type: 'snmp', description: 'SNMP device monitoring with OID queries' },
   { type: 'real-browser', description: 'Real browser-based monitoring using Chrome/Chromium' },
-  { type: 'gamedig', description: 'Game server (Minecraft, Counter-Strike, Valheim, Rust, ARK and any other game GameDig supports): checks that the server answers its game query, not just that the port is open. Set game to the GameDig ID, e.g. "minecraft".' },
+  {
+    type: 'gamedig',
+    description:
+      'Game server (Minecraft, Counter-Strike, Valheim, Rust, ARK and any other game GameDig supports): checks that the server answers its game query, not just that the port is open. Set game to the GameDig ID, e.g. "minecraft".',
+  },
   { type: 'push', description: 'Push-based monitoring (monitor receives heartbeats from external sources)' },
   { type: 'group', description: 'Group/folder for organizing monitors (not an actual check)' },
   { type: 'tailscale-ping', description: 'Tailscale network ping check' },
@@ -39,7 +43,7 @@ export const MONITOR_TYPES = [
   { type: 'sip-options', description: 'SIP OPTIONS ping check' },
   { type: 'oracledb', description: 'Oracle Database connectivity check' },
   { type: 'system-service', description: 'Local system service status check (systemd or Windows service)' },
-  { type: 'pm2', description: 'PM2 process status check' }
+  { type: 'pm2', description: 'PM2 process status check' },
 ];
 export const MONITOR_TYPE_NAMES = new Set(MONITOR_TYPES.map((t) => t.type));
 
@@ -53,7 +57,8 @@ export const HOST_CHANGED_MARKER_ERROR = (field: string, howToRead: string): str
   `Pass the real credentials for the new address, or ${howToRead} to read the current ones.`;
 
 /** A credential field's shared wording, so every one of them describes the round trip. */
-export const SECRET_NOTE = 'A credential: read tools return "***", and on updateMonitor sending "***" back keeps the stored value.';
+export const SECRET_NOTE =
+  'A credential: read tools return "***", and on updateMonitor sending "***" back keeps the stored value.';
 
 /**
  * One entry of a monitor's `conditions`, as Uptime Kuma's condition editor builds it
@@ -128,7 +133,10 @@ export const TYPE_SPECIFIC_MONITOR_FIELD_SCHEMAS = {
   mqttPassword: z.string().optional(),
   mqttCheckType: z.enum(['keyword', 'json-query']).optional(),
   mqttSuccessMessage: z.string().optional(),
-  mqttWebsocketPath: z.string().regex(/^\/[A-Za-z0-9\-_&()*+]*$/, 'must start with "/" and contain only letters, digits and -_&()*+').optional(),
+  mqttWebsocketPath: z
+    .string()
+    .regex(/^\/[A-Za-z0-9\-_&()*+]*$/, 'must start with "/" and contain only letters, digits and -_&()*+')
+    .optional(),
 
   // ── grpc-keyword ──
   grpcUrl: z.string().optional(),
@@ -145,15 +153,17 @@ export const TYPE_SPECIFIC_MONITOR_FIELD_SCHEMAS = {
   kafkaProducerMessage: z.string().optional(),
   kafkaProducerSsl: z.boolean().optional(),
   kafkaProducerAllowAutoTopicCreation: z.boolean().optional(),
-  kafkaProducerSaslOptions: z.object({
-    mechanism: z.enum(['None', 'plain', 'scram-sha-256', 'scram-sha-512', 'aws']),
-    username: z.string().optional(),
-    password: z.string().optional(),
-    authorizationIdentity: z.string().optional(),
-    accessKeyId: z.string().optional(),
-    secretAccessKey: z.string().optional(),
-    sessionToken: z.string().optional(),
-  }).optional(),
+  kafkaProducerSaslOptions: z
+    .object({
+      mechanism: z.enum(['None', 'plain', 'scram-sha-256', 'scram-sha-512', 'aws']),
+      username: z.string().optional(),
+      password: z.string().optional(),
+      authorizationIdentity: z.string().optional(),
+      accessKeyId: z.string().optional(),
+      secretAccessKey: z.string().optional(),
+      sessionToken: z.string().optional(),
+    })
+    .optional(),
 
   // ── radius (radiusPassword is declared by each tool) ──
   radiusUsername: z.string().optional(),
@@ -223,7 +233,8 @@ export const TYPE_SPECIFIC_MONITOR_FIELD_SCHEMAS = {
  */
 export const MONITOR_FIELD_DOCS: Record<keyof typeof TYPE_SPECIFIC_MONITOR_FIELD_SCHEMAS, string> = {
   // ── HTTP authentication (http, keyword, json-query, websocket-upgrade, globalping) ──
-  authMethod: 'HTTP authentication method. Uptime Kuma only sends the credentials of the method named here, so it is inferred when you pass one kind of credential without it. null turns authentication off.',
+  authMethod:
+    'HTTP authentication method. Uptime Kuma only sends the credentials of the method named here, so it is inferred when you pass one kind of credential without it. null turns authentication off.',
   basic_auth_user: 'Username for authMethod "basic" or "ntlm". Also the username of an oracledb monitor.',
   basic_auth_pass: `Password for authMethod "basic" or "ntlm". Also the password of an oracledb monitor. ${SECRET_NOTE}`,
   bearer_token: `Token for authMethod "bearer", sent as "Authorization: Bearer <token>". ${SECRET_NOTE}`,
@@ -247,17 +258,20 @@ export const MONITOR_FIELD_DOCS: Record<keyof typeof TYPE_SPECIFIC_MONITOR_FIELD
   saveResponse: 'Store the response body with every heartbeat (default: false)',
   saveErrorResponse: 'Store the response body with failing heartbeats (default: true)',
   responseMaxLength: 'Maximum bytes of response body stored (default: 1024, max: 1048576)',
-  retryOnlyOnStatusCodeFailure: 'json-query only: retry when the status code is wrong, but go DOWN at once when the JSON query fails',
+  retryOnlyOnStatusCodeFailure:
+    'json-query only: retry when the status code is wrong, but go DOWN at once when the JSON query fails',
 
   // ── websocket-upgrade ──
   wsSubprotocol: 'websocket-upgrade: Sec-WebSocket-Protocol to request, comma-separated for several',
-  wsIgnoreSecWebsocketAcceptHeader: 'websocket-upgrade: do not validate the Sec-WebSocket-Accept header of the handshake',
+  wsIgnoreSecWebsocketAcceptHeader:
+    'websocket-upgrade: do not validate the Sec-WebSocket-Accept header of the handshake',
 
   // ── mqtt (hostname takes the broker, e.g. mqtt://broker.example.com; port is required) ──
   mqttTopic: 'MQTT topic to subscribe to (required for mqtt)',
   mqttUsername: 'MQTT username',
   mqttPassword: `MQTT password. ${SECRET_NOTE}`,
-  mqttCheckType: 'How the received message is judged: "keyword" looks for mqttSuccessMessage, "json-query" applies jsonPath / jsonPathOperator / expectedValue (default: keyword)',
+  mqttCheckType:
+    'How the received message is judged: "keyword" looks for mqttSuccessMessage, "json-query" applies jsonPath / jsonPathOperator / expectedValue (default: keyword)',
   mqttSuccessMessage: 'Text the received message must contain, for mqttCheckType "keyword". Empty accepts any message.',
   mqttWebsocketPath: 'Path for MQTT over WebSocket (ws:// or wss:// hostname), e.g. /mqtt',
 
@@ -276,7 +290,8 @@ export const MONITOR_FIELD_DOCS: Record<keyof typeof TYPE_SPECIFIC_MONITOR_FIELD
   kafkaProducerMessage: 'Message produced on every check (required for kafka-producer)',
   kafkaProducerSsl: 'Connect to the brokers over TLS',
   kafkaProducerAllowAutoTopicCreation: 'Let the broker create the topic if it does not exist',
-  kafkaProducerSaslOptions: 'Kafka SASL authentication: { mechanism, ... }. mechanism "None" disables SASL; "plain", "scram-sha-256" and "scram-sha-512" take username and password; "aws" takes authorizationIdentity, accessKeyId, secretAccessKey and optionally sessionToken. Replaced as a whole object. password, secretAccessKey and sessionToken are credentials: read tools return "***", and on updateMonitor sending "***" back keeps the stored value.',
+  kafkaProducerSaslOptions:
+    'Kafka SASL authentication: { mechanism, ... }. mechanism "None" disables SASL; "plain", "scram-sha-256" and "scram-sha-512" take username and password; "aws" takes authorizationIdentity, accessKeyId, secretAccessKey and optionally sessionToken. Replaced as a whole object. password, secretAccessKey and sessionToken are credentials: read tools return "***", and on updateMonitor sending "***" back keeps the stored value.',
 
   // ── radius (radiusPassword is declared by each tool) ──
   radiusUsername: 'RADIUS username (required for radius)',
@@ -291,15 +306,17 @@ export const MONITOR_FIELD_DOCS: Record<keyof typeof TYPE_SPECIFIC_MONITOR_FIELD
 
   // ── snmp (compares the OID's value using jsonPath / jsonPathOperator / expectedValue) ──
   snmpOid: 'OID to query, e.g. 1.3.6.1.2.1.1.3.0 (required for snmp)',
-  snmpVersion: 'SNMP version (default: 2c). SNMPv3 cannot be set here: Uptime Kuma\'s edit handler does not save the v3 username.',
+  snmpVersion:
+    "SNMP version (default: 2c). SNMPv3 cannot be set here: Uptime Kuma's edit handler does not save the v3 username.",
   snmpCommunity: `SNMP community string, e.g. "public" (required for snmp). Stored by Uptime Kuma as radiusPassword. ${SECRET_NOTE}`,
 
   // ── smtp ──
-  smtpSecurity: 'smtp: "secure" for SMTPS, "starttls" to require STARTTLS, "nostarttls" to never use it. Omit to use STARTTLS when offered.',
+  smtpSecurity:
+    'smtp: "secure" for SMTPS, "starttls" to require STARTTLS, "nostarttls" to never use it. Omit to use STARTTLS when offered.',
 
   // ── gamedig ──
   game: 'GameDig game ID, e.g. "minecraft" (required for gamedig)',
-  gamedigGivenPortOnly: 'Query only the given port instead of also trying the game\'s default ports (default: true)',
+  gamedigGivenPortOnly: "Query only the given port instead of also trying the game's default ports (default: true)",
   gamedigToken: `Token for games whose query needs one. ${SECRET_NOTE}`,
 
   // ── real-browser ──
@@ -308,7 +325,8 @@ export const MONITOR_FIELD_DOCS: Record<keyof typeof TYPE_SPECIFIC_MONITOR_FIELD
 
   // ── globalping ──
   subtype: 'globalping: the kind of measurement (default: ping). ping and dns need hostname; http needs url.',
-  location: 'globalping: where the probe runs — a continent, country, city, ASN or cloud region, e.g. "world", "DE", "aws-us-east-1" (default: world). One location only, no commas.',
+  location:
+    'globalping: where the probe runs — a continent, country, city, ASN or cloud region, e.g. "world", "DE", "aws-us-east-1" (default: world). One location only, no commas.',
   protocol: 'globalping: ICMP or TCP for ping, UDP or TCP for dns, HTTP2 for http. null lets Globalping choose.',
 
   // ── sftp ──
@@ -326,29 +344,57 @@ export const MONITOR_FIELD_DOCS: Record<keyof typeof TYPE_SPECIFIC_MONITOR_FIELD
   ping_per_request_timeout: 'Seconds to wait for each echo reply (default: 2). Must not exceed timeout.',
 
   // ── ntp ──
-  ntpStratumThreshold: 'ntp: DOWN when the server\'s stratum is above this (default: 5)',
+  ntpStratumThreshold: "ntp: DOWN when the server's stratum is above this (default: 5)",
   ntpTimeOffsetThreshold: 'ntp: DOWN when the clock offset exceeds this many milliseconds (default: 1000)',
   ntpRootDispersionThreshold: 'ntp: DOWN when root dispersion exceeds this many milliseconds (default: 500)',
 
   // ── system-service, pm2 ──
-  system_service_name: 'Service name for system-service (the systemd unit or Windows service name, no spaces) or the process name for pm2. Required for both.',
+  system_service_name:
+    'Service name for system-service (the systemd unit or Windows service name, no spaces) or the process name for pm2. Required for both.',
 
   // ── manual ──
-  manual_status: 'manual: the status to report — 1 = UP, 0 = DOWN, null = PENDING. Uptime Kuma does not return this field, so it cannot be read back.',
+  manual_status:
+    'manual: the status to report — 1 = UP, 0 = DOWN, null = PENDING. Uptime Kuma does not return this field, so it cannot be read back.',
 
   // ── conditions (dns, mqtt, and the database types) ──
-  conditions: 'Conditions the result must meet: a list of { type, andOr, variable, operator, value, children }. type is "expression" (compares one variable) or "group" (nests children of the same shape). andOr is "and" (default) or "or" and says how the entry combines with the one before it. variable is "record" for dns; "topic", "message" or "json_value" for mqtt; "result" for mysql, sqlserver and oracledb. operator is one of equals, not_equals, contains, not_contains, starts_with, not_starts_with, ends_with, not_ends_with, and for numeric variables num_equals, num_not_equals, lt, gt, lte, gte. value is a string. When set on mqtt they replace mqttCheckType. Replaced as a whole; pass [] to clear.',
+  conditions:
+    'Conditions the result must meet: a list of { type, andOr, variable, operator, value, children }. type is "expression" (compares one variable) or "group" (nests children of the same shape). andOr is "and" (default) or "or" and says how the entry combines with the one before it. variable is "record" for dns; "topic", "message" or "json_value" for mqtt; "result" for mysql, sqlserver and oracledb. operator is one of equals, not_equals, contains, not_contains, starts_with, not_starts_with, ends_with, not_ends_with, and for numeric variables num_equals, num_not_equals, lt, gt, lte, gte. value is a string. When set on mqtt they replace mqttCheckType. Replaced as a whole; pass [] to clear.',
 };
 
 export const HTTP_AUTH_FIELDS = [
-  'authMethod', 'basic_auth_user', 'basic_auth_pass', 'bearer_token',
-  'oauth_token_url', 'oauth_client_id', 'oauth_client_secret', 'oauth_scopes', 'oauth_audience', 'oauth_auth_method',
+  'authMethod',
+  'basic_auth_user',
+  'basic_auth_pass',
+  'bearer_token',
+  'oauth_token_url',
+  'oauth_client_id',
+  'oauth_client_secret',
+  'oauth_scopes',
+  'oauth_audience',
+  'oauth_auth_method',
 ];
 export const HTTP_REQUEST_FIELDS = [
-  'url', 'method', 'headers', 'body', 'httpBodyEncoding', 'accepted_statuscodes', 'maxredirects', 'ignoreTls',
-  'expiryNotification', 'ipFamily', 'cacheBust', 'proxyId',
-  'saveResponse', 'saveErrorResponse', 'responseMaxLength',
-  ...HTTP_AUTH_FIELDS, 'authDomain', 'authWorkstation', 'tlsCert', 'tlsKey', 'tlsCa',
+  'url',
+  'method',
+  'headers',
+  'body',
+  'httpBodyEncoding',
+  'accepted_statuscodes',
+  'maxredirects',
+  'ignoreTls',
+  'expiryNotification',
+  'ipFamily',
+  'cacheBust',
+  'proxyId',
+  'saveResponse',
+  'saveErrorResponse',
+  'responseMaxLength',
+  ...HTTP_AUTH_FIELDS,
+  'authDomain',
+  'authWorkstation',
+  'tlsCert',
+  'tlsKey',
+  'tlsCa',
 ];
 export const DATABASE_FIELDS = ['databaseConnectionString', 'databaseQuery'];
 
@@ -360,9 +406,29 @@ export const DATABASE_FIELDS = ['databaseConnectionString', 'databaseQuery'];
  */
 export const DNS_RECORD_TYPES: Record<string, readonly string[]> = {
   dns: ['A', 'AAAA', 'CAA', 'CNAME', 'MX', 'NS', 'PTR', 'SOA', 'SRV', 'TXT'],
-  globalping: ['A', 'AAAA', 'ANY', 'CNAME', 'DNSKEY', 'DS', 'HTTPS', 'MX', 'NS', 'NSEC', 'PTR', 'RRSIG', 'SOA', 'SRV', 'SVCB', 'TXT'],
+  globalping: [
+    'A',
+    'AAAA',
+    'ANY',
+    'CNAME',
+    'DNSKEY',
+    'DS',
+    'HTTPS',
+    'MX',
+    'NS',
+    'NSEC',
+    'PTR',
+    'RRSIG',
+    'SOA',
+    'SRV',
+    'SVCB',
+    'TXT',
+  ],
 };
-export const ALL_DNS_RECORD_TYPES = [...new Set(Object.values(DNS_RECORD_TYPES).flat())].sort() as [string, ...string[]];
+export const ALL_DNS_RECORD_TYPES = [...new Set(Object.values(DNS_RECORD_TYPES).flat())].sort() as [
+  string,
+  ...string[],
+];
 
 /**
  * The fields each monitor type uses, beyond the ones every type shares (COMMON_MONITOR_FIELDS).
@@ -378,15 +444,30 @@ export const ALL_DNS_RECORD_TYPES = [...new Set(Object.values(DNS_RECORD_TYPES).
 export const MONITOR_TYPE_FIELDS: Record<string, string[]> = {
   http: HTTP_REQUEST_FIELDS,
   keyword: [...HTTP_REQUEST_FIELDS, 'keyword', 'invertKeyword'],
-  'json-query': [...HTTP_REQUEST_FIELDS, 'jsonPath', 'jsonPathOperator', 'expectedValue', 'retryOnlyOnStatusCodeFailure'],
+  'json-query': [
+    ...HTTP_REQUEST_FIELDS,
+    'jsonPath',
+    'jsonPathOperator',
+    'expectedValue',
+    'retryOnlyOnStatusCodeFailure',
+  ],
   port: ['hostname', 'port'],
   ping: ['hostname', 'packetSize', 'ping_count', 'ping_numeric', 'ping_per_request_timeout'],
   dns: ['hostname', 'port', 'dns_resolve_server', 'dns_resolve_type', 'conditions'],
   // ignoreTls applies to the connection to a Docker host reached over HTTPS.
   docker: ['docker_container', 'docker_host', 'ignoreTls'],
   mqtt: [
-    'hostname', 'port', 'mqttTopic', 'mqttUsername', 'mqttPassword', 'mqttCheckType', 'mqttSuccessMessage',
-    'mqttWebsocketPath', 'jsonPath', 'expectedValue', 'conditions',
+    'hostname',
+    'port',
+    'mqttTopic',
+    'mqttUsername',
+    'mqttPassword',
+    'mqttCheckType',
+    'mqttSuccessMessage',
+    'mqttWebsocketPath',
+    'jsonPath',
+    'expectedValue',
+    'conditions',
   ],
   mongodb: [...DATABASE_FIELDS, 'jsonPath', 'expectedValue'],
   redis: ['databaseConnectionString', 'ignoreTls'],
@@ -395,20 +476,45 @@ export const MONITOR_TYPE_FIELDS: Record<string, string[]> = {
   mysql: [...DATABASE_FIELDS, 'databasePassword', 'conditions'],
   oracledb: [...DATABASE_FIELDS, 'basic_auth_user', 'basic_auth_pass', 'conditions'],
   'grpc-keyword': [
-    'grpcUrl', 'grpcProtobuf', 'grpcServiceName', 'grpcMethod', 'grpcBody', 'grpcMetadata', 'grpcEnableTls',
-    'keyword', 'invertKeyword',
+    'grpcUrl',
+    'grpcProtobuf',
+    'grpcServiceName',
+    'grpcMethod',
+    'grpcBody',
+    'grpcMetadata',
+    'grpcEnableTls',
+    'keyword',
+    'invertKeyword',
   ],
   'kafka-producer': [
-    'kafkaProducerBrokers', 'kafkaProducerTopic', 'kafkaProducerMessage', 'kafkaProducerSsl',
-    'kafkaProducerAllowAutoTopicCreation', 'kafkaProducerSaslOptions',
+    'kafkaProducerBrokers',
+    'kafkaProducerTopic',
+    'kafkaProducerMessage',
+    'kafkaProducerSsl',
+    'kafkaProducerAllowAutoTopicCreation',
+    'kafkaProducerSaslOptions',
   ],
   radius: [
-    'hostname', 'port', 'radiusUsername', 'radiusPassword', 'radiusSecret', 'radiusCalledStationId',
+    'hostname',
+    'port',
+    'radiusUsername',
+    'radiusPassword',
+    'radiusSecret',
+    'radiusCalledStationId',
     'radiusCallingStationId',
   ],
   rabbitmq: ['rabbitmqNodes', 'rabbitmqUsername', 'rabbitmqPassword'],
   smtp: ['hostname', 'port', 'smtpSecurity'],
-  snmp: ['hostname', 'port', 'snmpOid', 'snmpVersion', 'snmpCommunity', 'jsonPath', 'jsonPathOperator', 'expectedValue'],
+  snmp: [
+    'hostname',
+    'port',
+    'snmpOid',
+    'snmpVersion',
+    'snmpCommunity',
+    'jsonPath',
+    'jsonPathOperator',
+    'expectedValue',
+  ],
   // The check takes any status from 200 to 399 and never reads accepted_statuscodes or ignoreTls.
   'real-browser': ['url', 'remote_browser', 'screenshot_delay'],
   gamedig: ['hostname', 'port', 'game', 'gamedigGivenPortOnly', 'gamedigToken'],
@@ -420,16 +526,52 @@ export const MONITOR_TYPE_FIELDS: Record<string, string[]> = {
   'tailscale-ping': ['hostname'],
   manual: ['manual_status'],
   globalping: [
-    'subtype', 'location', 'protocol', 'hostname', 'url', 'port', 'ping_count', 'dns_resolve_server',
-    'dns_resolve_type', 'method', 'headers', 'accepted_statuscodes', 'ignoreTls', 'expiryNotification', 'ipFamily',
-    'cacheBust', 'keyword', 'invertKeyword', 'jsonPath', 'jsonPathOperator', 'expectedValue', ...HTTP_AUTH_FIELDS,
+    'subtype',
+    'location',
+    'protocol',
+    'hostname',
+    'url',
+    'port',
+    'ping_count',
+    'dns_resolve_server',
+    'dns_resolve_type',
+    'method',
+    'headers',
+    'accepted_statuscodes',
+    'ignoreTls',
+    'expiryNotification',
+    'ipFamily',
+    'cacheBust',
+    'keyword',
+    'invertKeyword',
+    'jsonPath',
+    'jsonPathOperator',
+    'expectedValue',
+    ...HTTP_AUTH_FIELDS,
   ],
   ntp: ['hostname', 'port', 'ntpStratumThreshold', 'ntpTimeOffsetThreshold', 'ntpRootDispersionThreshold'],
   'websocket-upgrade': [
-    'url', 'wsSubprotocol', 'wsIgnoreSecWebsocketAcceptHeader', 'accepted_statuscodes', 'headers', 'ignoreTls',
-    ...HTTP_AUTH_FIELDS, 'tlsCert', 'tlsKey', 'tlsCa',
+    'url',
+    'wsSubprotocol',
+    'wsIgnoreSecWebsocketAcceptHeader',
+    'accepted_statuscodes',
+    'headers',
+    'ignoreTls',
+    ...HTTP_AUTH_FIELDS,
+    'tlsCert',
+    'tlsKey',
+    'tlsCa',
   ],
-  sftp: ['hostname', 'port', 'sshUsername', 'sshAuthMethod', 'sshPassword', 'sshPrivateKey', 'sshPassphrase', 'sftpPath'],
+  sftp: [
+    'hostname',
+    'port',
+    'sshUsername',
+    'sshAuthMethod',
+    'sshPassword',
+    'sshPrivateKey',
+    'sshPassphrase',
+    'sftpPath',
+  ],
   'sip-options': ['hostname', 'port'],
   'system-service': ['system_service_name'],
   pm2: ['system_service_name'],
@@ -442,15 +584,41 @@ export const MONITOR_TYPE_FIELDS: Record<string, string[]> = {
  * check certificate expiry (expiryNotification), which are only the HTTP ones and globalping.
  */
 export const DOMAIN_EXPIRY_MONITOR_TYPES = [
-  'http', 'keyword', 'json-query', 'real-browser', 'websocket-upgrade', 'port', 'ping', 'grpc-keyword', 'dns',
-  'smtp', 'snmp', 'gamedig', 'steam', 'mqtt', 'radius', 'tailscale-ping', 'sip-options',
+  'http',
+  'keyword',
+  'json-query',
+  'real-browser',
+  'websocket-upgrade',
+  'port',
+  'ping',
+  'grpc-keyword',
+  'dns',
+  'smtp',
+  'snmp',
+  'gamedig',
+  'steam',
+  'mqtt',
+  'radius',
+  'tailscale-ping',
+  'sip-options',
 ];
-for (const type of DOMAIN_EXPIRY_MONITOR_TYPES) MONITOR_TYPE_FIELDS[type] = [...MONITOR_TYPE_FIELDS[type], 'domainExpiryNotification'];
+for (const type of DOMAIN_EXPIRY_MONITOR_TYPES)
+  MONITOR_TYPE_FIELDS[type] = [...MONITOR_TYPE_FIELDS[type], 'domainExpiryNotification'];
 
 /** Accepted by every monitor type, so not repeated per type. */
 export const COMMON_MONITOR_FIELDS = [
-  'name', 'description', 'active', 'parent', 'interval', 'retryInterval', 'maxretries', 'resendInterval', 'timeout',
-  'upsideDown', 'notificationIDList', 'tags',
+  'name',
+  'description',
+  'active',
+  'parent',
+  'interval',
+  'retryInterval',
+  'maxretries',
+  'resendInterval',
+  'timeout',
+  'upsideDown',
+  'notificationIDList',
+  'tags',
 ];
 
 /** The names accepted inside `typeFields`, for tests and tooling. */
@@ -480,7 +648,9 @@ export function parseTypeFields(raw: unknown, topLevel: string[]): Record<string
     }
     return issue.keys.map((key) => {
       if (topLevel.includes(key)) return `'${key}' is a top-level field — pass it beside typeFields, not inside it`;
-      const match = [...MONITOR_TYPE_FIELD_NAMES, ...topLevel].find((name) => looseFieldName(name) === looseFieldName(key));
+      const match = [...MONITOR_TYPE_FIELD_NAMES, ...topLevel].find(
+        (name) => looseFieldName(name) === looseFieldName(key)
+      );
       return match
         ? `'${key}' is not a field — did you mean '${match}'?`
         : `'${key}' is not a field of any monitor type`;
@@ -501,6 +671,8 @@ export const TYPE_FIELDS_DESCRIPTION =
  * "minecraft" (seen in the LLM eval) is put right without another call to listMonitorTypes.
  */
 export function unknownMonitorTypeMessage(type: string, valid: Iterable<string>): string {
-  return `Unknown monitor type '${type}'. Valid types: ${[...valid].join(', ')}. ` +
-    'A game server is gamedig, with the GameDig game ID in typeFields.game (e.g. "minecraft"). listMonitorTypes says what each type checks.';
+  return (
+    `Unknown monitor type '${type}'. Valid types: ${[...valid].join(', ')}. ` +
+    'A game server is gamedig, with the GameDig game ID in typeFields.game (e.g. "minecraft"). listMonitorTypes says what each type checks.'
+  );
 }

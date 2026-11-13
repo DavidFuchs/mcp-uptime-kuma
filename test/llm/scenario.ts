@@ -4,13 +4,20 @@ import { failureDetail, type Trace } from './claude-driver.js';
 /** Every entity a scenario creates is named (or slugged) with this prefix, so the sweep can find it. */
 export const PREFIX = 'llm-eval-';
 
-export interface Assertion { label: string; ok: boolean; detail?: string }
+export interface Assertion {
+  label: string;
+  ok: boolean;
+  detail?: string;
+}
 
 export function expectThat(label: string, ok: boolean, detail?: string): Assertion {
   return detail === undefined ? { label, ok } : { label, ok, detail };
 }
 
-export interface Budget { maxToolCalls?: number; maxToolErrors?: number }
+export interface Budget {
+  maxToolCalls?: number;
+  maxToolErrors?: number;
+}
 
 export interface Scenario<S = unknown> {
   id: string;
@@ -58,12 +65,14 @@ export function classify(input: {
   const degradedReasons: string[] = [];
   if (trace) {
     const calls = trace.toolCalls.length;
-    const errors = trace.toolCalls.filter(c => c.isError).length;
+    const errors = trace.toolCalls.filter((c) => c.isError).length;
     const { maxToolCalls, maxToolErrors } = scenario.budget ?? {};
-    if (maxToolCalls !== undefined && calls > maxToolCalls) degradedReasons.push(`tool calls ${calls} > ${maxToolCalls}`);
-    if (maxToolErrors !== undefined && errors > maxToolErrors) degradedReasons.push(`tool errors ${errors} > ${maxToolErrors}`);
+    if (maxToolCalls !== undefined && calls > maxToolCalls)
+      degradedReasons.push(`tool calls ${calls} > ${maxToolCalls}`);
+    if (maxToolErrors !== undefined && errors > maxToolErrors)
+      degradedReasons.push(`tool errors ${errors} > ${maxToolErrors}`);
     for (const name of scenario.unexpectedTools ?? []) {
-      if (trace.toolCalls.some(c => c.name === name)) degradedReasons.push(`called unexpected tool ${name}`);
+      if (trace.toolCalls.some((c) => c.name === name)) degradedReasons.push(`called unexpected tool ${name}`);
     }
   }
   const base = { degraded: degradedReasons.length > 0, degradedReasons, assertions, trace };
@@ -73,7 +82,11 @@ export function classify(input: {
     return { ...base, outcome: 'error', errorMessage: e instanceof Error ? e.message : String(e) };
   }
   if (trace && trace.resultSubtype !== 'success') {
-    return { ...base, outcome: 'error', errorMessage: `claude run ended with ${trace.resultSubtype}${failureDetail(trace)}` };
+    return {
+      ...base,
+      outcome: 'error',
+      errorMessage: `claude run ended with ${trace.resultSubtype}${failureDetail(trace)}`,
+    };
   }
-  return { ...base, outcome: assertions.every(a => a.ok) ? 'pass' : 'fail' };
+  return { ...base, outcome: assertions.every((a) => a.ok) ? 'pass' : 'fail' };
 }

@@ -63,8 +63,8 @@ describe('UptimeKumaClient - Settings Operations', () => {
 
     it('returns cached status pages as an array', () => {
       injectStatusPageListCache(client, {
-        'main': { id: 1, slug: 'main', title: 'Main Status' },
-        'internal': { id: 2, slug: 'internal', title: 'Internal Status' },
+        main: { id: 1, slug: 'main', title: 'Main Status' },
+        internal: { id: 2, slug: 'internal', title: 'Internal Status' },
       });
 
       const result = client.getStatusPageList();

@@ -14,17 +14,27 @@ export function registerHeartbeatTools(ctx: ToolContext): void {
     'getHeartbeats',
     {
       title: 'Get Heartbeats',
-      description: 'Retrieves historical heartbeat data for a specific monitor (response times, status changes over time). Use this for analyzing patterns or history for one monitor. Beats are returned NEWEST-FIRST. By default returns only the most recent heartbeat; set maxHeartbeats (up to 100) for historical analysis. Keep maxHeartbeats ≤10 unless user requests more. Set important:true for the status CHANGES only (Uptime Kuma\'s own event list) — that is history, not current state, so do not read status from it. Credentials embedded in a status message URL (user:pass@host) read "***" unless includeSecrets is set.',
+      description:
+        'Retrieves historical heartbeat data for a specific monitor (response times, status changes over time). Use this for analyzing patterns or history for one monitor. Beats are returned NEWEST-FIRST. By default returns only the most recent heartbeat; set maxHeartbeats (up to 100) for historical analysis. Keep maxHeartbeats ≤10 unless user requests more. Set important:true for the status CHANGES only (Uptime Kuma\'s own event list) — that is history, not current state, so do not read status from it. Credentials embedded in a status message URL (user:pass@host) read "***" unless includeSecrets is set.',
       inputSchema: {
         monitorID: requiredId('The ID of the monitor to get heartbeats for'),
-        maxHeartbeats: numeric(z.number().int().positive().max(100)).optional().describe('If set, returns the most recent X heartbeats (up to 100). If unset, returns only the most recent heartbeat (default: 1)'),
-        important: z.boolean().optional().describe('Return only IMPORTANT beats — the status changes behind Uptime Kuma\'s event list — fetched live from the server rather than the cache. History only: the newest important beat is not the monitor\'s current status.'),
-        includeSecrets: includeSecretsParam
+        maxHeartbeats: numeric(z.number().int().positive().max(100))
+          .optional()
+          .describe(
+            'If set, returns the most recent X heartbeats (up to 100). If unset, returns only the most recent heartbeat (default: 1)'
+          ),
+        important: z
+          .boolean()
+          .optional()
+          .describe(
+            "Return only IMPORTANT beats — the status changes behind Uptime Kuma's event list — fetched live from the server rather than the cache. History only: the newest important beat is not the monitor's current status."
+          ),
+        includeSecrets: includeSecretsParam,
       },
-      outputSchema: { 
+      outputSchema: {
         monitorID: z.number(),
         heartbeats: z.array(HeartbeatSchema),
-        count: z.number()
+        count: z.number(),
       },
     },
     async ({ monitorID, maxHeartbeats, important, includeSecrets }) => {
@@ -44,22 +54,21 @@ export function registerHeartbeatTools(ctx: ToolContext): void {
         const heartbeatsArray = wantsSecrets(includeSecrets) ? raw : raw.map((hb) => redactHeartbeat(hb));
 
         return {
-          content: [{ 
-            type: 'text', 
-            text: JSON.stringify(heartbeatsArray) 
-          }],
-          structuredContent: { 
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(heartbeatsArray),
+            },
+          ],
+          structuredContent: {
             monitorID,
             heartbeats: heartbeatsArray,
-            count: heartbeatsArray.length 
+            count: heartbeatsArray.length,
           },
         };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        throw new McpError(
-          ErrorCode.InternalError,
-          `Failed to get heartbeats: ${errorMessage}`
-        );
+        throw new McpError(ErrorCode.InternalError, `Failed to get heartbeats: ${errorMessage}`);
       }
     }
   );
@@ -69,15 +78,22 @@ export function registerHeartbeatTools(ctx: ToolContext): void {
     'listHeartbeats',
     {
       title: 'List Heartbeats',
-      description: 'Retrieves historical heartbeat data for ALL monitors (response times, status changes over time). Use this for analyzing patterns across multiple monitors or correlating events. Beats are returned NEWEST-FIRST. By default returns only the most recent heartbeat per monitor; set maxHeartbeats (up to 100) for historical analysis. Keep maxHeartbeats ≤5 unless user requests more. Credentials embedded in a status message URL (user:pass@host) read "***" unless includeSecrets is set.',
+      description:
+        'Retrieves historical heartbeat data for ALL monitors (response times, status changes over time). Use this for analyzing patterns across multiple monitors or correlating events. Beats are returned NEWEST-FIRST. By default returns only the most recent heartbeat per monitor; set maxHeartbeats (up to 100) for historical analysis. Keep maxHeartbeats ≤5 unless user requests more. Credentials embedded in a status message URL (user:pass@host) read "***" unless includeSecrets is set.',
       inputSchema: {
-        maxHeartbeats: numeric(z.number().int().positive().max(100)).optional().describe('If set, returns the most recent X heartbeats per monitor (up to 100). If unset, returns only the most recent heartbeat per monitor (default: 1)'),
-        includeSecrets: includeSecretsParam
+        maxHeartbeats: numeric(z.number().int().positive().max(100))
+          .optional()
+          .describe(
+            'If set, returns the most recent X heartbeats per monitor (up to 100). If unset, returns only the most recent heartbeat per monitor (default: 1)'
+          ),
+        includeSecrets: includeSecretsParam,
       },
-      outputSchema: { 
-        heartbeats: z.record(z.string(), z.array(HeartbeatSchema)).describe('Map of monitor IDs to their heartbeat arrays'),
+      outputSchema: {
+        heartbeats: z
+          .record(z.string(), z.array(HeartbeatSchema))
+          .describe('Map of monitor IDs to their heartbeat arrays'),
         monitorCount: z.number(),
-        totalHeartbeatCount: z.number()
+        totalHeartbeatCount: z.number(),
       },
     },
     async ({ maxHeartbeats, includeSecrets }) => {
@@ -90,33 +106,27 @@ export function registerHeartbeatTools(ctx: ToolContext): void {
         // like response) and a msg that quotes the monitor's URL has its credentials scrubbed.
         const heartbeatList = wantsSecrets(includeSecrets)
           ? raw
-          : Object.fromEntries(
-              Object.entries(raw).map(([id, beats]) => [id, beats.map((hb) => redactHeartbeat(hb))])
-            );
-        
+          : Object.fromEntries(Object.entries(raw).map(([id, beats]) => [id, beats.map((hb) => redactHeartbeat(hb))]));
+
         // Calculate total heartbeat count
-        const totalCount = Object.values(heartbeatList).reduce(
-          (sum, heartbeats) => sum + heartbeats.length, 
-          0
-        );
-        
+        const totalCount = Object.values(heartbeatList).reduce((sum, heartbeats) => sum + heartbeats.length, 0);
+
         return {
-          content: [{ 
-            type: 'text', 
-            text: JSON.stringify(heartbeatList) 
-          }],
-          structuredContent: { 
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(heartbeatList),
+            },
+          ],
+          structuredContent: {
             heartbeats: heartbeatList,
             monitorCount: Object.keys(heartbeatList).length,
-            totalHeartbeatCount: totalCount
+            totalHeartbeatCount: totalCount,
           },
         };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        throw new McpError(
-          ErrorCode.InternalError,
-          `Failed to list heartbeats: ${errorMessage}`
-        );
+        throw new McpError(ErrorCode.InternalError, `Failed to list heartbeats: ${errorMessage}`);
       }
     }
   );

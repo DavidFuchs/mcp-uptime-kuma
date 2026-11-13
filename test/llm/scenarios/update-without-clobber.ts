@@ -7,8 +7,12 @@ export default defineScenario({
   tags: ['monitors'],
   async setup(ctx) {
     const id = await createMonitor(ctx, {
-      name: `${PREFIX}API health`, type: 'http', url: 'https://example.com/health',
-      interval: 60, maxretries: 3, description: 'do not touch',
+      name: `${PREFIX}API health`,
+      type: 'http',
+      url: 'https://example.com/health',
+      interval: 60,
+      maxretries: 3,
+      description: 'do not touch',
     });
     return { id };
   },

@@ -13,7 +13,7 @@ import { UptimeKumaClient } from '../../src/uptime-kuma-client.js';
  */
 
 async function listWindows(client: Client): Promise<any[]> {
-  const result = await client.callTool({ name: 'getMaintenanceWindows', arguments: {} }) as CallToolResult;
+  const result = (await client.callTool({ name: 'getMaintenanceWindows', arguments: {} })) as CallToolResult;
   const parsed = JSON.parse(extractText(result, 'getMaintenanceWindows'));
   // May be wrapped in { maintenanceWindows: [...] } or be a direct array
   const windows = Array.isArray(parsed) ? parsed : parsed.maintenanceWindows;
@@ -29,15 +29,15 @@ async function findWindow(client: Client, maintenanceID: number): Promise<any> {
 
 /** Deletes a window and fails loudly if that did not work, so a test cannot leak one. */
 async function deleteWindow(client: Client, maintenanceID: number): Promise<void> {
-  const result = await client.callTool({ name: 'deleteMaintenance', arguments: { maintenanceID } }) as CallToolResult;
+  const result = (await client.callTool({ name: 'deleteMaintenance', arguments: { maintenanceID } })) as CallToolResult;
   extractText(result, 'deleteMaintenance');
 }
 
 async function createPushMonitor(client: Client, name: string): Promise<number> {
-  const result = await client.callTool({
+  const result = (await client.callTool({
     name: 'createMonitor',
     arguments: { name, type: 'push', interval: 60 },
-  }) as CallToolResult;
+  })) as CallToolResult;
   return extractID(result, 'createMonitor', 'monitorID');
 }
 
@@ -58,17 +58,20 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
       // Create a single-strategy maintenance window (description is required by Kuma DB)
       const startDate = new Date(Date.now() + 86400000).toISOString();
       const endDate = new Date(Date.now() + 90000000).toISOString();
-      const createResult = await client.callTool({
+      const createResult = (await client.callTool({
         name: 'createMaintenance',
         arguments: {
           title: 'Integration Test - Single Window',
           description: 'Test maintenance window for integration tests',
           strategy: 'single',
           dateRange: [startDate, endDate],
-          timeRange: [{ hours: 0, minutes: 0 }, { hours: 23, minutes: 59 }],
+          timeRange: [
+            { hours: 0, minutes: 0 },
+            { hours: 23, minutes: 59 },
+          ],
           active: true,
         },
-      }) as CallToolResult;
+      })) as CallToolResult;
       const maintenanceID = extractID(createResult, 'createMaintenance', 'maintenanceID');
 
       try {
@@ -90,7 +93,7 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
     fn: async ({ client }) => {
       // Create a recurring-interval maintenance window
       // Uptime Kuma returns dateRange: [null] for these
-      const createResult = await client.callTool({
+      const createResult = (await client.callTool({
         name: 'createMaintenance',
         arguments: {
           title: 'Integration Test - Issue 37 Recurring',
@@ -101,10 +104,13 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
             new Date(Date.now() - 86400000).toISOString(),
             new Date(Date.now() + 86400000 * 365).toISOString(),
           ],
-          timeRange: [{ hours: 3, minutes: 0 }, { hours: 4, minutes: 0 }],
+          timeRange: [
+            { hours: 3, minutes: 0 },
+            { hours: 4, minutes: 0 },
+          ],
           active: true,
         },
-      }) as CallToolResult;
+      })) as CallToolResult;
       const maintenanceID = extractID(createResult, 'createMaintenance', 'maintenanceID');
 
       try {
@@ -113,7 +119,9 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
         const recurring = await findWindow(client, maintenanceID);
 
         // dateRange should be [null] or similar — the key thing is no error was thrown
-        console.log(`  ✓ #37: recurring maintenance listed successfully (dateRange: ${JSON.stringify(recurring.dateRange)})`);
+        console.log(
+          `  ✓ #37: recurring maintenance listed successfully (dateRange: ${JSON.stringify(recurring.dateRange)})`
+        );
       } finally {
         await deleteWindow(client, maintenanceID);
       }
@@ -125,10 +133,10 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
       // Before the defaults in toKumaMaintenance this failed in Uptime Kuma with
       // "Cannot read properties of undefined (reading '0')", and without dateRange but with
       // active it failed on "NOT NULL constraint failed: maintenance.active".
-      const createResult = await client.callTool({
+      const createResult = (await client.callTool({
         name: 'createMaintenance',
         arguments: { title: 'Integration Test - Manual Minimal', strategy: 'manual' },
-      }) as CallToolResult;
+      })) as CallToolResult;
       const maintenanceID = extractID(createResult, 'createMaintenance', 'maintenanceID');
 
       try {
@@ -143,7 +151,7 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
   {
     name: 'timezone is stored, not silently replaced by the server timezone',
     fn: async ({ client }) => {
-      const createResult = await client.callTool({
+      const createResult = (await client.callTool({
         name: 'createMaintenance',
         arguments: {
           title: 'Integration Test - Timezone',
@@ -151,7 +159,7 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
           timezone: 'UTC',
           dateRange: ['2030-01-05T10:00', '2030-01-05T12:00'],
         },
-      }) as CallToolResult;
+      })) as CallToolResult;
       const maintenanceID = extractID(createResult, 'createMaintenance', 'maintenanceID');
 
       try {
@@ -175,7 +183,7 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
 
       try {
         // Create covering A and B
-        const createResult = await client.callTool({
+        const createResult = (await client.callTool({
           name: 'createMaintenance',
           arguments: {
             title: 'Integration Test - With Monitors',
@@ -183,7 +191,7 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
             active: false,
             monitorIDs: [monitorA, monitorB],
           },
-        }) as CallToolResult;
+        })) as CallToolResult;
         maintenanceID = extractID(createResult, 'createMaintenance', 'maintenanceID');
         extractText(createResult, 'createMaintenance');
 
@@ -194,42 +202,53 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
         console.log(`  ✓ createMaintenance with monitorIDs: ${JSON.stringify(found.monitorIDs)}`);
 
         // Update a field and swap B for C in one call
-        const updateResult = await client.callTool({
+        const updateResult = (await client.callTool({
           name: 'updateMaintenance',
           arguments: {
             maintenanceID,
             title: 'Integration Test - With Monitors (edited)',
             monitorIDs: [monitorA, monitorC],
           },
-        }) as CallToolResult;
+        })) as CallToolResult;
         extractText(updateResult, 'updateMaintenance');
 
         found = await findWindow(client, maintenanceID);
-        if (found.title !== 'Integration Test - With Monitors (edited)') throw new Error(`Title not updated: ${found.title}`);
+        if (found.title !== 'Integration Test - With Monitors (edited)')
+          throw new Error(`Title not updated: ${found.title}`);
         if (found.strategy !== 'manual') throw new Error(`Strategy changed unexpectedly: ${found.strategy}`);
-        if (found.active !== false) throw new Error(`active changed by an update that did not ask for it: ${found.active}`);
+        if (found.active !== false)
+          throw new Error(`active changed by an update that did not ask for it: ${found.active}`);
         if (!sameIDs(found.monitorIDs, [monitorA, monitorC])) {
           throw new Error(`Expected monitors [${monitorA}, ${monitorC}], got ${JSON.stringify(found.monitorIDs)}`);
         }
         console.log('  ✓ updateMaintenance: title and monitor list replaced, other fields kept');
 
         // Resume (start the manual window), then pause it again
-        const resumeResult = await client.callTool({ name: 'resumeMaintenance', arguments: { maintenanceID } }) as CallToolResult;
+        const resumeResult = (await client.callTool({
+          name: 'resumeMaintenance',
+          arguments: { maintenanceID },
+        })) as CallToolResult;
         extractText(resumeResult, 'resumeMaintenance');
-        if ((await findWindow(client, maintenanceID)).active !== true) throw new Error('Window not active after resumeMaintenance');
+        if ((await findWindow(client, maintenanceID)).active !== true)
+          throw new Error('Window not active after resumeMaintenance');
 
-        const pauseResult = await client.callTool({ name: 'pauseMaintenance', arguments: { maintenanceID } }) as CallToolResult;
+        const pauseResult = (await client.callTool({
+          name: 'pauseMaintenance',
+          arguments: { maintenanceID },
+        })) as CallToolResult;
         extractText(pauseResult, 'pauseMaintenance');
-        if ((await findWindow(client, maintenanceID)).active !== false) throw new Error('Window still active after pauseMaintenance');
+        if ((await findWindow(client, maintenanceID)).active !== false)
+          throw new Error('Window still active after pauseMaintenance');
         console.log('  ✓ resumeMaintenance / pauseMaintenance');
 
         // Detach everything
-        const detachResult = await client.callTool({
+        const detachResult = (await client.callTool({
           name: 'updateMaintenance',
           arguments: { maintenanceID, monitorIDs: [] },
-        }) as CallToolResult;
+        })) as CallToolResult;
         extractText(detachResult, 'updateMaintenance');
-        if ((await findWindow(client, maintenanceID)).monitorIDs.length !== 0) throw new Error('monitorIDs: [] did not detach');
+        if ((await findWindow(client, maintenanceID)).monitorIDs.length !== 0)
+          throw new Error('monitorIDs: [] did not detach');
         console.log('  ✓ updateMaintenance monitorIDs: [] detaches all');
       } finally {
         if (maintenanceID !== undefined) await deleteWindow(client, maintenanceID);
@@ -255,7 +274,10 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
           active: true,
           intervalDay: 1,
           dateRange: [],
-          timeRange: [{ hours: 2, minutes: 0 }, { hours: 3, minutes: 0 }],
+          timeRange: [
+            { hours: 2, minutes: 0 },
+            { hours: 3, minutes: 0 },
+          ],
           weekdays: [],
           daysOfMonth: [],
           cron: '30 3 * * *',
@@ -268,17 +290,18 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
         const listed = await findWindow(client, maintenanceID);
         if (listed.strategy !== 'cron') throw new Error(`Listed with strategy ${listed.strategy}`);
 
-        const result = await client.callTool({
+        const result = (await client.callTool({
           name: 'updateMaintenance',
           arguments: { maintenanceID, title: 'Integration Test - Cron (edited)' },
-        }) as CallToolResult;
+        })) as CallToolResult;
         extractText(result, 'updateMaintenance');
 
         const stored = await kuma.fetchMaintenance(maintenanceID);
         if (stored.title !== 'Integration Test - Cron (edited)') throw new Error(`Title not updated: ${stored.title}`);
         if (stored.strategy !== 'cron') throw new Error(`Strategy changed: ${stored.strategy}`);
         if (stored.cron !== '30 3 * * *') throw new Error(`cron not kept: ${JSON.stringify(stored.cron)}`);
-        if (stored.durationMinutes !== 45) throw new Error(`durationMinutes not kept: ${JSON.stringify(stored.durationMinutes)}`);
+        if (stored.durationMinutes !== 45)
+          throw new Error(`durationMinutes not kept: ${JSON.stringify(stored.durationMinutes)}`);
         console.log('  ✓ updateMaintenance on a cron window keeps cron and durationMinutes');
       } finally {
         if (maintenanceID !== undefined) await kuma.deleteMaintenance(maintenanceID);
@@ -289,16 +312,23 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
   {
     name: 'createMaintenance accepts the cron strategy',
     fn: async ({ client }) => {
-      const result = await client.callTool({
+      const result = (await client.callTool({
         name: 'createMaintenance',
-        arguments: { title: 'Integration Test - Cron Create', strategy: 'cron', cron: '30 3 * * *', durationMinutes: 45 },
-      }) as CallToolResult;
+        arguments: {
+          title: 'Integration Test - Cron Create',
+          strategy: 'cron',
+          cron: '30 3 * * *',
+          durationMinutes: 45,
+        },
+      })) as CallToolResult;
       const maintenanceID = extractID(result, 'createMaintenance', 'maintenanceID');
       try {
         extractText(result, 'createMaintenance');
         const found = await findWindow(client, maintenanceID);
         if (found.cron !== '30 3 * * *' || found.durationMinutes !== 45) {
-          throw new Error(`Schedule not stored: cron ${JSON.stringify(found.cron)}, durationMinutes ${JSON.stringify(found.durationMinutes)}`);
+          throw new Error(
+            `Schedule not stored: cron ${JSON.stringify(found.cron)}, durationMinutes ${JSON.stringify(found.durationMinutes)}`
+          );
         }
       } finally {
         await deleteWindow(client, maintenanceID);
@@ -319,7 +349,7 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
       ];
 
       for (const [name, args] of calls) {
-        const result = await client.callTool({ name, arguments: args }) as CallToolResult;
+        const result = (await client.callTool({ name, arguments: args })) as CallToolResult;
         const text = (result.content as any[])?.find((c: any) => c.type === 'text')?.text ?? '';
         if (!result.isError || !text.includes(`Maintenance window ${missingID} not found`)) {
           throw new Error(`${name} on a missing window should fail with "not found", got: ${text}`);

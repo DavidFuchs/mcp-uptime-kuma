@@ -26,9 +26,7 @@ describe('parseExtraHeaders', () => {
   });
 
   it('returns the configured headers', () => {
-    expect(
-      parseExtraHeaders('{"CF-Access-Client-Id":"abc.access","CF-Access-Client-Secret":"s3cr3t"}')
-    ).toEqual({
+    expect(parseExtraHeaders('{"CF-Access-Client-Id":"abc.access","CF-Access-Client-Secret":"s3cr3t"}')).toEqual({
       'CF-Access-Client-Id': 'abc.access',
       'CF-Access-Client-Secret': 's3cr3t',
     });

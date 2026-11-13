@@ -12,8 +12,10 @@ export default defineScenario({
     const m = await findMonitor(ctx, NAME);
     if (!m) return [expectThat(`monitor "${NAME}" exists`, false)];
     const conditions = typeof m.conditions === 'string' ? JSON.parse(m.conditions || '[]') : (m.conditions ?? []);
-    const flat = (cs: any[]): any[] => cs.flatMap(c => [c, ...flat(c.children ?? [])]);
-    const match = flat(conditions).find(c => c.type === 'expression' && c.variable === 'record' && c.operator === 'contains' && c.value === '192.0.2.');
+    const flat = (cs: any[]): any[] => cs.flatMap((c) => [c, ...flat(c.children ?? [])]);
+    const match = flat(conditions).find(
+      (c) => c.type === 'expression' && c.variable === 'record' && c.operator === 'contains' && c.value === '192.0.2.'
+    );
     return [
       expectThat('type is dns', m.type === 'dns', `type=${m.type}`),
       expectThat('record type A', m.dns_resolve_type === 'A', `dns_resolve_type=${m.dns_resolve_type}`),

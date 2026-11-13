@@ -11,7 +11,11 @@ import { createServer, CHANGE_NOTHING_TOOLS, READ_ONLY_TOOLS, WRITE_TOOLS } from
 
 async function listTools() {
   const { server } = await createServer({
-    url: 'http://localhost:3001', username: undefined, password: undefined, token: undefined, jwtToken: undefined,
+    url: 'http://localhost:3001',
+    username: undefined,
+    password: undefined,
+    token: undefined,
+    jwtToken: undefined,
   });
   const client = new Client({ name: 'annotations-test', version: '1.0.0' }, { capabilities: {} });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -24,17 +28,29 @@ async function listTools() {
 describe('tool annotations', () => {
   it('marks every read tool read-only and every changing tool not', async () => {
     const tools = await listTools();
-    const readOnly = tools.filter((t) => t.annotations?.readOnlyHint === true).map((t) => t.name).sort();
+    const readOnly = tools
+      .filter((t) => t.annotations?.readOnlyHint === true)
+      .map((t) => t.name)
+      .sort();
     expect(readOnly).toEqual([...READ_ONLY_TOOLS, ...CHANGE_NOTHING_TOOLS].sort());
 
-    const changing = tools.filter((t) => t.annotations?.readOnlyHint === false).map((t) => t.name).sort();
+    const changing = tools
+      .filter((t) => t.annotations?.readOnlyHint === false)
+      .map((t) => t.name)
+      .sort();
     expect(changing).toEqual([...WRITE_TOOLS].filter((n) => !CHANGE_NOTHING_TOOLS.has(n)).sort());
   });
 
   it('marks deletes and updates destructive, and creates, pauses and resumes not', async () => {
     const tools = await listTools();
     const destructive = (name: string) => tools.find((t) => t.name === name)?.annotations?.destructiveHint;
-    for (const name of ['deleteMonitor', 'deleteNotification', 'deleteStatusPage', 'updateMonitor', 'updateStatusPage']) {
+    for (const name of [
+      'deleteMonitor',
+      'deleteNotification',
+      'deleteStatusPage',
+      'updateMonitor',
+      'updateStatusPage',
+    ]) {
       expect(destructive(name), name).toBe(true);
     }
     for (const name of ['createMonitor', 'addNotification', 'addTag', 'pauseMonitor', 'resumeMaintenance']) {

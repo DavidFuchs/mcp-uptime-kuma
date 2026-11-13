@@ -27,7 +27,10 @@ export const HttpMonitorSchema = MonitorBaseSchema.extend({
   tlsCert: z.string().optional().describe('TLS client certificate'),
   tlsKey: z.string().optional().describe('TLS client key'),
   expiryNotification: z.boolean().default(false).describe('Certificate expiry notifications'),
-  domainExpiryNotification: z.boolean().optional().describe('Domain registration expiry notifications (Uptime Kuma 2.1 or later)'),
+  domainExpiryNotification: z
+    .boolean()
+    .optional()
+    .describe('Domain registration expiry notifications (Uptime Kuma 2.1 or later)'),
 
   // Advanced
   maxredirects: z.number().default(10).describe('Maximum HTTP redirects'),
@@ -83,7 +86,10 @@ export const DnsMonitorSchema = MonitorBaseSchema.extend({
   hostname: z.string().describe('Hostname to resolve'),
   port: z.number().optional().describe('DNS server port'),
   dns_resolve_server: z.string().default('1.1.1.1').describe('DNS server to use'),
-  dns_resolve_type: z.enum(['A', 'AAAA', 'CNAME', 'MX', 'NS', 'PTR', 'SOA', 'SRV', 'TXT', 'CAA']).default('A').describe('DNS record type'),
+  dns_resolve_type: z
+    .enum(['A', 'AAAA', 'CNAME', 'MX', 'NS', 'PTR', 'SOA', 'SRV', 'TXT', 'CAA'])
+    .default('A')
+    .describe('DNS record type'),
   dns_last_result: z.string().optional().describe('Last DNS resolution result'),
 });
 
@@ -280,7 +286,10 @@ export type Monitor = z.infer<typeof MonitorSchema>;
 /**
  * Helper type for monitor creation (omit read-only fields)
  */
-export type MonitorCreate = Omit<Monitor, 'id' | 'user_id' | 'maintenance' | 'path' | 'pathName' | 'childrenIDs' | 'forceInactive' | 'includeSensitiveData'>;
+export type MonitorCreate = Omit<
+  Monitor,
+  'id' | 'user_id' | 'maintenance' | 'path' | 'pathName' | 'childrenIDs' | 'forceInactive' | 'includeSensitiveData'
+>;
 
 /**
  * Helper type for monitor update (requires id)
@@ -327,7 +336,7 @@ export interface MonitorRawData {
   retryInterval: number;
   resendInterval: number;
   maxretries: number;
-  
+
   // Common optional fields
   description?: string;
   parent?: number | null;
@@ -348,11 +357,11 @@ export interface MonitorRawData {
   childrenIDs?: number[];
   forceInactive?: boolean;
   includeSensitiveData?: boolean;
-  
+
   // Runtime fields
   uptime?: { [periodKey: string]: number };
   avgPing?: number | null;
-  
+
   // Type-specific fields (vary by monitor type)
   url?: string;
   method?: string;
@@ -360,7 +369,7 @@ export interface MonitorRawData {
   port?: number | null;
   accepted_statuscodes_json?: string;
   conditions?: unknown[];
-  
+
   // Allow any other fields from Uptime Kuma
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Uptime Kuma adds fields per monitor type and per release
   [key: string]: any;

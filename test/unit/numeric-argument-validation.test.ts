@@ -123,9 +123,7 @@ describe('numeric arguments reject junk instead of coercing it', () => {
     // Guard against passing vacuously: if the whole object were rejected for an unrelated
     // reason (a missing required field, a key the strict schema does not know), `timeout`
     // would never be examined at all and the assertion below would prove nothing.
-    const timeoutIssue = parsed.success
-      ? undefined
-      : parsed.error.issues.find((i) => i.path[0] === 'timeout');
+    const timeoutIssue = parsed.success ? undefined : parsed.error.issues.find((i) => i.path[0] === 'timeout');
     const otherIssues = parsed.success
       ? []
       : parsed.error.issues.filter((i) => i.path[0] !== 'timeout').map((i) => `${i.path.join('.')}: ${i.message}`);
@@ -145,8 +143,7 @@ describe('numeric arguments reject junk instead of coercing it', () => {
 
   it('interval: junk does not silently become 0', () => {
     for (const junk of [null, '', [], true]) {
-      expect(issueFor('updateMonitor', 'interval', junk), `interval accepted ${JSON.stringify(junk)}`)
-        .toBeDefined();
+      expect(issueFor('updateMonitor', 'interval', junk), `interval accepted ${JSON.stringify(junk)}`).toBeDefined();
     }
   });
 
@@ -196,11 +193,12 @@ describe('numeric arguments reject junk instead of coercing it', () => {
 
   /** Nested numerics are the easiest to miss, being neither top-level nor swept above. */
   it('applies inside createMaintenance time ranges', () => {
-    const withHours = (hours: unknown) => tools.createMaintenance.inputSchema!.safeParse({
-      title: 'x',
-      strategy: 'recurring-interval',
-      timeRange: [{ hours, minutes: 0 }],
-    });
+    const withHours = (hours: unknown) =>
+      tools.createMaintenance.inputSchema!.safeParse({
+        title: 'x',
+        strategy: 'recurring-interval',
+        timeRange: [{ hours, minutes: 0 }],
+      });
     expect(withHours('').success, 'timeRange hours accepted ""').toBe(false);
     expect(withHours(null).success, 'timeRange hours accepted null').toBe(false);
     expect(withHours(9)).toMatchObject({ success: true });

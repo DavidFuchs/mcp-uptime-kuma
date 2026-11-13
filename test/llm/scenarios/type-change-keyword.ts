@@ -6,7 +6,14 @@ export default defineScenario({
   description: 'Turn an HTTP monitor into a keyword monitor in place',
   tags: ['monitors', 'type-change'],
   async setup(ctx) {
-    return { id: await createMonitor(ctx, { name: `${PREFIX}Status page check`, type: 'http', url: 'https://example.com/status', interval: 120 }) };
+    return {
+      id: await createMonitor(ctx, {
+        name: `${PREFIX}Status page check`,
+        type: 'http',
+        url: 'https://example.com/status',
+        interval: 120,
+      }),
+    };
   },
   prompt: 'The status page check should also make sure the page says "All systems operational". Change it to do that.',
   async check(ctx, seed) {

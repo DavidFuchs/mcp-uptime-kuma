@@ -19,7 +19,11 @@ export default defineScenario({
       expectThat('OID', m.snmpOid === '1.3.6.1.2.1.1.3.0', `snmpOid=${m.snmpOid}`),
       expectThat('version 2c', m.snmpVersion === '2c', `snmpVersion=${m.snmpVersion}`),
       // Uptime Kuma keeps the community string in radiusPassword.
-      expectThat('community stored', m.radiusPassword === 'netops-ro' || m.snmpCommunity === 'netops-ro', `radiusPassword=${m.radiusPassword}`),
+      expectThat(
+        'community stored',
+        m.radiusPassword === 'netops-ro' || m.snmpCommunity === 'netops-ro',
+        `radiusPassword=${m.radiusPassword}`
+      ),
       expectThat('operator >', m.jsonPathOperator === '>', `jsonPathOperator=${m.jsonPathOperator}`),
       expectThat('expected value 0', String(m.expectedValue) === '0', `expectedValue=${m.expectedValue}`),
     ];

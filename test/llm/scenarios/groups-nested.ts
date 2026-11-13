@@ -7,9 +7,22 @@ export default defineScenario({
   tags: ['monitors', 'groups'],
   async setup(ctx) {
     return {
-      checkout: await createMonitor(ctx, { name: `${PREFIX}Checkout API`, type: 'http', url: 'https://example.com/checkout' }),
-      refunds: await createMonitor(ctx, { name: `${PREFIX}Refunds API`, type: 'http', url: 'https://example.com/refunds' }),
-      ledger: await createMonitor(ctx, { name: `${PREFIX}Ledger DB`, type: 'port', hostname: 'db.example.com', port: 5432 }),
+      checkout: await createMonitor(ctx, {
+        name: `${PREFIX}Checkout API`,
+        type: 'http',
+        url: 'https://example.com/checkout',
+      }),
+      refunds: await createMonitor(ctx, {
+        name: `${PREFIX}Refunds API`,
+        type: 'http',
+        url: 'https://example.com/refunds',
+      }),
+      ledger: await createMonitor(ctx, {
+        name: `${PREFIX}Ledger DB`,
+        type: 'port',
+        hostname: 'db.example.com',
+        port: 5432,
+      }),
     };
   },
   prompt:
@@ -17,9 +30,11 @@ export default defineScenario({
     `create a sub-group "${PREFIX}Payments data" and put the Ledger DB monitor there.`,
   async check(ctx, seed) {
     const { monitors = [] } = await call(ctx, 'listMonitors');
-    const top = (monitors as any[]).find(m => m.name === `${PREFIX}Payments`);
-    const sub = (monitors as any[]).find(m => m.name === `${PREFIX}Payments data`);
-    const [checkout, refunds, ledger] = await Promise.all([seed.checkout, seed.refunds, seed.ledger].map(id => getMonitor(ctx, id)));
+    const top = (monitors as any[]).find((m) => m.name === `${PREFIX}Payments`);
+    const sub = (monitors as any[]).find((m) => m.name === `${PREFIX}Payments data`);
+    const [checkout, refunds, ledger] = await Promise.all(
+      [seed.checkout, seed.refunds, seed.ledger].map((id) => getMonitor(ctx, id))
+    );
     return [
       expectThat('Payments is a group', top?.type === 'group', `type=${top?.type}`),
       expectThat('Payments data is a group', sub?.type === 'group', `type=${sub?.type}`),

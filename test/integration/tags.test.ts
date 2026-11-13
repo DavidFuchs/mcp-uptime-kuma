@@ -20,7 +20,7 @@ export const tagTests: Array<{ name: string; fn: TestFn }> = [
       // without needing to create one first.  Issue #46 reported that the
       // tagList push event never fires on login, leaving the cache empty.
       // The fix actively fetches via `getTags` on each getTagList() call.
-      const result = await client.callTool({ name: 'listTags', arguments: {} }) as CallToolResult;
+      const result = (await client.callTool({ name: 'listTags', arguments: {} })) as CallToolResult;
       const text = extractText(result, 'listTags');
       const tags = JSON.parse(text);
       if (!Array.isArray(tags)) throw new Error('Expected array');
@@ -32,7 +32,7 @@ export const tagTests: Array<{ name: string; fn: TestFn }> = [
         // on subsequent runs.  On a fresh instance this test still passes
         // (it can't fail for a truly empty server), but documents the intent.
         await client.callTool({ name: 'addTag', arguments: { name: 'seed-tag', color: '#999999' } });
-        const retry = await client.callTool({ name: 'listTags', arguments: {} }) as CallToolResult;
+        const retry = (await client.callTool({ name: 'listTags', arguments: {} })) as CallToolResult;
         const retryTags = JSON.parse(extractText(retry, 'listTags'));
         if (retryTags.length === 0) {
           throw new Error('listTags returned [] even after addTag — issue #46 still present');
@@ -47,10 +47,10 @@ export const tagTests: Array<{ name: string; fn: TestFn }> = [
     name: 'addTag → listTags → deleteTag lifecycle',
     fn: async ({ client }) => {
       // Create a tag
-      const addResult = await client.callTool({
+      const addResult = (await client.callTool({
         name: 'addTag',
         arguments: { name: 'integration-test-tag', color: '#123456' },
-      }) as CallToolResult;
+      })) as CallToolResult;
       const tagID = extractID(addResult, 'addTag', 'tagID');
 
       try {
@@ -68,10 +68,10 @@ export const tagTests: Array<{ name: string; fn: TestFn }> = [
     name: '#45/#46: listTags returns non-empty array after addTag (active fetch, object parsing)',
     fn: async ({ client }) => {
       // Create a tag so we know at least one exists
-      const addResult = await client.callTool({
+      const addResult = (await client.callTool({
         name: 'addTag',
         arguments: { name: 'issue45-46-test', color: '#abcdef' },
-      }) as CallToolResult;
+      })) as CallToolResult;
       const tagID = extractID(addResult, 'addTag', 'tagID');
 
       try {
@@ -79,7 +79,7 @@ export const tagTests: Array<{ name: string; fn: TestFn }> = [
         // This validates both:
         // - #45: tagList object is correctly parsed into an array
         // - #46: tags are actively fetched (not relying on never-emitted push event)
-        const listResult = await client.callTool({ name: 'listTags', arguments: {} }) as CallToolResult;
+        const listResult = (await client.callTool({ name: 'listTags', arguments: {} })) as CallToolResult;
         const text = extractText(listResult, 'listTags');
         const tags = JSON.parse(text);
 
@@ -108,16 +108,16 @@ export const tagTests: Array<{ name: string; fn: TestFn }> = [
     name: '#41: createMonitor with tags attaches them (not SQLite error)',
     fn: async ({ client }) => {
       // First create a tag to use
-      const addTagResult = await client.callTool({
+      const addTagResult = (await client.callTool({
         name: 'addTag',
         arguments: { name: 'issue41-create', color: '#dc2626' },
-      }) as CallToolResult;
+      })) as CallToolResult;
       extractText(addTagResult, 'addTag');
 
       let monitorID: number | undefined;
       try {
         // Create a monitor with tags — previously caused SQLite error
-        const createResult = await client.callTool({
+        const createResult = (await client.callTool({
           name: 'createMonitor',
           arguments: {
             name: 'Integration Test - Issue 41 Create',
@@ -126,17 +126,17 @@ export const tagTests: Array<{ name: string; fn: TestFn }> = [
             interval: 300,
             tags: [{ name: 'issue41-create', value: 'test-value' }],
           },
-        }) as CallToolResult;
+        })) as CallToolResult;
         monitorID = extractID(createResult, 'createMonitor', 'monitorID');
 
         // Wait for tag reconciliation
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
 
         // Verify the tag was attached
-        const getResult = await client.callTool({
+        const getResult = (await client.callTool({
           name: 'getMonitor',
           arguments: { monitorID },
-        }) as CallToolResult;
+        })) as CallToolResult;
         const monitor = JSON.parse(extractText(getResult, 'getMonitor'));
 
         if (!monitor.tags || !Array.isArray(monitor.tags)) {
@@ -154,7 +154,7 @@ export const tagTests: Array<{ name: string; fn: TestFn }> = [
           await client.callTool({ name: 'deleteMonitor', arguments: { monitorID } });
         }
         // Clean up the tag
-        const listResult = await client.callTool({ name: 'listTags', arguments: {} }) as CallToolResult;
+        const listResult = (await client.callTool({ name: 'listTags', arguments: {} })) as CallToolResult;
         const tags = JSON.parse(extractText(listResult, 'listTags'));
         const tag = tags.find((t: any) => t.name === 'issue41-create');
         if (tag) {
@@ -167,16 +167,16 @@ export const tagTests: Array<{ name: string; fn: TestFn }> = [
     name: '#41: updateMonitor with tags attaches them (not silently dropped)',
     fn: async ({ client }) => {
       // Create a tag
-      const addTagResult = await client.callTool({
+      const addTagResult = (await client.callTool({
         name: 'addTag',
         arguments: { name: 'issue41-update', color: '#2563eb' },
-      }) as CallToolResult;
+      })) as CallToolResult;
       extractText(addTagResult, 'addTag');
 
       let monitorID: number | undefined;
       try {
         // Create a monitor without tags
-        const createResult = await client.callTool({
+        const createResult = (await client.callTool({
           name: 'createMonitor',
           arguments: {
             name: 'Integration Test - Issue 41 Update',
@@ -185,27 +185,27 @@ export const tagTests: Array<{ name: string; fn: TestFn }> = [
             interval: 300,
             retryInterval: 60,
           },
-        }) as CallToolResult;
+        })) as CallToolResult;
         monitorID = extractID(createResult, 'createMonitor', 'monitorID');
 
         // Update the monitor to attach a tag
-        const updateResult = await client.callTool({
+        const updateResult = (await client.callTool({
           name: 'updateMonitor',
           arguments: {
             monitorID,
             tags: [{ name: 'issue41-update', value: 'attached-via-update' }],
           },
-        }) as CallToolResult;
+        })) as CallToolResult;
         extractText(updateResult, 'updateMonitor');
 
         // Wait for tag reconciliation
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
 
         // Verify tag was attached
-        const getResult = await client.callTool({
+        const getResult = (await client.callTool({
           name: 'getMonitor',
           arguments: { monitorID },
-        }) as CallToolResult;
+        })) as CallToolResult;
         const monitor = JSON.parse(extractText(getResult, 'getMonitor'));
 
         if (!monitor.tags || !Array.isArray(monitor.tags)) {
@@ -223,7 +223,7 @@ export const tagTests: Array<{ name: string; fn: TestFn }> = [
           await client.callTool({ name: 'deleteMonitor', arguments: { monitorID } });
         }
         // Clean up tag
-        const listResult = await client.callTool({ name: 'listTags', arguments: {} }) as CallToolResult;
+        const listResult = (await client.callTool({ name: 'listTags', arguments: {} })) as CallToolResult;
         const tags = JSON.parse(extractText(listResult, 'listTags'));
         const tag = tags.find((t: any) => t.name === 'issue41-update');
         if (tag) {

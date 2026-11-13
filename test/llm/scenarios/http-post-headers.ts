@@ -5,7 +5,11 @@ const NAME = `${PREFIX}Webhook receiver`;
 
 const parse = (v: unknown) => {
   if (typeof v !== 'string') return v;
-  try { return JSON.parse(v); } catch { return undefined; }
+  try {
+    return JSON.parse(v);
+  } catch {
+    return undefined;
+  }
 };
 
 export default defineScenario({
@@ -20,11 +24,17 @@ export default defineScenario({
     if (!m) return [expectThat(`monitor "${NAME}" exists`, false)];
     const headers = parse(m.headers) as Record<string, unknown> | undefined;
     const body = parse(m.body) as Record<string, unknown> | undefined;
-    const codes: string[] = Array.isArray(m.accepted_statuscodes) ? m.accepted_statuscodes : parse(m.accepted_statuscodes) ?? [];
+    const codes: string[] = Array.isArray(m.accepted_statuscodes)
+      ? m.accepted_statuscodes
+      : (parse(m.accepted_statuscodes) ?? []);
     return [
       expectThat('method is POST', m.method === 'POST', `method=${m.method}`),
       expectThat('body is {"ping": true}', body?.ping === true, `body=${m.body}`),
-      expectThat('body encoding is JSON', String(m.httpBodyEncoding ?? 'json').toLowerCase() === 'json', `httpBodyEncoding=${m.httpBodyEncoding}`),
+      expectThat(
+        'body encoding is JSON',
+        String(m.httpBodyEncoding ?? 'json').toLowerCase() === 'json',
+        `httpBodyEncoding=${m.httpBodyEncoding}`
+      ),
       expectThat('X-Api-Key header set', headers?.['X-Api-Key'] === 'k-42', `headers=${m.headers}`),
       expectThat('2xx accepted', codes.includes('200-299'), `accepted_statuscodes=${JSON.stringify(codes)}`),
       expectThat('418 accepted', codes.includes('418'), `accepted_statuscodes=${JSON.stringify(codes)}`),

@@ -22,7 +22,14 @@ describe('UptimeKumaClient - getMonitorList parentId filter', () => {
       '3': { id: 3, name: 'Child A2', type: 'http', parent: 1, pathName: 'Group A / Child A2', active: true },
       '4': { id: 4, name: 'Group B', type: 'group', parent: null, pathName: 'Group B', active: true },
       '5': { id: 5, name: 'Child B1', type: 'http', parent: 4, pathName: 'Group B / Child B1', active: true },
-      '6': { id: 6, name: 'Grandchild', type: 'http', parent: 5, pathName: 'Group B / Child B1 / Grandchild', active: true },
+      '6': {
+        id: 6,
+        name: 'Grandchild',
+        type: 'http',
+        parent: 5,
+        pathName: 'Group B / Child B1 / Grandchild',
+        active: true,
+      },
     });
   });
 
@@ -80,7 +87,14 @@ describe('UptimeKumaClient - getMonitorSummary parentId filter', () => {
       '3': { id: 3, name: 'Child A2', type: 'http', parent: 1, pathName: 'Group A / Child A2', active: true },
       '4': { id: 4, name: 'Group B', type: 'group', parent: null, pathName: 'Group B', active: true },
       '5': { id: 5, name: 'Child B1', type: 'http', parent: 4, pathName: 'Group B / Child B1', active: true },
-      '6': { id: 6, name: 'Grandchild', type: 'http', parent: 5, pathName: 'Group B / Child B1 / Grandchild', active: true },
+      '6': {
+        id: 6,
+        name: 'Grandchild',
+        type: 'http',
+        parent: 5,
+        pathName: 'Group B / Child B1 / Grandchild',
+        active: true,
+      },
     });
   });
 
@@ -114,8 +128,11 @@ describe('UptimeKumaClient - getMonitorSummary parentId filter', () => {
 
   it('agrees with getMonitorList about which monitors are in a group', () => {
     for (const parentId of [null, 0, 1, 4, 5]) {
-      expect(ids(client.getMonitorSummary({ parentId })))
-        .toEqual(Object.keys(client.getMonitorList({ parentId })).map(Number).sort((a, b) => a - b));
+      expect(ids(client.getMonitorSummary({ parentId }))).toEqual(
+        Object.keys(client.getMonitorList({ parentId }))
+          .map(Number)
+          .sort((a, b) => a - b)
+      );
     }
   });
 });
@@ -139,10 +156,14 @@ describe('parentId at the tool boundary', () => {
   });
 
   it.each(['listMonitors', 'getMonitorSummary'])('%s accepts a group id and null', (toolName) => {
-    expect(tools[toolName].inputSchema!.safeParse({ parentId: 3 }))
-      .toMatchObject({ success: true, data: { parentId: 3 } });
-    expect(tools[toolName].inputSchema!.safeParse({ parentId: null }))
-      .toMatchObject({ success: true, data: { parentId: null } });
+    expect(tools[toolName].inputSchema!.safeParse({ parentId: 3 })).toMatchObject({
+      success: true,
+      data: { parentId: 3 },
+    });
+    expect(tools[toolName].inputSchema!.safeParse({ parentId: null })).toMatchObject({
+      success: true,
+      data: { parentId: null },
+    });
   });
 
   it.each(['listMonitors', 'getMonitorSummary'])('%s still distinguishes omitted from null', (toolName) => {

@@ -39,9 +39,18 @@ const ACK_TIMEOUT_MS = 30_000;
  * listeners added at login and the ones removed again cannot drift apart.
  */
 const DATA_EVENTS = [
-  'monitorList', 'updateMonitorIntoList', 'deleteMonitorFromList',
-  'heartbeatList', 'heartbeat', 'uptime', 'avgPing',
-  'notificationList', 'tagList', 'maintenanceList', 'statusPageList', 'dockerHostList',
+  'monitorList',
+  'updateMonitorIntoList',
+  'deleteMonitorFromList',
+  'heartbeatList',
+  'heartbeat',
+  'uptime',
+  'avgPing',
+  'notificationList',
+  'tagList',
+  'maintenanceList',
+  'statusPageList',
+  'dockerHostList',
 ] as const;
 
 /** The heartbeat statuses the summary can be filtered by, under the names Uptime Kuma shows. */
@@ -66,8 +75,8 @@ function parseStatusFilter(status: string | undefined): number[] {
       statuses.push(Number(token));
     } else {
       throw new Error(
-        `Unrecognised status "${raw.trim()}". Use 0 or down, 1 or up, 2 or pending, 3 or maintenance, `
-        + 'comma-separated for more than one.'
+        `Unrecognised status "${raw.trim()}". Use 0 or down, 1 or up, 2 or pending, 3 or maintenance, ` +
+          'comma-separated for more than one.'
       );
     }
   }
@@ -81,21 +90,59 @@ function parseStatusFilter(status: string | undefined): number[] {
 function filterToBaseWithExtendedData(monitor: MonitorWithExtendedData): MonitorBaseWithExtendedData {
   // Extract all MonitorBase fields plus runtime data
   const {
-    id, name, description, type, active, parent, weight,
-    interval, retryInterval, resendInterval, timeout,
-    maxretries, upsideDown, accepted_statuscodes,
-    notificationIDList, tags,
-    user_id, maintenance, path, pathName, childrenIDs, forceInactive, includeSensitiveData,
-    uptime, avgPing
+    id,
+    name,
+    description,
+    type,
+    active,
+    parent,
+    weight,
+    interval,
+    retryInterval,
+    resendInterval,
+    timeout,
+    maxretries,
+    upsideDown,
+    accepted_statuscodes,
+    notificationIDList,
+    tags,
+    user_id,
+    maintenance,
+    path,
+    pathName,
+    childrenIDs,
+    forceInactive,
+    includeSensitiveData,
+    uptime,
+    avgPing,
   } = monitor;
-  
+
   return {
-    id, name, description, type, active, parent, weight,
-    interval, retryInterval, resendInterval, timeout,
-    maxretries, upsideDown, accepted_statuscodes,
-    notificationIDList, tags,
-    user_id, maintenance, path, pathName, childrenIDs, forceInactive, includeSensitiveData,
-    uptime, avgPing
+    id,
+    name,
+    description,
+    type,
+    active,
+    parent,
+    weight,
+    interval,
+    retryInterval,
+    resendInterval,
+    timeout,
+    maxretries,
+    upsideDown,
+    accepted_statuscodes,
+    notificationIDList,
+    tags,
+    user_id,
+    maintenance,
+    path,
+    pathName,
+    childrenIDs,
+    forceInactive,
+    includeSensitiveData,
+    uptime,
+    avgPing,
   } as MonitorBaseWithExtendedData;
 }
 
@@ -114,7 +161,12 @@ const KEYWORD_MATCH_THRESHOLD = 0.3;
 
 /** Splits a comma-separated filter into its non-empty entries. */
 const splitList = (value: string | undefined): string[] =>
-  value ? value.split(',').map((entry) => entry.trim()).filter((entry) => entry.length > 0) : [];
+  value
+    ? value
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0)
+    : [];
 
 /**
  * Does `monitor` satisfy a `parentId` filter? Direct children only, matching Uptime Kuma's
@@ -162,10 +214,11 @@ function monitorFilter(filters: MonitorFilters | undefined): (monitor: MonitorRa
 
     const monitorTags = monitor.tags || [];
     return tags.every((wanted) =>
-      monitorTags.some((tag) =>
-        tag.name.toLowerCase() === wanted.name
-        // With no value in the filter the name alone decides.
-        && (wanted.value === undefined || (tag.value?.toLowerCase() || '') === wanted.value)
+      monitorTags.some(
+        (tag) =>
+          tag.name.toLowerCase() === wanted.name &&
+          // With no value in the filter the name alone decides.
+          (wanted.value === undefined || (tag.value?.toLowerCase() || '') === wanted.value)
       )
     );
   };
@@ -189,7 +242,12 @@ export class UptimeKumaClient {
   private dockerHostListCache: DockerHost[] = [];
   private server?: { sendLoggingMessage: (params: { level: LoggingLevel; data: unknown }) => Promise<void> };
   private shouldLog: (level: LoggingLevel) => boolean;
-  private loginCredentials: { username: string | undefined; password: string | undefined; token?: string; jwtToken?: string } | null = null;
+  private loginCredentials: {
+    username: string | undefined;
+    password: string | undefined;
+    token?: string;
+    jwtToken?: string;
+  } | null = null;
 
   /**
    * Invoked whenever the authenticated session is known to be gone — the socket dropped, or
@@ -199,7 +257,7 @@ export class UptimeKumaClient {
   public onAuthLost: ((reason: string) => void) | null = null;
 
   constructor(
-    url: string, 
+    url: string,
     server?: { sendLoggingMessage: (params: { level: LoggingLevel; data: unknown }) => Promise<void> },
     shouldLog?: (level: LoggingLevel) => boolean,
     extraHeaders?: Record<string, string>
@@ -240,8 +298,9 @@ export class UptimeKumaClient {
     ack: (response: R) => void,
     timeout: { ms: number; msg: string } = {
       ms: ACK_TIMEOUT_MS,
-      msg: `No response from Uptime Kuma to "${event}" within ${ACK_TIMEOUT_MS / 1000} seconds; the connection may `
-        + 'have dropped. If this was a change, it may or may not have been applied, so check before trying again.',
+      msg:
+        `No response from Uptime Kuma to "${event}" within ${ACK_TIMEOUT_MS / 1000} seconds; the connection may ` +
+        'have dropped. If this was a change, it may or may not have been applied, so check before trying again.',
     }
   ): void {
     const socket = this.socket;
@@ -281,13 +340,18 @@ export class UptimeKumaClient {
         return;
       }
 
-      this.emitAck<ApiResponse & T>(event, args, (response) => {
-        if (response && response.ok) {
-          resolve(response);
-        } else {
-          reject(new Error((response && response.msg) || failure));
-        }
-      }, timeout);
+      this.emitAck<ApiResponse & T>(
+        event,
+        args,
+        (response) => {
+          if (response && response.ok) {
+            resolve(response);
+          } else {
+            reject(new Error((response && response.msg) || failure));
+          }
+        },
+        timeout
+      );
     });
   }
 
@@ -454,14 +518,19 @@ export class UptimeKumaClient {
 
   /**
    * Login using username and password, or JWT token
-   * 
+   *
    * @param username - Username (can be empty string)
    * @param password - Password/API key
    * @param token - Optional 2FA token if required
    * @param jwtToken - Optional JWT token for token-based authentication
    * @returns Promise resolving to the login response
    */
-  login(username: string | undefined, password: string | undefined, token?: string, jwtToken?: string): Promise<LoginResponse> {
+  login(
+    username: string | undefined,
+    password: string | undefined,
+    token?: string,
+    jwtToken?: string
+  ): Promise<LoginResponse> {
     return new Promise((resolve, reject) => {
       if (!this.socket || !this.socket.connected) {
         reject(new Error('Not connected to server'));
@@ -499,10 +568,10 @@ export class UptimeKumaClient {
       const loginData: { username: string | undefined; password: string | undefined; token?: string } = {
         username,
         password,
-        token
+        token,
       };
-      
-      if ( !loginData.username ) {
+
+      if (!loginData.username) {
         this.socket.emit('login');
         resolve({ ok: true, tokenRequired: false });
       } else {
@@ -529,7 +598,7 @@ export class UptimeKumaClient {
 
   /**
    * Pause a monitor
-   * 
+   *
    * @param monitorID - The ID of the monitor to pause
    * @returns Promise resolving to the API response
    */
@@ -541,7 +610,7 @@ export class UptimeKumaClient {
 
   /**
    * Resume a monitor
-   * 
+   *
    * @param monitorID - The ID of the monitor to resume
    * @returns Promise resolving to the API response
    */
@@ -692,8 +761,10 @@ export class UptimeKumaClient {
       // transport reaches the client. Report only its shape (length), never its content, the same
       // rule #71 applies everywhere else a credential could surface.
       const msgLength = (heartbeat.msg || '').length;
-      this.safeLog('debug', `Received heartbeat for monitor ${monitorID}: status=${heartbeat.status}, msgLength=${msgLength}, ping=${heartbeat.ping || 'N/A'}ms`);
-
+      this.safeLog(
+        'debug',
+        `Received heartbeat for monitor ${monitorID}: status=${heartbeat.status}, msgLength=${msgLength}, ping=${heartbeat.ping || 'N/A'}ms`
+      );
 
       // Initialize array for this monitor if it doesn't exist
       if (!this.heartbeatListCache[monitorID]) {
@@ -734,14 +805,14 @@ export class UptimeKumaClient {
     // Listen for uptime percentage updates
     this.socket.on('uptime', (monitorID: number, periodKey: string, percentage: number) => {
       this.safeLog('debug', `Received uptime for monitor ${monitorID}, period ${periodKey}: ${percentage}%`);
-      
+
       const monitorIDStr = monitorID.toString();
-      
+
       // Initialize uptime object for this monitor if it doesn't exist
       if (!this.uptimeCache[monitorIDStr]) {
         this.uptimeCache[monitorIDStr] = {};
       }
-      
+
       // Store the uptime percentage for this period
       this.uptimeCache[monitorIDStr][periodKey] = percentage;
     });
@@ -757,9 +828,9 @@ export class UptimeKumaClient {
     // Listen for average ping updates
     this.socket.on('avgPing', (monitorID: number, avgPing: number | null) => {
       this.safeLog('debug', `Received avgPing for monitor ${monitorID}: ${avgPing}ms`);
-      
+
       const monitorIDStr = monitorID.toString();
-      
+
       // Store the average ping for this monitor
       this.avgPingCache[monitorIDStr] = avgPing;
     });
@@ -767,35 +838,38 @@ export class UptimeKumaClient {
 
   /**
    * Get a specific monitor by ID from the cache
-   * 
+   *
    * @param monitorID - The ID of the monitor to retrieve
    * @param includeTypeSpecificFields - If true, returns MonitorWithExtendedData with type-specific fields. If false, returns only MonitorBaseWithExtendedData (common fields + runtime data).
    * @returns The monitor data, or undefined if not found
    */
-  getMonitor<T extends boolean = true>(monitorID: number, includeTypeSpecificFields?: T): T extends true ? MonitorWithExtendedData | undefined : MonitorBaseWithExtendedData | undefined {
+  getMonitor<T extends boolean = true>(
+    monitorID: number,
+    includeTypeSpecificFields?: T
+  ): T extends true ? MonitorWithExtendedData | undefined : MonitorBaseWithExtendedData | undefined {
     const rawMonitor = this.monitorListCache[monitorID.toString()];
     // The return type depends on the argument, which TypeScript cannot follow through the body.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see above
     if (!rawMonitor) return undefined as any;
-    
+
     const monitorIDStr = monitorID.toString();
-    
+
     // Merge uptime and avgPing data into the monitor object
     const uptime = this.uptimeCache[monitorIDStr];
     const avgPing = monitorIDStr in this.avgPingCache ? this.avgPingCache[monitorIDStr] : undefined;
-    
+
     const fullMonitor: MonitorWithExtendedData = {
       ...rawMonitor,
       uptime: uptime || {},
       avgPing,
     } as MonitorWithExtendedData;
-    
+
     // If includeTypeSpecificFields is false, filter to base fields only (excluding type-specific fields)
     if (includeTypeSpecificFields === false) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- conditional return type, as above
       return filterToBaseWithExtendedData(fullMonitor) as any;
     }
-    
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- conditional return type, as above
     return fullMonitor as any;
   }
@@ -803,11 +877,13 @@ export class UptimeKumaClient {
   /**
    * Get the cached full list of monitors the user has access to
    * The list is populated after login and kept up-to-date via server events
-   * 
+   *
    * @param filters - Optional filter criteria
    * @returns The cached monitor list
    */
-  getMonitorList<T extends boolean = true>(filters?: MonitorFilters & { includeTypeSpecificFields?: T }): MonitorList<T> {
+  getMonitorList<T extends boolean = true>(
+    filters?: MonitorFilters & { includeTypeSpecificFields?: T }
+  ): MonitorList<T> {
     const result: MonitorList<true> = {};
 
     const matches = monitorFilter(filters);
@@ -816,13 +892,13 @@ export class UptimeKumaClient {
       if (!matches(monitor)) continue;
 
       const avgPing = monitorID in this.avgPingCache ? this.avgPingCache[monitorID] : undefined;
-      
+
       const fullMonitor: MonitorWithExtendedData = {
         ...monitor,
         uptime: this.uptimeCache[monitorID] || {},
         avgPing,
       } as MonitorWithExtendedData;
-      
+
       // If includeTypeSpecificFields is false, filter to base fields only (excluding type-specific fields)
       if (filters?.includeTypeSpecificFields === false) {
         result[monitorID] = filterToBaseWithExtendedData(fullMonitor) as MonitorWithExtendedData;
@@ -830,41 +906,41 @@ export class UptimeKumaClient {
         result[monitorID] = fullMonitor;
       }
     }
-    
+
     return result as MonitorList<T>;
   }
 
   /**
    * Get the cached heartbeat list
    * The list is populated after login and kept up-to-date via server events
-   * 
+   *
    * @param maxHeartbeats - Maximum number of heartbeats to return per monitor (default: 1)
    * @returns The cached heartbeat list with arrays of heartbeats
    */
   getHeartbeatList(maxHeartbeats: number = 1): { [monitorID: string]: Heartbeat[] } {
     const result: { [monitorID: string]: Heartbeat[] } = {};
-    
+
     for (const [monitorID, heartbeats] of Object.entries(this.heartbeatListCache)) {
       result[monitorID] = heartbeats.slice(0, maxHeartbeats).map(UptimeKumaClient.normaliseHeartbeat);
     }
-    
+
     return result;
   }
 
   /**
    * Get heartbeats for a specific monitor from the cache
-   * 
+   *
    * @param monitorID - The ID of the monitor
    * @param maxHeartbeats - Maximum number of heartbeats to return (default: 1)
    * @returns Array of heartbeats for the monitor, or empty array if none exist
    */
   getHeartbeatsForMonitor(monitorID: number, maxHeartbeats: number = 1): Heartbeat[] {
     const heartbeats = this.heartbeatListCache[monitorID.toString()];
-    
+
     if (!heartbeats) {
       return [];
     }
-    
+
     return heartbeats.slice(0, maxHeartbeats).map(UptimeKumaClient.normaliseHeartbeat);
   }
 
@@ -879,9 +955,7 @@ export class UptimeKumaClient {
    */
   getLatestHeartbeat(monitorID: number): Heartbeat | undefined {
     const heartbeats = this.heartbeatListCache[monitorID.toString()];
-    return heartbeats && heartbeats.length > 0
-      ? UptimeKumaClient.normaliseHeartbeat(heartbeats[0])
-      : undefined;
+    return heartbeats && heartbeats.length > 0 ? UptimeKumaClient.normaliseHeartbeat(heartbeats[0]) : undefined;
   }
 
   /**
@@ -912,13 +986,13 @@ export class UptimeKumaClient {
 
   /**
    * Get a summarized list of all monitors with their most recent heartbeat status
-   * 
+   *
    * @param filters - Optional filter criteria
    * @returns Array of monitor summaries containing essential info and latest heartbeat status
    */
   getMonitorSummary(filters?: MonitorFilters & { status?: string }): MonitorSummary[] {
     const summaries = [];
-    
+
     const matches = monitorFilter(filters);
     const statusFilter = parseStatusFilter(filters?.status);
 
@@ -938,11 +1012,11 @@ export class UptimeKumaClient {
         // If status filter is specified but no heartbeat exists, skip this monitor
         continue;
       }
-      
+
       // Get uptime and avgPing data
       const uptime = this.uptimeCache[monitorID];
       const avgPing = monitorID in this.avgPingCache ? this.avgPingCache[monitorID] : undefined;
-      
+
       summaries.push({
         id: monitor.id,
         name: monitor.name,
@@ -961,7 +1035,7 @@ export class UptimeKumaClient {
         tags: monitor.tags,
       });
     }
-    
+
     return summaries;
   }
 
@@ -977,11 +1051,18 @@ export class UptimeKumaClient {
 
   private setupTagListListeners(): void {
     if (!this.socket) return;
-    this.socket.on('tagList', (tagList: { [id: string]: { id: number; name: string; color: string } } | Array<{ id: number; name: string; color: string }>) => {
-      const tags = Array.isArray(tagList) ? tagList : Object.values(tagList);
-      this.safeLog('debug', `Received tagList with ${tags.length} tags`);
-      this.tagListCache = tags;
-    });
+    this.socket.on(
+      'tagList',
+      (
+        tagList:
+          | { [id: string]: { id: number; name: string; color: string } }
+          | Array<{ id: number; name: string; color: string }>
+      ) => {
+        const tags = Array.isArray(tagList) ? tagList : Object.values(tagList);
+        this.safeLog('debug', `Received tagList with ${tags.length} tags`);
+        this.tagListCache = tags;
+      }
+    );
   }
 
   private setupMaintenanceListListeners(): void {
@@ -1076,24 +1157,29 @@ export class UptimeKumaClient {
    * Bind a tag to a monitor (socket: `addMonitorTag`).
    */
   private addMonitorTag(tagID: number, monitorID: number, value: string): Promise<ApiResponse> {
-    return this.request('addMonitorTag', [tagID, monitorID, value], `Failed to add tag ${tagID} to monitor ${monitorID}`);
+    return this.request(
+      'addMonitorTag',
+      [tagID, monitorID, value],
+      `Failed to add tag ${tagID} to monitor ${monitorID}`
+    );
   }
 
   /**
    * Unbind a tag from a monitor (socket: `deleteMonitorTag`).
    */
   private deleteMonitorTag(tagID: number, monitorID: number, value: string): Promise<ApiResponse> {
-    return this.request('deleteMonitorTag', [tagID, monitorID, value], `Failed to remove tag ${tagID} from monitor ${monitorID}`);
+    return this.request(
+      'deleteMonitorTag',
+      [tagID, monitorID, value],
+      `Failed to remove tag ${tagID} from monitor ${monitorID}`
+    );
   }
 
   /**
    * Reconcile a monitor's tags against the desired list. Auto-creates any
    * tag name that isn't yet in the catalog. Tag identity is `(name, value)`.
    */
-  private async reconcileMonitorTags(
-    monitorID: number,
-    desiredTags: Array<Record<string, unknown>>
-  ): Promise<void> {
+  private async reconcileMonitorTags(monitorID: number, desiredTags: Array<Record<string, unknown>>): Promise<void> {
     const currentMonitor = this.monitorListCache[String(monitorID)];
     const currentTags = (currentMonitor?.tags ?? []) as Array<{
       tag_id?: number;
@@ -1104,9 +1190,7 @@ export class UptimeKumaClient {
 
     const key = (name: string, value: string | undefined) => `${name}\u0000${value ?? ''}`;
     const currentKeys = new Set(currentTags.map((t) => key(t.name, t.value)));
-    const desiredKeys = new Set(
-      desiredTags.map((t) => key(String(t.name), t.value as string | undefined))
-    );
+    const desiredKeys = new Set(desiredTags.map((t) => key(String(t.name), t.value as string | undefined)));
 
     // Uptime Kuma never pushes `tagList` events, so the cache is unreliable
     // — fetch the catalog synchronously via the `getTags` socket request.
@@ -1146,8 +1230,7 @@ export class UptimeKumaClient {
         const name = String(t.name);
         const value = (t.value as string | undefined) ?? '';
         const tagID = nameToID.get(name);
-        const color = (t.color as string | undefined) ??
-          freshTags.find((ft) => ft.name === name)?.color ?? '#808080';
+        const color = (t.color as string | undefined) ?? freshTags.find((ft) => ft.name === name)?.color ?? '#808080';
         return { tag_id: tagID, name, value, color };
       });
       this.monitorListCache[String(monitorID)].tags = updatedTags;
@@ -1206,7 +1289,10 @@ export class UptimeKumaClient {
    * @param notificationID - If provided, updates existing; otherwise creates new
    * @returns Promise resolving to the API response with the notification id
    */
-  async addNotification(notification: Record<string, unknown>, notificationID?: number): Promise<ApiResponse & { id?: number }> {
+  async addNotification(
+    notification: Record<string, unknown>,
+    notificationID?: number
+  ): Promise<ApiResponse & { id?: number }> {
     const response = await this.request<{ id?: number }>(
       'addNotification',
       [notification, notificationID ?? null],
@@ -1244,7 +1330,10 @@ export class UptimeKumaClient {
    * @param dockerHostID - If provided, updates existing; otherwise creates new
    * @returns Promise resolving to the API response with the docker host id
    */
-  async addDockerHost(dockerHost: Record<string, unknown>, dockerHostID?: number): Promise<ApiResponse & { id?: number }> {
+  async addDockerHost(
+    dockerHost: Record<string, unknown>,
+    dockerHostID?: number
+  ): Promise<ApiResponse & { id?: number }> {
     const response = await this.request<{ id?: number }>(
       'addDockerHost',
       [dockerHost, dockerHostID ?? null],
@@ -1312,7 +1401,10 @@ export class UptimeKumaClient {
    * @param color - Tag color (hex string, e.g. '#ff0000')
    * @returns Promise resolving to the created tag object
    */
-  async addTag(name: string, color: string): Promise<ApiResponse & { tag?: { id: number; name: string; color: string } }> {
+  async addTag(
+    name: string,
+    color: string
+  ): Promise<ApiResponse & { tag?: { id: number; name: string; color: string } }> {
     const response = await this.request<{ tag?: { id: number; name: string; color: string } }>(
       'addTag',
       [{ name, color }],
@@ -1479,13 +1571,15 @@ export class UptimeKumaClient {
    * time this resolves.
    */
   refreshMaintenanceList(): Promise<Maintenance[]> {
-    return this.readBack('getMaintenanceList', [], 'the maintenance window list').then(() =>
-      this.getMaintenanceList()
-    );
+    return this.readBack('getMaintenanceList', [], 'the maintenance window list').then(() => this.getMaintenanceList());
   }
 
   private async emitMaintenanceAction(event: string, maintenanceID: number, verb: string): Promise<ApiResponse> {
-    const response = await this.request(event, [maintenanceID], `Failed to ${verb} maintenance window ${maintenanceID}`);
+    const response = await this.request(
+      event,
+      [maintenanceID],
+      `Failed to ${verb} maintenance window ${maintenanceID}`
+    );
     this.safeLog('info', `Successfully ran ${verb} on maintenance window ${maintenanceID}`);
     return response;
   }
@@ -1505,7 +1599,11 @@ export class UptimeKumaClient {
    * the groups).
    */
   async getStatusPageConfig(slug: string): Promise<StatusPage & Record<string, unknown>> {
-    const response = await this.request<{ config?: StatusPage }>('getStatusPage', [slug], `Status page ${slug} not found`);
+    const response = await this.request<{ config?: StatusPage }>(
+      'getStatusPage',
+      [slug],
+      `Status page ${slug} not found`
+    );
     if (!response.config) throw new Error(response.msg || `Status page ${slug} not found`);
     return response.config as StatusPage & Record<string, unknown>;
   }
@@ -1519,8 +1617,12 @@ export class UptimeKumaClient {
   private refreshStatusPageCache(slug: string, known: Partial<StatusPage>): void {
     this.statusPageListCache[slug] = { ...(this.statusPageListCache[slug] ?? {}), ...known, slug } as StatusPage;
     this.getStatusPageConfig(slug).then(
-      (config) => { if (this.statusPageListCache[slug]) this.statusPageListCache[slug] = config; },
-      () => { /* keep the known values */ },
+      (config) => {
+        if (this.statusPageListCache[slug]) this.statusPageListCache[slug] = config;
+      },
+      () => {
+        /* keep the known values */
+      }
     );
   }
 
@@ -1533,11 +1635,13 @@ export class UptimeKumaClient {
    * @param slug - The status page slug
    * @returns Promise resolving to the status page config, groups, and incidents
    */
-  async getStatusPage(slug: string): Promise<ApiResponse & {
-    config?: StatusPage;
-    publicGroupList?: unknown[];
-    incidents?: unknown[];
-  }> {
+  async getStatusPage(slug: string): Promise<
+    ApiResponse & {
+      config?: StatusPage;
+      publicGroupList?: unknown[];
+      incidents?: unknown[];
+    }
+  > {
     try {
       const baseUrl = this.url.replace(/\/$/, '');
       // Uptime Kuma caches this route for 5 minutes and only clears that on a save, so a page
@@ -1555,7 +1659,7 @@ export class UptimeKumaClient {
       if (!res.ok) {
         throw new Error(`HTTP ${res.status} ${res.statusText}`);
       }
-      const data = await res.json() as {
+      const data = (await res.json()) as {
         config: StatusPage;
         publicGroupList: unknown[];
         incidents?: unknown[];

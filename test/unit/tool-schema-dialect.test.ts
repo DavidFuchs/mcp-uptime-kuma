@@ -20,9 +20,11 @@ describe('tools/list schema dialect', () => {
       jwtToken: undefined,
     });
 
-    const handler = (server.server as unknown as {
-      _requestHandlers: Map<string, (request: unknown, extra: unknown) => Promise<{ tools: unknown[] }>>;
-    })._requestHandlers.get('tools/list');
+    const handler = (
+      server.server as unknown as {
+        _requestHandlers: Map<string, (request: unknown, extra: unknown) => Promise<{ tools: unknown[] }>>;
+      }
+    )._requestHandlers.get('tools/list');
     expect(handler).toBeDefined();
 
     const { tools } = await handler!({ method: 'tools/list', params: {} }, {});
@@ -58,14 +60,17 @@ describe('tools/list schema dialect', () => {
     });
 
     type ToolsListHandler = (request: unknown, extra: unknown) => Promise<{ tools: Tool[] }>;
-    const handler = (server.server as unknown as {
-      _requestHandlers: Map<string, ToolsListHandler>;
-    })._requestHandlers.get('tools/list');
+    const handler = (
+      server.server as unknown as {
+        _requestHandlers: Map<string, ToolsListHandler>;
+      }
+    )._requestHandlers.get('tools/list');
     expect(handler).toBeDefined();
 
     const { tools } = await handler!({ method: 'tools/list', params: {} }, {});
     const addNotification = tools.find((tool) => tool.name === 'addNotification');
-    const config = (addNotification?.inputSchema?.properties as Record<string, Record<string, unknown>> | undefined)?.config;
+    const config = (addNotification?.inputSchema?.properties as Record<string, Record<string, unknown>> | undefined)
+      ?.config;
 
     expect(config?.additionalProperties).toBe(true);
   });
@@ -89,9 +94,11 @@ describe('tools/list schema dialect', () => {
       jwtToken: undefined,
     });
 
-    const handler = (server.server as unknown as {
-      _requestHandlers: Map<string, (request: unknown, extra: unknown) => Promise<{ tools: Tool[] }>>;
-    })._requestHandlers.get('tools/list');
+    const handler = (
+      server.server as unknown as {
+        _requestHandlers: Map<string, (request: unknown, extra: unknown) => Promise<{ tools: Tool[] }>>;
+      }
+    )._requestHandlers.get('tools/list');
     expect(handler).toBeDefined();
 
     const { tools } = await handler!({ method: 'tools/list', params: {} }, {});

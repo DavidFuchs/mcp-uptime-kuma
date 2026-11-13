@@ -28,10 +28,18 @@ export function parseArgs(argv: string[]): LlmArgs {
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i];
     switch (flag) {
-      case '--scenario': a.scenarios.push(value(i++, flag)); break;
-      case '--tag': a.tags.push(value(i++, flag)); break;
-      case '--model': a.model = value(i++, flag); break;
-      case '--keep-traces': a.keepTraces = true; break;
+      case '--scenario':
+        a.scenarios.push(value(i++, flag));
+        break;
+      case '--tag':
+        a.tags.push(value(i++, flag));
+        break;
+      case '--model':
+        a.model = value(i++, flag);
+        break;
+      case '--keep-traces':
+        a.keepTraces = true;
+        break;
       case '--repeat': {
         const n = Number(value(i++, flag));
         if (!Number.isInteger(n) || n < 1) throw new Error(`--repeat must be a whole number of at least 1\n\n${USAGE}`);
@@ -40,7 +48,8 @@ export function parseArgs(argv: string[]): LlmArgs {
       }
       case '--min-pass-rate': {
         const r = Number(value(i++, flag));
-        if (!Number.isFinite(r) || r < 0 || r > 1) throw new Error(`--min-pass-rate must be between 0 and 1\n\n${USAGE}`);
+        if (!Number.isFinite(r) || r < 0 || r > 1)
+          throw new Error(`--min-pass-rate must be between 0 and 1\n\n${USAGE}`);
         a.minPassRate = r;
         break;
       }
@@ -52,12 +61,13 @@ export function parseArgs(argv: string[]): LlmArgs {
 }
 
 export function selectScenarios(all: Scenario<any>[], a: LlmArgs): Scenario<any>[] {
-  const unknown = a.scenarios.filter(id => !all.some(s => s.id === id));
+  const unknown = a.scenarios.filter((id) => !all.some((s) => s.id === id));
   if (unknown.length > 0) {
-    throw new Error(`Unknown scenario: ${unknown.join(', ')}. Available: ${all.map(s => s.id).join(', ')}`);
+    throw new Error(`Unknown scenario: ${unknown.join(', ')}. Available: ${all.map((s) => s.id).join(', ')}`);
   }
-  return all.filter(s =>
-    (a.scenarios.length === 0 || a.scenarios.includes(s.id)) &&
-    (a.tags.length === 0 || a.tags.some(t => s.tags.includes(t))),
+  return all.filter(
+    (s) =>
+      (a.scenarios.length === 0 || a.scenarios.includes(s.id)) &&
+      (a.tags.length === 0 || a.tags.some((t) => s.tags.includes(t)))
   );
 }

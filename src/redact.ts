@@ -76,9 +76,7 @@ const EXPLICIT_SECRET_KEYS = new Set(
  * `oauth_token_url` is the motivating case: it matches `token` and is an endpoint.
  */
 const NEVER_SECRET_KEYS = new Set(
-  ['oauthtokenurl', 'tokenurl', 'authmethod', 'oauthauthmethod', 'oauthscopes', 'oauthaudience'].map(
-    normaliseKey
-  )
+  ['oauthtokenurl', 'tokenurl', 'authmethod', 'oauthauthmethod', 'oauthscopes', 'oauthaudience'].map(normaliseKey)
 );
 
 /** Whether a field name should have its value withheld. */

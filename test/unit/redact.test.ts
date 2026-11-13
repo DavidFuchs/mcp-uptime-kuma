@@ -340,7 +340,10 @@ describe('rehydrateUrlCredentials - the dockerDaemon read-edit-write loop', () =
   });
 
   it('restores a password-only userinfo', () => {
-    const { value, preserved } = rehydrateUrlCredentials('http://:***@dockerd.local:2375', 'http://:s3cret@dockerd.local:2375');
+    const { value, preserved } = rehydrateUrlCredentials(
+      'http://:***@dockerd.local:2375',
+      'http://:s3cret@dockerd.local:2375'
+    );
     expect(value).toBe('http://:s3cret@dockerd.local:2375/');
     expect(preserved).toBe(true);
   });
@@ -349,9 +352,7 @@ describe('rehydrateUrlCredentials - the dockerDaemon read-edit-write loop', () =
 describe('redactUrlCredentials - credentials quoted inside free text', () => {
   it('masks user:pass embedded mid-message', () => {
     const msg = 'connect ETIMEDOUT to http://admin:s3cret@dockerd.local:2375 after 10s';
-    expect(redactUrlCredentials(msg)).toBe(
-      'connect ETIMEDOUT to http://***:***@dockerd.local:2375 after 10s'
-    );
+    expect(redactUrlCredentials(msg)).toBe('connect ETIMEDOUT to http://***:***@dockerd.local:2375 after 10s');
   });
 
   it('masks a username-only userinfo', () => {
@@ -362,9 +363,7 @@ describe('redactUrlCredentials - credentials quoted inside free text', () => {
 
   it('masks every occurrence in one string', () => {
     const msg = 'primary http://a:b@one.local failed, retry http://c:d@two.local';
-    expect(redactUrlCredentials(msg)).toBe(
-      'primary http://***:***@one.local failed, retry http://***:***@two.local'
-    );
+    expect(redactUrlCredentials(msg)).toBe('primary http://***:***@one.local failed, retry http://***:***@two.local');
   });
 
   it('leaves a URL with no userinfo untouched', () => {
@@ -429,12 +428,19 @@ describe('redactUrlCredentials - cost and equivalence', () => {
   // run of letters, so the time grew with the square of the length (CodeQL js/polynomial-redos).
   // Kept here as the definition of the right answer.
   const reference = (value: string): string =>
-    value.replace(/([a-z][a-z0-9+.-]*:\/\/)([^/?#\s@]+)@/gi, (_m, scheme: string, userinfo: string) =>
-      `${scheme}${userinfo.includes(':') ? '***:***' : '***'}@`);
+    value.replace(
+      /([a-z][a-z0-9+.-]*:\/\/)([^/?#\s@]+)@/gi,
+      (_m, scheme: string, userinfo: string) => `${scheme}${userinfo.includes(':') ? '***:***' : '***'}@`
+    );
 
   it('takes time in proportion to the length of the text', () => {
     // A heartbeat message can carry whatever the monitored server answered with.
-    for (const text of ['a'.repeat(300_000), 'a://'.repeat(100_000), 'a://b'.repeat(100_000), 'a.'.repeat(150_000) + '://']) {
+    for (const text of [
+      'a'.repeat(300_000),
+      'a://'.repeat(100_000),
+      'a://b'.repeat(100_000),
+      'a.'.repeat(150_000) + '://',
+    ]) {
       const started = performance.now();
       expect(redactUrlCredentials(text)).toBe(text);
       expect(performance.now() - started).toBeLessThan(500);
@@ -442,18 +448,66 @@ describe('redactUrlCredentials - cost and equivalence', () => {
   });
 
   it.each([
-    'http://u:p@h', 'HTTP://U:P@H', 'x http://u@h and ftp://a:b@c/d', '1http://u:p@h', '+http://u:p@h', '9://u:p@h',
-    '://u:p@h', 'http://@h', 'http://u:p@', 'http://u p@h', 'http://u/p@h', 'http://u?p@h', 'http://u#p@h',
-    'http://a@b@c', 'http://u:p@http://v:q@h', 'a://b://c:d@e', 'http://u:p@h http://u:p@h', 'a+b.c-d://u@h',
-    'http://u\u00a0p@h', 'http://u\np@h', 'http://u:p:q@h', 'http:///u@h', 'http:/u@h', 'http//u@h', 'ab://cd://ef@gh://ij@',
-    'amqp://guest:guest@rabbit:5672', '', '@', '://', 'a://@', 'a://b@', 'é://u@h', 'aé://u@h', 'éa://u@h',
+    'http://u:p@h',
+    'HTTP://U:P@H',
+    'x http://u@h and ftp://a:b@c/d',
+    '1http://u:p@h',
+    '+http://u:p@h',
+    '9://u:p@h',
+    '://u:p@h',
+    'http://@h',
+    'http://u:p@',
+    'http://u p@h',
+    'http://u/p@h',
+    'http://u?p@h',
+    'http://u#p@h',
+    'http://a@b@c',
+    'http://u:p@http://v:q@h',
+    'a://b://c:d@e',
+    'http://u:p@h http://u:p@h',
+    'a+b.c-d://u@h',
+    'http://u\u00a0p@h',
+    'http://u\np@h',
+    'http://u:p:q@h',
+    'http:///u@h',
+    'http:/u@h',
+    'http//u@h',
+    'ab://cd://ef@gh://ij@',
+    'amqp://guest:guest@rabbit:5672',
+    '',
+    '@',
+    '://',
+    'a://@',
+    'a://b@',
+    'é://u@h',
+    'aé://u@h',
+    'éa://u@h',
   ])('gives the same answer as the regex it replaced for %j', (text) => {
     expect(redactUrlCredentials(text)).toBe(reference(text));
   });
 
   it('gives the same answer as the regex it replaced for generated text', () => {
     // Deterministic generator over the characters that matter to the pattern.
-    const alphabet = ['a', 'Z', '9', '+', '.', '-', ':', '/', '//', '://', '@', '?', '#', ' ', '\n', 'é', 'http://', 'u:p@'];
+    const alphabet = [
+      'a',
+      'Z',
+      '9',
+      '+',
+      '.',
+      '-',
+      ':',
+      '/',
+      '//',
+      '://',
+      '@',
+      '?',
+      '#',
+      ' ',
+      '\n',
+      'é',
+      'http://',
+      'u:p@',
+    ];
     let seed = 42;
     const next = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff);
     for (let i = 0; i < 20_000; i++) {

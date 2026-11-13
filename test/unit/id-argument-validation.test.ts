@@ -80,18 +80,24 @@ describe('required ID arguments (#65)', () => {
   });
 
   it('accepts a numeric ID', () => {
-    expect(tools.getMonitor.inputSchema!.safeParse({ monitorID: 7 }))
-      .toMatchObject({ success: true, data: { monitorID: 7 } });
+    expect(tools.getMonitor.inputSchema!.safeParse({ monitorID: 7 })).toMatchObject({
+      success: true,
+      data: { monitorID: 7 },
+    });
   });
 
   it('accepts a stringified ID, for clients that stringify their arguments', () => {
-    expect(tools.getMonitor.inputSchema!.safeParse({ monitorID: '7' }))
-      .toMatchObject({ success: true, data: { monitorID: 7 } });
+    expect(tools.getMonitor.inputSchema!.safeParse({ monitorID: '7' })).toMatchObject({
+      success: true,
+      data: { monitorID: 7 },
+    });
   });
 
   it('accepts zero, which is a valid ID', () => {
-    expect(tools.getMonitor.inputSchema!.safeParse({ monitorID: 0 }))
-      .toMatchObject({ success: true, data: { monitorID: 0 } });
+    expect(tools.getMonitor.inputSchema!.safeParse({ monitorID: 0 })).toMatchObject({
+      success: true,
+      data: { monitorID: 0 },
+    });
   });
 
   /**
@@ -114,16 +120,12 @@ describe('required ID arguments (#65)', () => {
 
         for (const junk of [null, '', [], true]) {
           const result = tool.inputSchema!.safeParse({ [field]: junk });
-          const issue = result.success
-            ? undefined
-            : result.error.issues.find((i) => i.path[0] === field);
+          const issue = result.success ? undefined : result.error.issues.find((i) => i.path[0] === field);
           if (!issue) offenders.push(`${toolName}.${field} accepted ${JSON.stringify(junk)}`);
         }
 
         const missing = tool.inputSchema!.safeParse({});
-        const missingIssue = missing.success
-          ? undefined
-          : missing.error.issues.find((i) => i.path[0] === field);
+        const missingIssue = missing.success ? undefined : missing.error.issues.find((i) => i.path[0] === field);
         // Word-bounded: the complaint is "received nan", and a bare /nan/ also matches the
         // description of every maintenanceID ("mainte-nan-ce").
         if (missingIssue && /\bnan\b/i.test(JSON.stringify(missingIssue))) {

@@ -16,7 +16,12 @@ import type { TestConfig } from '../integration/helpers.js';
 
 const MCP_PREFIX = 'mcp__uptime-kuma__';
 
-export interface ToolCall { name: string; input: unknown; isError: boolean; resultText: string }
+export interface ToolCall {
+  name: string;
+  input: unknown;
+  isError: boolean;
+  resultText: string;
+}
 
 export interface Trace {
   /** MCP tool calls only, in order, names without the mcp__uptime-kuma__ prefix. */
@@ -100,19 +105,32 @@ export function buildMcpConfig(config: TestConfig, repoRoot: string): object {
   };
 }
 
-export function buildClaudeArgs(opts: { prompt: string; model: string; maxBudgetUsd: number; mcpConfigPath: string }): string[] {
+export function buildClaudeArgs(opts: {
+  prompt: string;
+  model: string;
+  maxBudgetUsd: number;
+  mcpConfigPath: string;
+}): string[] {
   return [
-    '-p', opts.prompt,
-    '--output-format', 'stream-json',
+    '-p',
+    opts.prompt,
+    '--output-format',
+    'stream-json',
     '--verbose',
-    '--mcp-config', opts.mcpConfigPath,
+    '--mcp-config',
+    opts.mcpConfigPath,
     '--strict-mcp-config',
-    '--tools', '',
-    '--allowedTools', `${MCP_PREFIX}*`,
-    '--setting-sources', '',
+    '--tools',
+    '',
+    '--allowedTools',
+    `${MCP_PREFIX}*`,
+    '--setting-sources',
+    '',
     '--no-session-persistence',
-    '--model', opts.model,
-    '--max-budget-usd', String(opts.maxBudgetUsd),
+    '--model',
+    opts.model,
+    '--max-budget-usd',
+    String(opts.maxBudgetUsd),
   ];
 }
 
@@ -128,9 +146,7 @@ export function buildChildEnv(parent: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 function resultContentText(content: unknown): string {
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
-    return content
-      .map((c: any) => (c && c.type === 'text' && typeof c.text === 'string' ? c.text : ''))
-      .join('');
+    return content.map((c: any) => (c && c.type === 'text' && typeof c.text === 'string' ? c.text : '')).join('');
   }
   return content == null ? '' : JSON.stringify(content);
 }
@@ -161,7 +177,12 @@ export function parseStreamJson(lines: string[], rawPath: string): Trace {
     } else if (msg.type === 'assistant') {
       for (const block of content) {
         if (block?.type === 'tool_use' && typeof block.name === 'string' && block.name.startsWith(MCP_PREFIX)) {
-          const call: ToolCall = { name: block.name.slice(MCP_PREFIX.length), input: block.input, isError: false, resultText: '' };
+          const call: ToolCall = {
+            name: block.name.slice(MCP_PREFIX.length),
+            input: block.input,
+            isError: false,
+            resultText: '',
+          };
           byId.set(block.id, call);
           toolCalls.push(call);
         }
@@ -207,54 +228,74 @@ export async function runClaude(opts: ClaudeRunOptions): Promise<Trace> {
   writeFileSync(mcpConfigPath, JSON.stringify(buildMcpConfig(opts.config, repoRoot)));
 
   const bin = process.env.CLAUDE_BIN ?? 'claude';
-  const args = buildClaudeArgs({ prompt: opts.prompt, model: opts.model, maxBudgetUsd: opts.maxBudgetUsd, mcpConfigPath });
+  const args = buildClaudeArgs({
+    prompt: opts.prompt,
+    model: opts.model,
+    maxBudgetUsd: opts.maxBudgetUsd,
+    mcpConfigPath,
+  });
 
   try {
-    const { stdout, stderr, code } = await new Promise<{ stdout: string; stderr: string; code: number | null }>((resolve, reject) => {
-      const child = spawn(bin, args, {
-        cwd,
-        env: buildChildEnv(process.env),
-        stdio: ['ignore', 'pipe', 'pipe'],
-        // Own process group, so a timeout also kills the MCP server claude started.
-        detached: true,
-      });
-      const raw = createWriteStream(opts.rawPath);
-      let out = '';
-      let err = '';
-      let settled = false;
-      const killGroup = () => {
-        try { process.kill(-child.pid!, 'SIGKILL'); } catch { try { child.kill('SIGKILL'); } catch { /* already gone */ } }
-      };
-      const fail = (e: unknown) => {
-        if (settled) return;
-        settled = true;
-        activeAbort = null;
-        clearTimeout(timer);
-        killGroup();
-        reject(e);
-      };
-      activeAbort = () => fail(new ClaudeAbortedError());
-      // raw is only ever ended in 'close', after the last stdout chunk, so no write can follow it.
-      raw.on('error', fail);
-      child.stdout.on('data', (d: Buffer) => { out += d.toString(); if (!raw.writableEnded) raw.write(d); });
-      child.stderr.on('data', (d: Buffer) => { err += d.toString(); });
-      const timer = setTimeout(() => fail(new ClaudeTimeoutError(opts.timeoutMs)), opts.timeoutMs);
-      child.on('error', fail);
-      child.on('close', c => {
-        clearTimeout(timer);
-        if (!settled) activeAbort = null;
-        // finished() rather than end(cb): if the trace file never opened (bad path), the
-        // child can exit before the stream's 'error' event fires, and that error must
-        // still reject rather than be swallowed by a successful-looking resolve.
-        raw.end();
-        finished(raw, e => {
-          if (e) return fail(e);
+    const { stdout, stderr, code } = await new Promise<{ stdout: string; stderr: string; code: number | null }>(
+      (resolve, reject) => {
+        const child = spawn(bin, args, {
+          cwd,
+          env: buildChildEnv(process.env),
+          stdio: ['ignore', 'pipe', 'pipe'],
+          // Own process group, so a timeout also kills the MCP server claude started.
+          detached: true,
+        });
+        const raw = createWriteStream(opts.rawPath);
+        let out = '';
+        let err = '';
+        let settled = false;
+        const killGroup = () => {
+          try {
+            process.kill(-child.pid!, 'SIGKILL');
+          } catch {
+            try {
+              child.kill('SIGKILL');
+            } catch {
+              /* already gone */
+            }
+          }
+        };
+        const fail = (e: unknown) => {
           if (settled) return;
           settled = true;
-          resolve({ stdout: out, stderr: err, code: c });
+          activeAbort = null;
+          clearTimeout(timer);
+          killGroup();
+          reject(e);
+        };
+        activeAbort = () => fail(new ClaudeAbortedError());
+        // raw is only ever ended in 'close', after the last stdout chunk, so no write can follow it.
+        raw.on('error', fail);
+        child.stdout.on('data', (d: Buffer) => {
+          out += d.toString();
+          if (!raw.writableEnded) raw.write(d);
         });
-      });
-    });
+        child.stderr.on('data', (d: Buffer) => {
+          err += d.toString();
+        });
+        const timer = setTimeout(() => fail(new ClaudeTimeoutError(opts.timeoutMs)), opts.timeoutMs);
+        child.on('error', fail);
+        child.on('close', (c) => {
+          clearTimeout(timer);
+          if (!settled) activeAbort = null;
+          // finished() rather than end(cb): if the trace file never opened (bad path), the
+          // child can exit before the stream's 'error' event fires, and that error must
+          // still reject rather than be swallowed by a successful-looking resolve.
+          raw.end();
+          finished(raw, (e) => {
+            if (e) return fail(e);
+            if (settled) return;
+            settled = true;
+            resolve({ stdout: out, stderr: err, code: c });
+          });
+        });
+      }
+    );
 
     const trace = parseStreamJson(stdout.split('\n'), opts.rawPath);
     if (trace.resultSubtype === 'missing') {

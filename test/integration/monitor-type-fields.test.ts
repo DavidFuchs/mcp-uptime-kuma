@@ -63,7 +63,8 @@ const TYPES: Array<{ type: string; fields: Record<string, unknown>; stored?: Rec
     type: 'grpc-keyword',
     fields: {
       grpcUrl: 'grpc.invalid:50051',
-      grpcProtobuf: 'syntax = "proto3"; message Req {} message Res {} service Health { rpc Check (Req) returns (Res); }',
+      grpcProtobuf:
+        'syntax = "proto3"; message Req {} message Res {} service Health { rpc Check (Req) returns (Res); }',
       grpcServiceName: 'Health',
       grpcMethod: 'Check',
       grpcBody: '{}',
@@ -111,7 +112,12 @@ const TYPES: Array<{ type: string; fields: Record<string, unknown>; stored?: Rec
   { type: 'smtp', fields: { hostname: 'mail.invalid', port: 587, smtpSecurity: 'starttls' } },
   {
     type: 'snmp',
-    fields: { hostname: 'switch.invalid', snmpOid: '1.3.6.1.2.1.1.3.0', snmpCommunity: 'zz-community', expectedValue: '1' },
+    fields: {
+      hostname: 'switch.invalid',
+      snmpOid: '1.3.6.1.2.1.1.3.0',
+      snmpCommunity: 'zz-community',
+      expectedValue: '1',
+    },
     stored: {
       hostname: 'switch.invalid',
       snmpOid: '1.3.6.1.2.1.1.3.0',
@@ -124,7 +130,13 @@ const TYPES: Array<{ type: string; fields: Record<string, unknown>; stored?: Rec
   },
   {
     type: 'gamedig',
-    fields: { hostname: 'game.invalid', port: 25565, game: 'minecraft', gamedigGivenPortOnly: false, gamedigToken: 'zz-game-token' },
+    fields: {
+      hostname: 'game.invalid',
+      port: 25565,
+      game: 'minecraft',
+      gamedigGivenPortOnly: false,
+      gamedigToken: 'zz-game-token',
+    },
   },
   { type: 'steam', fields: { hostname: 'steam.invalid', port: 27015 } },
   { type: 'real-browser', fields: { url: 'https://example.invalid', screenshot_delay: 500 } },
@@ -146,17 +158,41 @@ const TYPES: Array<{ type: string; fields: Record<string, unknown>; stored?: Rec
   {
     type: 'sftp',
     fields: { hostname: 'sftp.invalid', sshUsername: 'zz-user', sshPassword: 'zz-ssh-secret', sftpPath: '/upload' },
-    stored: { hostname: 'sftp.invalid', sshUsername: 'zz-user', sshPassword: 'zz-ssh-secret', sftpPath: '/upload', sshAuthMethod: 'password' },
+    stored: {
+      hostname: 'sftp.invalid',
+      sshUsername: 'zz-user',
+      sshPassword: 'zz-ssh-secret',
+      sftpPath: '/upload',
+      sshAuthMethod: 'password',
+    },
   },
   {
     type: 'ntp',
-    fields: { hostname: 'ntp.invalid', ntpStratumThreshold: 3, ntpTimeOffsetThreshold: 250, ntpRootDispersionThreshold: 100 },
+    fields: {
+      hostname: 'ntp.invalid',
+      ntpStratumThreshold: 3,
+      ntpTimeOffsetThreshold: 250,
+      ntpRootDispersionThreshold: 100,
+    },
   },
   {
     type: 'ping',
-    fields: { hostname: 'ping.invalid', packetSize: 128, ping_count: 3, ping_numeric: false, ping_per_request_timeout: 4 },
+    fields: {
+      hostname: 'ping.invalid',
+      packetSize: 128,
+      ping_count: 3,
+      ping_numeric: false,
+      ping_per_request_timeout: 4,
+    },
   },
-  { type: 'oracledb', fields: { databaseConnectionString: 'db.invalid:1521/XEPDB1', basic_auth_user: 'system', basic_auth_pass: 'zz-oracle-secret' } },
+  {
+    type: 'oracledb',
+    fields: {
+      databaseConnectionString: 'db.invalid:1521/XEPDB1',
+      basic_auth_user: 'system',
+      basic_auth_pass: 'zz-oracle-secret',
+    },
+  },
   { type: 'system-service', fields: { system_service_name: 'nginx' } },
   { type: 'manual', fields: { manual_status: 1 }, stored: {} },
   {
@@ -261,7 +297,11 @@ export const monitorTypeFieldTests: Array<{ name: string; fn: TestFn }> = [
 
         // Switching method stores the new one.
         extractText(
-          await call(client, 'updateMonitor', { monitorID, authMethod: 'bearer', bearer_token: 'zz-integration-bearer' }),
+          await call(client, 'updateMonitor', {
+            monitorID,
+            authMethod: 'bearer',
+            bearer_token: 'zz-integration-bearer',
+          }),
           'updateMonitor'
         );
         const switched = await readMonitor(client, monitorID);
@@ -315,12 +355,17 @@ export const monitorTypeFieldTests: Array<{ name: string; fn: TestFn }> = [
 
         extractText(await call(client, 'updateMonitor', { monitorID, url: redacted.url }), 'updateMonitor');
         const after = await readMonitor(client, monitorID);
-        if (!String(after.url).includes('zz-user:zz-url-pw@')) throw new Error(`url credentials were lost: ${redacted.url}`);
+        if (!String(after.url).includes('zz-user:zz-url-pw@'))
+          throw new Error(`url credentials were lost: ${redacted.url}`);
 
-        const moved = await call(client, 'updateMonitor', { monitorID, url: 'https://***:***@elsewhere.invalid/health' });
+        const moved = await call(client, 'updateMonitor', {
+          monitorID,
+          url: 'https://***:***@elsewhere.invalid/health',
+        });
         if (!moved.isError) throw new Error('stored credentials were restored onto a different host');
         const untouched = await readMonitor(client, monitorID);
-        if (!String(untouched.url).includes('@example.invalid')) throw new Error('the refused update still changed the url');
+        if (!String(untouched.url).includes('@example.invalid'))
+          throw new Error('the refused update still changed the url');
         console.log('  ✓ url credentials kept across a redacted round trip, and refused for another host');
       } finally {
         await call(client, 'deleteMonitor', { monitorID });
@@ -328,7 +373,7 @@ export const monitorTypeFieldTests: Array<{ name: string; fn: TestFn }> = [
     },
   },
   {
-    name: '#112: a type change brings the new type\'s fields with it',
+    name: "#112: a type change brings the new type's fields with it",
     fn: async ({ client }) => {
       const created = await call(client, 'createMonitor', {
         name: 'zz-112-convert-delete-me',
@@ -357,7 +402,10 @@ export const monitorTypeFieldTests: Array<{ name: string; fn: TestFn }> = [
         }
 
         // Sending the redacted list back must restore the credentials, not store the marker.
-        extractText(await call(client, 'updateMonitor', { monitorID, rabbitmqNodes: redacted.rabbitmqNodes }), 'updateMonitor');
+        extractText(
+          await call(client, 'updateMonitor', { monitorID, rabbitmqNodes: redacted.rabbitmqNodes }),
+          'updateMonitor'
+        );
         const after = await readMonitor(client, monitorID);
         if (!String(after.rabbitmqNodes?.[0]).includes('zz-user:zz-inline-pw@')) {
           throw new Error(`rabbitmqNodes credentials were lost: ${JSON.stringify(redacted.rabbitmqNodes)}`);

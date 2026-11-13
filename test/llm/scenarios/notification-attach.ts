@@ -9,12 +9,18 @@ export default defineScenario({
   description: 'Create a webhook notification and attach it to an existing monitor',
   tags: ['notifications'],
   async setup(ctx) {
-    return { checkout: await createMonitor(ctx, { name: `${PREFIX}Checkout`, type: 'http', url: 'https://example.com/checkout' }) };
+    return {
+      checkout: await createMonitor(ctx, {
+        name: `${PREFIX}Checkout`,
+        type: 'http',
+        url: 'https://example.com/checkout',
+      }),
+    };
   },
   prompt: `Create a webhook notification called "${NAME}" that POSTs JSON to ${URL}, and make the Checkout monitor use it.`,
   async check(ctx, seed) {
     const { notifications = [] } = await call(ctx, 'listNotifications', { includeSecrets: true });
-    const n = (notifications as any[]).find(x => x.name === NAME);
+    const n = (notifications as any[]).find((x) => x.name === NAME);
     if (!n) return [expectThat(`notification "${NAME}" exists`, false)];
     // listNotifications returns config as an object; servers before the eval-findings fix sent a JSON string.
     const config = typeof n.config === 'string' ? JSON.parse(n.config) : (n.config ?? {});

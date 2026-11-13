@@ -33,10 +33,7 @@ export const SocketErrorResponseSchema = z.object({
   msg: z.string(),
 });
 
-export const SocketResponseSchema = z.union([
-  SocketSuccessResponseSchema,
-  SocketErrorResponseSchema,
-]);
+export const SocketResponseSchema = z.union([SocketSuccessResponseSchema, SocketErrorResponseSchema]);
 
 /**
  * Socket.IO response types

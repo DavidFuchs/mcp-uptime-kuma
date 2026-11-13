@@ -49,14 +49,15 @@ export async function ensureAdmin(config: TestConfig): Promise<EnsureAdminResult
       if (!config.username || !config.password) {
         throw new Error(
           'This Uptime Kuma instance has no admin account yet. Set UPTIME_KUMA_USERNAME and ' +
-          'UPTIME_KUMA_PASSWORD in .env.test so one can be created.',
+            'UPTIME_KUMA_PASSWORD in .env.test so one can be created.'
         );
       }
       const setup = await emit<Ack>(socket, 'setup', config.username, config.password);
       if (!setup.ok) {
-        const hint = setup.msg === 'passwordTooWeak'
-          ? ' Uptime Kuma rejected UPTIME_KUMA_PASSWORD as too weak: use at least 6 characters with both letters and numbers.'
-          : '';
+        const hint =
+          setup.msg === 'passwordTooWeak'
+            ? ' Uptime Kuma rejected UPTIME_KUMA_PASSWORD as too weak: use at least 6 characters with both letters and numbers.'
+            : '';
         throw new Error(`Could not create the admin account: ${setup.msg}.${hint}`);
       }
       result = 'created';
@@ -73,7 +74,7 @@ export async function ensureAdmin(config: TestConfig): Promise<EnsureAdminResult
     if (!login.ok) {
       throw new Error(
         `The credentials in .env.test were rejected by ${config.url}: ${login.msg}. ` +
-        'The instance already has an admin account, so .env.test has to match it.',
+          'The instance already has an admin account, so .env.test has to match it.'
       );
     }
     return result;
@@ -86,14 +87,16 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const config = loadTestConfig();
   ensureAdmin(config).then(
     (result) => {
-      console.log(result === 'created'
-        ? '✅ Created the admin account from .env.test on the fresh Uptime Kuma instance'
-        : '✅ Credentials in .env.test work');
+      console.log(
+        result === 'created'
+          ? '✅ Created the admin account from .env.test on the fresh Uptime Kuma instance'
+          : '✅ Credentials in .env.test work'
+      );
       process.exit(0);
     },
     (error: Error) => {
       console.error(`❌ ${error.message}`);
       process.exit(1);
-    },
+    }
   );
 }

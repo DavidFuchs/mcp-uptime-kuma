@@ -48,9 +48,7 @@ describe('post-write read-back verification', () => {
     vi.spyOn(UptimeKumaClient.prototype, 'ensureConnected').mockResolvedValue(undefined as never);
     vi.spyOn(UptimeKumaClient.prototype, 'login').mockResolvedValue({ ok: true } as never);
     vi.spyOn(UptimeKumaClient.prototype, 'getSettings').mockResolvedValue({ ok: true, data: {} } as never);
-    vi.spyOn(UptimeKumaClient.prototype, 'getMonitor').mockReturnValue(
-      { ...EXISTING_MONITOR } as never
-    );
+    vi.spyOn(UptimeKumaClient.prototype, 'getMonitor').mockReturnValue({ ...EXISTING_MONITOR } as never);
     // Uptime Kuma's answer to any edit it accepts — including one that changed nothing.
     vi.spyOn(UptimeKumaClient.prototype, 'updateMonitor').mockResolvedValue({
       ok: true,
@@ -226,9 +224,7 @@ describe('post-write read-back verification', () => {
     });
 
     it('refuses to convert a group, which would detach its children', async () => {
-      vi.mocked(UptimeKumaClient.prototype.getMonitor).mockReturnValue(
-        { ...EXISTING_MONITOR, type: 'group' } as never
-      );
+      vi.mocked(UptimeKumaClient.prototype.getMonitor).mockReturnValue({ ...EXISTING_MONITOR, type: 'group' } as never);
       const { client } = await connectServer();
 
       const result = await client.callTool({
@@ -339,9 +335,7 @@ describe('a failed verification still reports what was written', () => {
   it('does not claim the monitor exists when the create itself failed', async () => {
     // A genuine create failure must still read as a failure — the point is to distinguish
     // "created but unverified" from "not created", not to soften every error.
-    vi.spyOn(UptimeKumaClient.prototype, 'createMonitor').mockRejectedValue(
-      new Error('Invalid monitor type') as never
-    );
+    vi.spyOn(UptimeKumaClient.prototype, 'createMonitor').mockRejectedValue(new Error('Invalid monitor type') as never);
     const { client } = await connectServer();
 
     const result = await client.callTool({

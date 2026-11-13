@@ -93,7 +93,11 @@ if (problems.length) {
 const json = `${JSON.stringify(catalogTools, null, 2)}\n`;
 if (check) {
   let current = '';
-  try { current = readFileSync(outPath, 'utf8'); } catch { /* missing counts as stale */ }
+  try {
+    current = readFileSync(outPath, 'utf8');
+  } catch {
+    /* missing counts as stale */
+  }
   if (current !== json) {
     console.error('docker-mcp-catalog/uptime-kuma/tools.json is out of date. Run: npm run docker-catalog:tools');
     process.exit(1);

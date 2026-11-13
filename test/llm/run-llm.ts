@@ -2,7 +2,13 @@ import { execFileSync } from 'child_process';
 import { existsSync, mkdirSync, rmSync } from 'fs';
 import { join } from 'path';
 import { pathToFileURL } from 'url';
-import { createTestClient, loadTestConfig, validateTestConfig, type TestContext, type TestConfig } from '../integration/helpers.js';
+import {
+  createTestClient,
+  loadTestConfig,
+  validateTestConfig,
+  type TestContext,
+  type TestConfig,
+} from '../integration/helpers.js';
 import { runClaude, assertProbeTrace, abortActiveClaude, type Trace } from './claude-driver.js';
 import { classify, type RunResult, type Scenario, type Assertion } from './scenario.js';
 import { sweep } from './kuma.js';
@@ -34,14 +40,14 @@ export async function preflight(runProbe: () => Promise<void>, { retryDelayMs = 
     try {
       await runProbe();
     } catch {
-      await new Promise(r => setTimeout(r, retryDelayMs));
+      await new Promise((r) => setTimeout(r, retryDelayMs));
       await runProbe();
     }
   } catch (e) {
     const why = e instanceof Error ? e.message : String(e);
     throw new PreflightError(
       `Preflight failed: could not run a headless claude session (${why}).\n` +
-      `Check that the claude CLI is installed and that you are logged in (run \`claude\` once interactively).`,
+        `Check that the claude CLI is installed and that you are logged in (run \`claude\` once interactively).`
     );
   }
 }
@@ -49,7 +55,12 @@ export async function preflight(runProbe: () => Promise<void>, { retryDelayMs = 
 async function probeClaude(config: TestConfig, model: string, dir: string): Promise<void> {
   execFileSync(process.env.CLAUDE_BIN ?? 'claude', ['--version'], { stdio: 'ignore' });
   const trace = await runClaude({
-    prompt: 'Reply with OK.', model, maxBudgetUsd: 0.05, timeoutMs: 60_000, config, rawPath: join(dir, 'preflight.jsonl'),
+    prompt: 'Reply with OK.',
+    model,
+    maxBudgetUsd: 0.05,
+    timeoutMs: 60_000,
+    config,
+    rawPath: join(dir, 'preflight.jsonl'),
   });
   assertProbeTrace(trace);
 }
@@ -89,7 +100,7 @@ export function assertTestInstance(url: string, env: NodeJS.ProcessEnv): void {
   if (LOCAL_HOSTS.has(host) || env.LLM_EVAL_ALLOW_REMOTE === '1') return;
   throw new Error(
     `Refusing to run: UPTIME_KUMA_URL points at ${host}, not a local test instance. The eval lets a ` +
-    `model create and delete monitors. Set LLM_EVAL_ALLOW_REMOTE=1 if ${host} really is a disposable test instance.`,
+      `model create and delete monitors. Set LLM_EVAL_ALLOW_REMOTE=1 if ${host} really is a disposable test instance.`
   );
 }
 
@@ -101,7 +112,13 @@ function gitSha(): string {
   }
 }
 
-async function runOnce(ctx: TestContext, scenario: Scenario<any>, n: number, args: LlmArgs, dir: string): Promise<RunResult> {
+async function runOnce(
+  ctx: TestContext,
+  scenario: Scenario<any>,
+  n: number,
+  args: LlmArgs,
+  dir: string
+): Promise<RunResult> {
   const rawPath = join(dir, `${scenario.id}-${n}.jsonl`);
   let seed: unknown;
   let trace: Trace | undefined;
@@ -111,7 +128,14 @@ async function runOnce(ctx: TestContext, scenario: Scenario<any>, n: number, arg
     await sweep(ctx);
     seed = scenario.setup ? await scenario.setup(ctx) : undefined;
     const prompt = typeof scenario.prompt === 'function' ? scenario.prompt(seed) : scenario.prompt;
-    trace = await runClaude({ prompt, model: args.model, maxBudgetUsd: MAX_BUDGET_USD, timeoutMs: TIMEOUT_MS, config: ctx.config, rawPath });
+    trace = await runClaude({
+      prompt,
+      model: args.model,
+      maxBudgetUsd: MAX_BUDGET_USD,
+      timeoutMs: TIMEOUT_MS,
+      config: ctx.config,
+      rawPath,
+    });
     assertions = await scenario.check(ctx, seed, trace);
   } catch (e) {
     error = e;
@@ -173,7 +197,10 @@ async function main(): Promise<number> {
   const { client } = await createTestClient(config);
   const ctx: TestContext = { client, config };
   const results: RunResult[] = [];
-  const { state: interrupt, onSignal } = createInterruptHandler({ abort: abortActiveClaude, exit: code => process.exit(code) });
+  const { state: interrupt, onSignal } = createInterruptHandler({
+    abort: abortActiveClaude,
+    exit: (code) => process.exit(code),
+  });
   process.on('SIGINT', onSignal);
   process.on('SIGTERM', onSignal);
   try {
@@ -184,7 +211,9 @@ async function main(): Promise<number> {
         results.push(r);
         const icon = r.outcome === 'pass' ? (r.degraded ? '⚠' : '✓') : r.outcome === 'fail' ? '✗' : '!';
         const calls = r.trace ? `${r.trace.toolCalls.length} calls` : '';
-        console.log(`  ${icon} ${scenario.id} #${n} ${r.outcome} ${calls}${r.errorMessage ? ` — ${maskSecretPairs(r.errorMessage)}` : ''}`);
+        console.log(
+          `  ${icon} ${scenario.id} #${n} ${r.outcome} ${calls}${r.errorMessage ? ` — ${maskSecretPairs(r.errorMessage)}` : ''}`
+        );
       }
     }
   } finally {
@@ -203,7 +232,9 @@ async function main(): Promise<number> {
         await fresh.close().catch(() => {});
       }
     } catch (e) {
-      console.error(`⚠ Could not clean up after the interrupt: ${(e as Error).message}. The next run's sweep will remove any llm-eval- leftovers.`);
+      console.error(
+        `⚠ Could not clean up after the interrupt: ${(e as Error).message}. The next run's sweep will remove any llm-eval- leftovers.`
+      );
     }
   }
 
@@ -215,8 +246,11 @@ async function main(): Promise<number> {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().then(code => process.exit(code), e => {
-    console.error(e);
-    process.exit(2);
-  });
+  main().then(
+    (code) => process.exit(code),
+    (e) => {
+      console.error(e);
+      process.exit(2);
+    }
+  );
 }

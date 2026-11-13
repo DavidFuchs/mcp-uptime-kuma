@@ -46,15 +46,11 @@ describe('certificate and domain expiry notification toggles (#110)', () => {
     vi.spyOn(UptimeKumaClient.prototype, 'login').mockResolvedValue({ ok: true } as never);
     vi.spyOn(UptimeKumaClient.prototype, 'getSettings').mockResolvedValue({ ok: true, data: {} } as never);
     vi.spyOn(UptimeKumaClient.prototype, 'getMonitor').mockReturnValue({ ...EXISTING_MONITOR } as never);
-    vi.spyOn(UptimeKumaClient.prototype, 'createMonitor').mockImplementation((async (
-      data: Record<string, unknown>
-    ) => {
+    vi.spyOn(UptimeKumaClient.prototype, 'createMonitor').mockImplementation((async (data: Record<string, unknown>) => {
       lastWrite = data;
       return { ok: true, msg: 'Added Successfully.', monitorID: 7 };
     }) as never);
-    vi.spyOn(UptimeKumaClient.prototype, 'updateMonitor').mockImplementation((async (
-      data: Record<string, unknown>
-    ) => {
+    vi.spyOn(UptimeKumaClient.prototype, 'updateMonitor').mockImplementation((async (data: Record<string, unknown>) => {
       lastWrite = data;
       return { ok: true, msg: 'Saved.', monitorID: 7 };
     }) as never);

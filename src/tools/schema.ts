@@ -53,10 +53,11 @@ export function numeric<T extends z.ZodTypeAny>(schema: T) {
  */
 export function requiredId(description: string) {
   return numeric(
-    z.number({
-      error: (issue) =>
-        issue.input === undefined ? `${description} — this field is required and was not provided` : undefined,
-    })
+    z
+      .number({
+        error: (issue) =>
+          issue.input === undefined ? `${description} — this field is required and was not provided` : undefined,
+      })
       .int()
       .nonnegative()
   ).describe(description);

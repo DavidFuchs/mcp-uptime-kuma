@@ -49,16 +49,14 @@ describe('UptimeKumaClient - Maintenance Operations', () => {
       });
       injectSocket(client, socket);
 
-      await expect(
-        client.createMaintenance({ title: 'Bad', strategy: 'invalid' })
-      ).rejects.toThrow('Invalid schedule');
+      await expect(client.createMaintenance({ title: 'Bad', strategy: 'invalid' })).rejects.toThrow('Invalid schedule');
     });
 
     it('rejects when not connected', async () => {
       injectSocket(client, createDisconnectedSocket());
-      await expect(
-        client.createMaintenance({ title: 'x', strategy: 'single' })
-      ).rejects.toThrow('Not connected to server');
+      await expect(client.createMaintenance({ title: 'x', strategy: 'single' })).rejects.toThrow(
+        'Not connected to server'
+      );
     });
   });
 
@@ -72,7 +70,13 @@ describe('UptimeKumaClient - Maintenance Operations', () => {
       });
       injectSocket(client, socket);
 
-      const result = await client.editMaintenance({ id: 4, title: 'Renamed', strategy: 'manual', active: true, dateRange: [] });
+      const result = await client.editMaintenance({
+        id: 4,
+        title: 'Renamed',
+        strategy: 'manual',
+        active: true,
+        dateRange: [],
+      });
       expect(result.ok).toBe(true);
     });
 
