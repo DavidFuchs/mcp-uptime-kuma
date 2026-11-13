@@ -28,8 +28,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The oldest version package.json allows, and the current LTS.
-        node-version: [22, 24]
+        # The oldest version package.json allows, and each LTS since. The Docker image ships 26.
+        node-version: [22, 24, 26]
     name: unit-tests (node ${{ matrix.node-version }})
     steps:
       - uses: actions/checkout@v7
