@@ -14,6 +14,11 @@ updates:
       production-dependencies:
         dependency-type: production
         update-types: [minor, patch]
+    ignore:
+      # typescript-eslint accepts TypeScript below 6.1 only, and npm ci refuses anything
+      # newer. Remove this once typescript-eslint supports TypeScript 7.
+      - dependency-name: typescript
+        versions: ['>=6.1.0']
 
   - package-ecosystem: github-actions
     directory: /
