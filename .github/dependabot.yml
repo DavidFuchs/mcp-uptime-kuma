@@ -19,6 +19,10 @@ updates:
       # newer. Remove this once typescript-eslint supports TypeScript 7.
       - dependency-name: typescript
         versions: ['>=6.1.0']
+      # The types follow the oldest Node package.json allows, so that code using an API
+      # Node 22 lacks fails to compile. Raise this together with `engines`.
+      - dependency-name: '@types/node'
+        versions: ['>=23.0.0']
 
   - package-ecosystem: github-actions
     directory: /
