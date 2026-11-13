@@ -1,9 +1,22 @@
 name: Publish Docker Image
 
+# A release publishes its own tag. To retry a release whose publish failed, run
+# this workflow manually from main and give it the tag: the pipeline comes from
+# main (so a fix to it applies) while the code and version come from the tag.
 on:
   release:
     types: [created]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to (re)publish, e.g. v0.15.0. Leave empty to build this branch as a dev image.'
+        required: false
+        type: string
+      latest:
+        description: 'Also point "latest" at this release. Untick when republishing an older version.'
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -14,16 +27,28 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
-      # A release runs on its tag. A manual run is on a branch, which has no version of its own.
+      # A release runs on its tag, and a manual run can name one. A manual run
+      # without a tag builds its branch, which has no version of its own.
       - name: Extract version from tag
         id: version
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+          if [[ -n "$INPUT_TAG" ]]; then
+            if [[ ! "$INPUT_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.+-]+)?$ ]]; then
+              echo "Not a release tag: '$INPUT_TAG' (expected something like v0.15.0)" >&2
+              exit 1
+            fi
+            echo "VERSION=${INPUT_TAG#v}" >> $GITHUB_OUTPUT
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
           else
-            echo "VERSION=dev-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+            echo "VERSION=dev-$(git rev-parse --short=7 HEAD)" >> $GITHUB_OUTPUT
           fi
+          echo "REVISION=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
       - name: Inject version into code
         run: |
@@ -46,11 +71,20 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: davidfuchs/mcp-uptime-kuma
+          # The version tags come from the tag input when there is one, and from
+          # the release's own tag otherwise. "latest" follows them automatically
+          # unless a manual run opts out. A dev build of the default branch has
+          # no version tags and is published as "latest" only.
+          flavor: |
+            latest=${{ (inputs.tag != '' && inputs.latest == false) && 'false' || 'auto' }}
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}},value=${{ inputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ inputs.tag }}
+            type=semver,pattern={{major}},value=${{ inputs.tag }}
+            type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' && inputs.tag == '' && github.ref_name == github.event.repository.default_branch }}
+          # The commit that was built, which on a retry is the tag's and not main's.
+          labels: |
+            org.opencontainers.image.revision=${{ steps.version.outputs.REVISION }}
 
       - name: Build and push to DockerHub
         uses: docker/build-push-action@v7
