@@ -202,11 +202,16 @@ async function runHttp(config: UptimeKumaConfig) {
     process.exit(1);
   });
 
-  // Graceful shutdown
+  // Graceful shutdown: stop accepting requests, let those in flight finish, then drop the
+  // connection to Uptime Kuma, which would otherwise keep the process alive.
+  let shuttingDown = false;
   const shutdown = () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     console.log('\n[MCP] Shutting down gracefully...');
     httpServer.close(() => {
       console.log('[MCP] Server closed');
+      try { session.client.disconnect(); } catch { /* best effort on the way out */ }
       process.exit(0);
     });
     
@@ -233,7 +238,6 @@ async function main() {
   }
 }
 
-main();
-
-// Also export the server creation function for programmatic use
-export { createServer } from './server.js';
+// This file is the command-line program and nothing else: loading it starts a server. To build
+// a server in your own code, import the package itself, which resolves to server.js.
+await main();

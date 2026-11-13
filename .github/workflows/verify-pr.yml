@@ -41,6 +41,11 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # Catches what the compiler allows: a promise nobody awaits, an import nothing uses.
+      # It does not check formatting.
+      - name: Lint
+        run: npm run lint
+
       - name: Build
         run: npm run build
 

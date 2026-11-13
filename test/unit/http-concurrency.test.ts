@@ -11,9 +11,6 @@ import { createKumaSession } from '../../src/server.js';
  * parallel, so that was a routine failure rather than an edge case.
  */
 
-// createKumaSession() registers a SIGINT and a SIGTERM handler per instance.
-process.setMaxListeners(50);
-
 const CONFIG = { url: 'http://localhost:3001', username: undefined, password: undefined, token: undefined, jwtToken: undefined };
 
 let listening: Server | undefined;

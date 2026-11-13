@@ -9,8 +9,6 @@ import { createServer, CHANGE_NOTHING_TOOLS, READ_ONLY_TOOLS, WRITE_TOOLS } from
  * and a read must never be advertised as a write or the reverse.
  */
 
-process.setMaxListeners(50);
-
 async function listTools() {
   const { server } = await createServer({
     url: 'http://localhost:3001', username: undefined, password: undefined, token: undefined, jwtToken: undefined,

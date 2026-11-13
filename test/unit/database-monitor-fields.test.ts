@@ -12,8 +12,6 @@ import { redactSecrets, SECRET_MARKER } from '../../src/redact.js';
  * with nothing to connect to.
  */
 
-process.setMaxListeners(50);
-
 const CONNECTION_STRING = 'mysql://monitor:s3cret-pw@db.internal:3306/app';
 
 const EXISTING_DB_MONITOR = {

@@ -2,14 +2,11 @@ import { io, Socket } from 'socket.io-client';
 import fuzzysort from 'fuzzysort';
 import type { LoggingLevel } from '@modelcontextprotocol/sdk/types.js';
 import type {
-  MonitorBase,
   MonitorBaseWithExtendedData,
   MonitorWithExtendedData,
   MonitorRawData,
-  Monitor,
   ApiResponse,
   LoginResponse,
-  GetMonitorResponse,
   MonitorList,
   MonitorSummary,
   Heartbeat,
@@ -29,6 +26,53 @@ import { normaliseMsg } from './utils/normalize-msg.js';
  * acknowledgement that never comes at all.
  */
 const FETCH_MONITOR_TIMEOUT_MS = 10_000;
+
+/**
+ * How long any other call waits for the server's acknowledgement. Longer than the read-back
+ * above because it also covers writes that make Uptime Kuma do real work before it answers
+ * (restarting a monitor, reaching a docker daemon).
+ */
+const ACK_TIMEOUT_MS = 30_000;
+
+/**
+ * Every event Uptime Kuma pushes that a cache is filled from. Listed once so that the
+ * listeners added at login and the ones removed again cannot drift apart.
+ */
+const DATA_EVENTS = [
+  'monitorList', 'updateMonitorIntoList', 'deleteMonitorFromList',
+  'heartbeatList', 'heartbeat', 'uptime', 'avgPing',
+  'notificationList', 'tagList', 'maintenanceList', 'statusPageList', 'dockerHostList',
+] as const;
+
+/** The heartbeat statuses the summary can be filtered by, under the names Uptime Kuma shows. */
+const STATUS_BY_NAME: Record<string, number> = { down: 0, up: 1, pending: 2, maintenance: 3 };
+
+/**
+ * Reads a `status` filter: comma-separated numbers or names, in any case. Blank means no
+ * filter.
+ *
+ * Throws on anything else. Dropping an entry it did not recognise left a filter of nothing,
+ * so "what is down?" asked as `status: "offline"` was answered with every monitor, and
+ * nothing in the answer said the filter had been ignored.
+ */
+function parseStatusFilter(status: string | undefined): number[] {
+  const statuses: number[] = [];
+  for (const raw of (status ?? '').split(',')) {
+    const token = raw.trim().toLowerCase();
+    if (token === '') continue;
+    if (token in STATUS_BY_NAME) {
+      statuses.push(STATUS_BY_NAME[token]);
+    } else if (/^[0-3]$/.test(token)) {
+      statuses.push(Number(token));
+    } else {
+      throw new Error(
+        `Unrecognised status "${raw.trim()}". Use 0 or down, 1 or up, 2 or pending, 3 or maintenance, `
+        + 'comma-separated for more than one.'
+      );
+    }
+  }
+  return statuses;
+}
 
 /**
  * Helper function to filter a MonitorWithExtendedData down to MonitorBaseWithExtendedData
@@ -55,6 +99,23 @@ function filterToBaseWithExtendedData(monitor: MonitorWithExtendedData): Monitor
   } as MonitorBaseWithExtendedData;
 }
 
+/** The filters listMonitors and getMonitorSummary share. */
+interface MonitorFilters {
+  keywords?: string;
+  type?: string;
+  active?: boolean;
+  maintenance?: boolean;
+  tags?: string;
+  parentId?: number | null;
+}
+
+/** A fuzzy keyword match has to score above this (0 = no match, 1 = perfect match). */
+const KEYWORD_MATCH_THRESHOLD = 0.3;
+
+/** Splits a comma-separated filter into its non-empty entries. */
+const splitList = (value: string | undefined): string[] =>
+  value ? value.split(',').map((entry) => entry.trim()).filter((entry) => entry.length > 0) : [];
+
 /**
  * Does `monitor` satisfy a `parentId` filter? Direct children only, matching Uptime Kuma's
  * own `parent` column — a grandchild belongs to its immediate group, not to the one above it.
@@ -62,16 +123,52 @@ function filterToBaseWithExtendedData(monitor: MonitorWithExtendedData): Monitor
  * The distinction this exists to protect: `undefined` means "no parent filter" while `null` is
  * a real, requestable value meaning "top level only". A truthiness check (`if (parentId)`)
  * conflates them AND silently drops group 0, so the branch is written out longhand.
- *
- * Shared by getMonitorList and getMonitorSummary. Both keep their own copy of the surrounding
- * filter loop, and the parent filter reaching only the first of them is exactly what had to be
- * fixed here — so the subtle half lives in one place rather than being copied a second time.
  */
 function matchesParentFilter(monitor: { parent?: number | null }, parentId: number | null | undefined): boolean {
   if (parentId === undefined) return true;
   const wanted = parentId === null ? null : Number(parentId);
   const actual = monitor.parent === null || monitor.parent === undefined ? null : Number(monitor.parent);
   return actual === wanted;
+}
+
+/**
+ * Builds the test a monitor has to pass to be listed. A monitor must pass every filter given.
+ *
+ * getMonitorList and getMonitorSummary each used to carry their own copy of this, and a filter
+ * added to one did not reach the other (the parent filter, issue #65).
+ */
+function monitorFilter(filters: MonitorFilters | undefined): (monitor: MonitorRawData) => boolean {
+  const keywords = filters?.keywords ? filters.keywords.trim().split(/\s+/) : [];
+  const types = splitList(filters?.type);
+  // Each tag filter is 'name' or 'name=value', compared without regard to case.
+  const tags = splitList(filters?.tags).map((entry) => {
+    const [name, value] = entry.split('=').map((part) => part.trim().toLowerCase());
+    return { name, value };
+  });
+
+  return (monitor) => {
+    if (!matchesParentFilter(monitor, filters?.parentId)) return false;
+
+    const pathName = monitor.pathName || '';
+    const matchesEveryKeyword = keywords.every((keyword) => {
+      const match = fuzzysort.single(keyword, pathName);
+      return match !== null && match.score > KEYWORD_MATCH_THRESHOLD;
+    });
+    if (!matchesEveryKeyword) return false;
+
+    if (types.length > 0 && !types.includes(monitor.type)) return false;
+    if (filters?.active !== undefined && monitor.active !== filters.active) return false;
+    if (filters?.maintenance !== undefined && monitor.maintenance !== filters.maintenance) return false;
+
+    const monitorTags = monitor.tags || [];
+    return tags.every((wanted) =>
+      monitorTags.some((tag) =>
+        tag.name.toLowerCase() === wanted.name
+        // With no value in the filter the name alone decides.
+        && (wanted.value === undefined || (tag.value?.toLowerCase() || '') === wanted.value)
+      )
+    );
+  };
 }
 
 /**
@@ -116,15 +213,104 @@ export class UptimeKumaClient {
   /**
    * Helper to safely log messages - only logs if server is available, connected, and level is enabled
    */
-  private async safeLog(level: LoggingLevel, data: string): Promise<void> {
-    if (this.server && this.shouldLog(level)) {
-      try {
-        await this.server.sendLoggingMessage({ level, data });
-      } catch (error) {
-        // Silently ignore logging errors to prevent breaking the application
-        // This handles the case where server is not yet connected to transport
-      }
+  private safeLog(level: LoggingLevel, data: string): void {
+    if (!this.server || !this.shouldLog(level)) return;
+    try {
+      // Logging must never break the caller: the server may not be connected to a transport
+      // yet, or may have just gone away.
+      this.server.sendLoggingMessage({ level, data }).catch(() => {});
+    } catch {
+      // as above, for a sink that throws instead of rejecting
     }
+  }
+
+  /**
+   * Emit an event and bound the wait for its acknowledgement.
+   *
+   * A disconnect between the emit and the acknowledgement leaves a socket.io callback that is
+   * never invoked, and a promise waiting on it never settles: the tool call hangs, and for a
+   * login so does every later call, since they all share the one in-flight login.
+   *
+   * When the answer does not come, the callback is given the failure in the shape Uptime Kuma
+   * itself uses (`{ ok: false, msg }`), so each caller's existing error path handles it.
+   */
+  private emitAck<R>(
+    event: string,
+    args: unknown[],
+    ack: (response: R) => void,
+    timeout: { ms: number; msg: string } = {
+      ms: ACK_TIMEOUT_MS,
+      msg: `No response from Uptime Kuma to "${event}" within ${ACK_TIMEOUT_MS / 1000} seconds; the connection may `
+        + 'have dropped. If this was a change, it may or may not have been applied, so check before trying again.',
+    }
+  ): void {
+    const socket = this.socket;
+    if (!socket) return;
+
+    let settled = false;
+    const timer = setTimeout(() => {
+      settled = true;
+      ack({ ok: false, msg: timeout.msg } as R);
+    }, timeout.ms);
+
+    socket.emit(event, ...args, (response: R) => {
+      // An answer that arrives after the wait was given up has nobody left to hear it.
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      ack(response);
+    });
+  }
+
+  /**
+   * Send one request to Uptime Kuma and wait for its answer: the shape nearly every call here
+   * has. Rejects when there is no connection, when the server answers `ok: false` (with its
+   * message, or `failure` when it gives none) and when it does not answer in time.
+   *
+   * `timeout` is for the read-backs, which wait a shorter time and say what they were reading.
+   */
+  private request<T extends object = object>(
+    event: string,
+    args: unknown[],
+    failure: string,
+    timeout?: { ms: number; msg: string }
+  ): Promise<ApiResponse & T> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      this.emitAck<ApiResponse & T>(event, args, (response) => {
+        if (response && response.ok) {
+          resolve(response);
+        } else {
+          reject(new Error((response && response.msg) || failure));
+        }
+      }, timeout);
+    });
+  }
+
+  /**
+   * A request that reads something back from the database after a write. Bounded more tightly
+   * than a write: this sits on the success path of every monitor and maintenance write, so a
+   * slow answer is worth waiting for and an answer that never comes is not.
+   */
+  private readBack<T extends object>(event: string, args: unknown[], what: string): Promise<ApiResponse & T> {
+    return this.request<T>(event, args, `Failed to fetch ${what}`, {
+      ms: FETCH_MONITOR_TIMEOUT_MS,
+      msg: `Timed out after ${FETCH_MONITOR_TIMEOUT_MS}ms waiting for the server to return ${what}`,
+    });
+  }
+
+  /**
+   * Remove the listeners login() adds. A socket that reconnects is the same socket, and the
+   * next tool call logs in on it again, so without this every reconnect left one more
+   * listener per event handling the same push.
+   */
+  private removeDataListeners(): void {
+    if (!this.socket) return;
+    for (const event of DATA_EVENTS) this.socket.off(event);
   }
 
   /** Report loss of the authenticated session to the server layer. */
@@ -216,7 +402,7 @@ export class UptimeKumaClient {
     const { username, password, token, jwtToken } = this.loginCredentials;
 
     if (jwtToken) {
-      this.socket.emit('loginByToken', jwtToken, (response: LoginResponse) => {
+      this.emitAck('loginByToken', [jwtToken], (response: LoginResponse) => {
         if (response.ok) {
           this.safeLog('info', 'Re-authenticated after reconnection (JWT)');
         } else {
@@ -227,7 +413,7 @@ export class UptimeKumaClient {
         }
       });
     } else if (username) {
-      this.socket.emit('login', { username, password, token }, (response: LoginResponse) => {
+      this.emitAck('login', [{ username, password, token }], (response: LoginResponse) => {
         if (response.ok) {
           this.safeLog('info', 'Re-authenticated after reconnection');
         } else {
@@ -248,17 +434,7 @@ export class UptimeKumaClient {
    */
   disconnect(): void {
     if (this.socket) {
-      // Remove event listeners
-      this.socket.off('monitorList');
-      this.socket.off('updateMonitorIntoList');
-      this.socket.off('deleteMonitorFromList');
-      this.socket.off('heartbeatList');
-      this.socket.off('heartbeat');
-      this.socket.off('notificationList');
-      this.socket.off('tagList');
-      this.socket.off('maintenanceList');
-      this.socket.off('statusPageList');
-      this.socket.off('dockerHostList');
+      this.removeDataListeners();
 
       this.socket.disconnect();
       this.socket = null;
@@ -295,7 +471,9 @@ export class UptimeKumaClient {
       // Store credentials for re-authentication on reconnect
       this.loginCredentials = { username, password, token, jwtToken };
 
-      // Set up listeners for monitor list and heartbeat updates before login
+      // Set up listeners for monitor list and heartbeat updates before login. Any left by an
+      // earlier login on this socket go first, so there is one per event however often we log in.
+      this.removeDataListeners();
       this.setupMonitorListListeners();
       this.setupHeartbeatListeners();
       this.setupUptimeListeners();
@@ -308,7 +486,7 @@ export class UptimeKumaClient {
 
       // If JWT token is provided, use token-based authentication
       if (jwtToken) {
-        this.socket.emit('loginByToken', jwtToken, (response: LoginResponse) => {
+        this.emitAck('loginByToken', [jwtToken], (response: LoginResponse) => {
           if (response.ok) {
             resolve(response);
           } else {
@@ -328,7 +506,7 @@ export class UptimeKumaClient {
         this.socket.emit('login');
         resolve({ ok: true, tokenRequired: false });
       } else {
-        this.socket.emit('login', loginData, (response: LoginResponse) => {
+        this.emitAck('login', [loginData], (response: LoginResponse) => {
           if (response.ok) {
             resolve(response);
           } else {
@@ -339,26 +517,14 @@ export class UptimeKumaClient {
     });
   }
 
-  getSettings(): Promise<GetSettingsResponse> {
-    return new Promise((resolve, reject) => {
-      if (!this.socket || !this.socket.connected) {
-        reject(new Error('Not connected to server'));
-        return;
-      }
+  async getSettings(): Promise<GetSettingsResponse> {
+    const response = await this.request<GetSettingsResponse>('getSettings', [], 'Failed to get settings');
+    if (!response.data) return response;
 
-      this.socket.emit('getSettings', (response: GetSettingsResponse) => {
-        if (response.ok && response.data) {
-          // Filter out sensitive fields like steamAPIKey
-          const { steamAPIKey, ...filteredData } = response.data as any;
-          this.safeLog('debug', 'Successfully retrieved settings from Uptime Kuma');
-          resolve({ ...response, data: filteredData as Settings });
-        } else if (response.ok) {
-          resolve(response);
-        } else {
-          reject(new Error(response.msg || 'Failed to get settings'));
-        }
-      });
-    });
+    // Filter out sensitive fields like steamAPIKey
+    const { steamAPIKey: _steamAPIKey, ...filteredData } = response.data as Settings & { steamAPIKey?: unknown };
+    this.safeLog('debug', 'Successfully retrieved settings from Uptime Kuma');
+    return { ...response, data: filteredData as Settings };
   }
 
   /**
@@ -367,22 +533,10 @@ export class UptimeKumaClient {
    * @param monitorID - The ID of the monitor to pause
    * @returns Promise resolving to the API response
    */
-  pauseMonitor(monitorID: number): Promise<ApiResponse> {
-    return new Promise((resolve, reject) => {
-      if (!this.socket || !this.socket.connected) {
-        reject(new Error('Not connected to server'));
-        return;
-      }
-
-      this.socket.emit('pauseMonitor', monitorID, (response: ApiResponse) => {
-        if (response.ok) {
-          this.safeLog('info', `Successfully paused monitor ${monitorID}`);
-          resolve(response);
-        } else {
-          reject(new Error(response.msg || 'Failed to pause monitor'));
-        }
-      });
-    });
+  async pauseMonitor(monitorID: number): Promise<ApiResponse> {
+    const response = await this.request('pauseMonitor', [monitorID], 'Failed to pause monitor');
+    this.safeLog('info', `Successfully paused monitor ${monitorID}`);
+    return response;
   }
 
   /**
@@ -391,22 +545,10 @@ export class UptimeKumaClient {
    * @param monitorID - The ID of the monitor to resume
    * @returns Promise resolving to the API response
    */
-  resumeMonitor(monitorID: number): Promise<ApiResponse> {
-    return new Promise((resolve, reject) => {
-      if (!this.socket || !this.socket.connected) {
-        reject(new Error('Not connected to server'));
-        return;
-      }
-
-      this.socket.emit('resumeMonitor', monitorID, (response: ApiResponse) => {
-        if (response.ok) {
-          this.safeLog('info', `Successfully resumed monitor ${monitorID}`);
-          resolve(response);
-        } else {
-          reject(new Error(response.msg || 'Failed to resume monitor'));
-        }
-      });
-    });
+  async resumeMonitor(monitorID: number): Promise<ApiResponse> {
+    const response = await this.request('resumeMonitor', [monitorID], 'Failed to resume monitor');
+    this.safeLog('info', `Successfully resumed monitor ${monitorID}`);
+    return response;
   }
 
   /**
@@ -417,18 +559,18 @@ export class UptimeKumaClient {
     if (!this.socket) return;
 
     // Listen for the full monitor list (sent after login or on major changes)
-    this.socket.on('monitorList', (monitorList: { [monitorID: string]: any }) => {
+    this.socket.on('monitorList', (monitorList: { [monitorID: string]: MonitorRawData }) => {
       const monitorCount = Object.keys(monitorList).length;
       this.safeLog('debug', `Received monitorList with ${monitorCount} monitors`);
-      this.monitorListCache = monitorList as { [monitorID: string]: MonitorRawData };
+      this.monitorListCache = monitorList;
     });
 
     // Listen for updates to specific monitors
-    this.socket.on('updateMonitorIntoList', (updates: { [monitorID: string]: any }) => {
+    this.socket.on('updateMonitorIntoList', (updates: { [monitorID: string]: MonitorRawData }) => {
       const updateCount = Object.keys(updates).length;
       const monitorIDs = Object.keys(updates).join(', ');
       this.safeLog('debug', `Received updateMonitorIntoList for ${updateCount} monitor(s): ${monitorIDs}`);
-      Object.assign(this.monitorListCache, updates as { [monitorID: string]: MonitorRawData });
+      Object.assign(this.monitorListCache, updates);
     });
 
     // Listen for monitor deletions
@@ -517,7 +659,7 @@ export class UptimeKumaClient {
     if (!this.socket) return;
 
     // Listen for the full heartbeat list (sent after login)
-    this.socket.on('heartbeatList', (monitorID: number, heartbeatList: Heartbeat[], overwrite?: boolean) => {
+    this.socket.on('heartbeatList', (monitorID: number, heartbeatList: Heartbeat[], _overwrite?: boolean) => {
       // Format: (monitorID, array of heartbeats, overwrite). The third argument is Kuma's
       // `overwrite` flag and has nothing to do with important/event beats, despite the
       // name it is often given.
@@ -632,6 +774,8 @@ export class UptimeKumaClient {
    */
   getMonitor<T extends boolean = true>(monitorID: number, includeTypeSpecificFields?: T): T extends true ? MonitorWithExtendedData | undefined : MonitorBaseWithExtendedData | undefined {
     const rawMonitor = this.monitorListCache[monitorID.toString()];
+    // The return type depends on the argument, which TypeScript cannot follow through the body.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see above
     if (!rawMonitor) return undefined as any;
     
     const monitorIDStr = monitorID.toString();
@@ -648,9 +792,11 @@ export class UptimeKumaClient {
     
     // If includeTypeSpecificFields is false, filter to base fields only (excluding type-specific fields)
     if (includeTypeSpecificFields === false) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- conditional return type, as above
       return filterToBaseWithExtendedData(fullMonitor) as any;
     }
     
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- conditional return type, as above
     return fullMonitor as any;
   }
 
@@ -661,85 +807,14 @@ export class UptimeKumaClient {
    * @param filters - Optional filter criteria
    * @returns The cached monitor list
    */
-  getMonitorList<T extends boolean = true>(filters?: {
-    keywords?: string;
-    type?: string;
-    active?: boolean;
-    maintenance?: boolean;
-    tags?: string;
-    parentId?: number | null;
-    includeTypeSpecificFields?: T;
-  }): MonitorList<T> {
+  getMonitorList<T extends boolean = true>(filters?: MonitorFilters & { includeTypeSpecificFields?: T }): MonitorList<T> {
     const result: MonitorList<true> = {};
 
-    // Parse keywords into an array
-    const keywordArray = filters?.keywords ? filters.keywords.trim().split(/\s+/) : [];
-
-    // Parse type filter from comma-separated string
-    const typeFilter = filters?.type ? filters.type.split(',').map(t => t.trim()).filter(t => t.length > 0) : [];
-
-    // Parse tag filter from comma-separated string
-    const tagFilter = filters?.tags ? filters.tags.split(',').map(t => t.trim()).filter(t => t.length > 0) : [];
+    const matches = monitorFilter(filters);
 
     for (const [monitorID, monitor] of Object.entries(this.monitorListCache)) {
-      // Filter by parent group — direct children only, matching Uptime Kuma's `parent` column
-      if (!matchesParentFilter(monitor, filters?.parentId)) {
-        continue;
-      }
+      if (!matches(monitor)) continue;
 
-    // Filter by keywords if provided using fuzzy matching
-    if (keywordArray.length > 0) {
-      const pathName = monitor.pathName || '';
-      const matchesAllKeywords = keywordArray.every(keyword => {
-        const result = fuzzysort.single(keyword, pathName);
-          return result && result.score > 0.3;
-        });
-        if (!matchesAllKeywords) {
-          continue;
-        }
-      }
-      
-      // Filter by type
-      if (typeFilter.length > 0 && !typeFilter.includes(monitor.type)) {
-        continue;
-      }
-      
-      // Filter by active status
-      if (filters?.active !== undefined && monitor.active !== filters.active) {
-        continue;
-      }
-      
-      // Filter by maintenance status
-      if (filters?.maintenance !== undefined && monitor.maintenance !== filters.maintenance) {
-        continue;
-      }
-      
-      // Filter by tags (name and optional value)
-      if (tagFilter.length > 0) {
-        const monitorTags = monitor.tags || [];
-        const hasAllTags = tagFilter.every(tagFilter => {
-          // Parse tag filter as 'name' or 'name=value'
-          const [filterName, filterValue] = tagFilter.split('=').map(s => s.trim().toLowerCase());
-          
-          return monitorTags.some(tag => {
-            const tagNameMatches = tag.name.toLowerCase() === filterName;
-            
-            // If no value specified in filter, just match name
-            if (filterValue === undefined) {
-              return tagNameMatches;
-            }
-            
-            // If value specified, match both name and value
-            const tagValue = tag.value?.toLowerCase() || '';
-            return tagNameMatches && tagValue === filterValue;
-          });
-        });
-        
-        if (!hasAllTags) {
-          continue;
-        }
-      }
-      
       const avgPing = monitorID in this.avgPingCache ? this.avgPingCache[monitorID] : undefined;
       
       const fullMonitor: MonitorWithExtendedData = {
@@ -750,9 +825,9 @@ export class UptimeKumaClient {
       
       // If includeTypeSpecificFields is false, filter to base fields only (excluding type-specific fields)
       if (filters?.includeTypeSpecificFields === false) {
-        result[monitorID] = filterToBaseWithExtendedData(fullMonitor) as any;
+        result[monitorID] = filterToBaseWithExtendedData(fullMonitor) as MonitorWithExtendedData;
       } else {
-        result[monitorID] = fullMonitor as any;
+        result[monitorID] = fullMonitor;
       }
     }
     
@@ -826,27 +901,13 @@ export class UptimeKumaClient {
    * @param offset - Pagination offset
    * @returns Array of important heartbeats, newest-first
    */
-  fetchImportantHeartbeats(monitorID: number, count: number = 25, offset: number = 0): Promise<Heartbeat[]> {
-    return new Promise((resolve, reject) => {
-      if (!this.socket || !this.socket.connected) {
-        reject(new Error('Not connected to server'));
-        return;
-      }
-
-      this.socket.emit(
-        'monitorImportantHeartbeatListPaged',
-        monitorID,
-        offset,
-        count,
-        (response: ApiResponse & { data?: Heartbeat[] }) => {
-          if (response && response.ok) {
-            resolve(UptimeKumaClient.normaliseBeats(response.data || []));
-          } else {
-            reject(new Error(response?.msg || 'Failed to fetch important heartbeats'));
-          }
-        }
-      );
-    });
+  async fetchImportantHeartbeats(monitorID: number, count: number = 25, offset: number = 0): Promise<Heartbeat[]> {
+    const response = await this.request<{ data?: Heartbeat[] }>(
+      'monitorImportantHeartbeatListPaged',
+      [monitorID, offset, count],
+      'Failed to fetch important heartbeats'
+    );
+    return UptimeKumaClient.normaliseBeats(response.data || []);
   }
 
   /**
@@ -855,90 +916,15 @@ export class UptimeKumaClient {
    * @param filters - Optional filter criteria
    * @returns Array of monitor summaries containing essential info and latest heartbeat status
    */
-  getMonitorSummary(filters?: {
-    keywords?: string;
-    type?: string;
-    active?: boolean;
-    maintenance?: boolean;
-    tags?: string;
-    parentId?: number | null;
-    status?: string;
-  }): MonitorSummary[] {
+  getMonitorSummary(filters?: MonitorFilters & { status?: string }): MonitorSummary[] {
     const summaries = [];
     
-    // Parse keywords into an array
-    const keywordArray = filters?.keywords ? filters.keywords.trim().split(/\s+/) : [];
-    
-    // Parse type filter from comma-separated string
-    const typeFilter = filters?.type ? filters.type.split(',').map(t => t.trim()).filter(t => t.length > 0) : [];
-    
-    // Parse tag filter from comma-separated string
-    const tagFilter = filters?.tags ? filters.tags.split(',').map(t => t.trim()).filter(t => t.length > 0) : [];
-    
-    // Parse status filter from comma-separated string
-    const statusFilter = filters?.status ? filters.status.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n)) : [];
-    
-    for (const [monitorID, monitor] of Object.entries(this.monitorListCache)) {
-      // Filter by parent group — direct children only, matching Uptime Kuma's `parent` column
-      if (!matchesParentFilter(monitor, filters?.parentId)) {
-        continue;
-      }
+    const matches = monitorFilter(filters);
+    const statusFilter = parseStatusFilter(filters?.status);
 
-      // Filter by keywords if provided using fuzzy matching
-      if (keywordArray.length > 0) {
-        const pathName = monitor.pathName || '';
-        // All keywords must match with a reasonable score
-        const matchesAllKeywords = keywordArray.every(keyword => {
-          const result = fuzzysort.single(keyword, pathName);
-          // Accept matches with score > 0.3 (0 = no match, 1 = perfect match)
-          return result && result.score > 0.3;
-        });
-        if (!matchesAllKeywords) {
-          continue;
-        }
-      }
-      
-      // Filter by type
-      if (typeFilter.length > 0 && !typeFilter.includes(monitor.type)) {
-        continue;
-      }
-      
-      // Filter by active status
-      if (filters?.active !== undefined && monitor.active !== filters.active) {
-        continue;
-      }
-      
-      // Filter by maintenance status
-      if (filters?.maintenance !== undefined && monitor.maintenance !== filters.maintenance) {
-        continue;
-      }
-      
-      // Filter by tags (name and optional value)
-      if (tagFilter.length > 0) {
-        const monitorTags = monitor.tags || [];
-        const hasAllTags = tagFilter.every(tagFilter => {
-          // Parse tag filter as 'name' or 'name=value'
-          const [filterName, filterValue] = tagFilter.split('=').map(s => s.trim().toLowerCase());
-          
-          return monitorTags.some(tag => {
-            const tagNameMatches = tag.name.toLowerCase() === filterName;
-            
-            // If no value specified in filter, just match name
-            if (filterValue === undefined) {
-              return tagNameMatches;
-            }
-            
-            // If value specified, match both name and value
-            const tagValue = tag.value?.toLowerCase() || '';
-            return tagNameMatches && tagValue === filterValue;
-          });
-        });
-        
-        if (!hasAllTags) {
-          continue;
-        }
-      }
-      
+    for (const [monitorID, monitor] of Object.entries(this.monitorListCache)) {
+      if (!matches(monitor)) continue;
+
       // Get the most recent heartbeat for this monitor. Routed through getLatestHeartbeat
       // so "current state" has exactly one definition.
       const latestHeartbeat = this.getLatestHeartbeat(Number(monitorID));
@@ -983,9 +969,9 @@ export class UptimeKumaClient {
 
   private setupNotificationListListeners(): void {
     if (!this.socket) return;
-    this.socket.on('notificationList', (notificationList: { [id: string]: any }) => {
+    this.socket.on('notificationList', (notificationList: { [id: string]: Notification }) => {
       this.safeLog('debug', `Received notificationList with ${Object.keys(notificationList).length} notifications`);
-      this.notificationListCache = notificationList as { [id: string]: Notification };
+      this.notificationListCache = notificationList;
     });
   }
 
@@ -1000,17 +986,17 @@ export class UptimeKumaClient {
 
   private setupMaintenanceListListeners(): void {
     if (!this.socket) return;
-    this.socket.on('maintenanceList', (maintenanceList: { [id: string]: any }) => {
+    this.socket.on('maintenanceList', (maintenanceList: { [id: string]: Maintenance }) => {
       this.safeLog('debug', `Received maintenanceList with ${Object.keys(maintenanceList).length} windows`);
-      this.maintenanceListCache = maintenanceList as { [id: string]: Maintenance };
+      this.maintenanceListCache = maintenanceList;
     });
   }
 
   private setupStatusPageListListeners(): void {
     if (!this.socket) return;
-    this.socket.on('statusPageList', (statusPageList: { [slug: string]: any }) => {
+    this.socket.on('statusPageList', (statusPageList: { [slug: string]: StatusPage }) => {
       this.safeLog('debug', `Received statusPageList with ${Object.keys(statusPageList).length} status pages`);
-      this.statusPageListCache = statusPageList as { [slug: string]: StatusPage };
+      this.statusPageListCache = statusPageList;
     });
   }
 
@@ -1035,21 +1021,8 @@ export class UptimeKumaClient {
   async createMonitor(monitorData: Record<string, unknown>): Promise<ApiResponse & { monitorID?: number }> {
     const { tags, ...payload } = monitorData as { tags?: Array<Record<string, unknown>> };
 
-    const response = await new Promise<ApiResponse & { monitorID?: number }>((resolve, reject) => {
-      if (!this.socket || !this.socket.connected) {
-        reject(new Error('Not connected to server'));
-        return;
-      }
-
-      this.socket.emit('add', payload, (res: ApiResponse & { monitorID?: number }) => {
-        if (res.ok) {
-          this.safeLog('info', `Successfully created monitor (ID: ${res.monitorID})`);
-          resolve(res);
-        } else {
-          reject(new Error(res.msg || 'Failed to create monitor'));
-        }
-      });
-    });
+    const response = await this.request<{ monitorID?: number }>('add', [payload], 'Failed to create monitor');
+    this.safeLog('info', `Successfully created monitor (ID: ${response.monitorID})`);
 
     if (tags && Array.isArray(tags) && response.monitorID != null) {
       await this.reconcileMonitorTags(response.monitorID, tags);
@@ -1071,21 +1044,8 @@ export class UptimeKumaClient {
   async updateMonitor(monitorData: Record<string, unknown>): Promise<ApiResponse & { monitorID?: number }> {
     const { tags, ...payload } = monitorData as { tags?: Array<Record<string, unknown>> };
 
-    const response = await new Promise<ApiResponse & { monitorID?: number }>((resolve, reject) => {
-      if (!this.socket || !this.socket.connected) {
-        reject(new Error('Not connected to server'));
-        return;
-      }
-
-      this.socket.emit('editMonitor', payload, (res: ApiResponse & { monitorID?: number }) => {
-        if (res.ok) {
-          this.safeLog('info', `Successfully updated monitor (ID: ${monitorData['id']})`);
-          resolve(res);
-        } else {
-          reject(new Error(res.msg || 'Failed to update monitor'));
-        }
-      });
-    });
+    const response = await this.request<{ monitorID?: number }>('editMonitor', [payload], 'Failed to update monitor');
+    this.safeLog('info', `Successfully updated monitor (ID: ${monitorData['id']})`);
 
     if (tags && Array.isArray(tags) && monitorData['id'] != null) {
       await this.reconcileMonitorTags(Number(monitorData['id']), tags);
@@ -1100,53 +1060,30 @@ export class UptimeKumaClient {
    * so relying on the push-populated cache returns stale (often empty) data.
    * This method also refreshes `tagListCache` so subsequent cache reads work.
    */
-  private fetchTagList(): Promise<Array<{ id: number; name: string; color: string }>> {
-    return new Promise((resolve, reject) => {
-      if (!this.socket || !this.socket.connected) {
-        reject(new Error('Not connected to server'));
-        return;
-      }
-      this.socket.emit('getTags', (res: ApiResponse & { tags?: Array<{ id: number; name: string; color: string }> }) => {
-        if (res.ok && res.tags) {
-          this.tagListCache = res.tags;
-          resolve(res.tags);
-        } else {
-          reject(new Error(res.msg || 'Failed to fetch tag list'));
-        }
-      });
-    });
+  private async fetchTagList(): Promise<Array<{ id: number; name: string; color: string }>> {
+    const response = await this.request<{ tags?: Array<{ id: number; name: string; color: string }> }>(
+      'getTags',
+      [],
+      'Failed to fetch tag list'
+    );
+    if (!response.tags) throw new Error(response.msg || 'Failed to fetch tag list');
+
+    this.tagListCache = response.tags;
+    return response.tags;
   }
 
   /**
    * Bind a tag to a monitor (socket: `addMonitorTag`).
    */
   private addMonitorTag(tagID: number, monitorID: number, value: string): Promise<ApiResponse> {
-    return new Promise((resolve, reject) => {
-      if (!this.socket || !this.socket.connected) {
-        reject(new Error('Not connected to server'));
-        return;
-      }
-      this.socket.emit('addMonitorTag', tagID, monitorID, value, (res: ApiResponse) => {
-        if (res.ok) resolve(res);
-        else reject(new Error(res.msg || `Failed to add tag ${tagID} to monitor ${monitorID}`));
-      });
-    });
+    return this.request('addMonitorTag', [tagID, monitorID, value], `Failed to add tag ${tagID} to monitor ${monitorID}`);
   }
 
   /**
    * Unbind a tag from a monitor (socket: `deleteMonitorTag`).
    */
   private deleteMonitorTag(tagID: number, monitorID: number, value: string): Promise<ApiResponse> {
-    return new Promise((resolve, reject) => {
-      if (!this.socket || !this.socket.connected) {
-        reject(new Error('Not connected to server'));
-        return;
-      }
-      this.socket.emit('deleteMonitorTag', tagID, monitorID, value, (res: ApiResponse) => {
-        if (res.ok) resolve(res);
-        else reject(new Error(res.msg || `Failed to remove tag ${tagID} from monitor ${monitorID}`));
-      });
-    });
+    return this.request('deleteMonitorTag', [tagID, monitorID, value], `Failed to remove tag ${tagID} from monitor ${monitorID}`);
   }
 
   /**
@@ -1213,7 +1150,7 @@ export class UptimeKumaClient {
           freshTags.find((ft) => ft.name === name)?.color ?? '#808080';
         return { tag_id: tagID, name, value, color };
       });
-      (this.monitorListCache[String(monitorID)] as any).tags = updatedTags;
+      this.monitorListCache[String(monitorID)].tags = updatedTags;
     }
   }
 
@@ -1234,33 +1171,11 @@ export class UptimeKumaClient {
    * @param monitorID - The ID of the monitor to fetch
    * @returns Promise resolving to the monitor exactly as stored server-side
    */
-  fetchMonitor(monitorID: number): Promise<Record<string, unknown>> {
-    return new Promise((resolve, reject) => {
-      if (!this.socket || !this.socket.connected) {
-        reject(new Error('Not connected to server'));
-        return;
-      }
-
-      let settled = false;
-      const timer = setTimeout(() => {
-        settled = true;
-        reject(
-          new Error(
-            `Timed out after ${FETCH_MONITOR_TIMEOUT_MS}ms waiting for the server to return monitor ${monitorID}`
-          )
-        );
-      }, FETCH_MONITOR_TIMEOUT_MS);
-
-      this.socket.emit('getMonitor', monitorID, (response: ApiResponse & { monitor?: Record<string, unknown> }) => {
-        if (settled) return;
-        clearTimeout(timer);
-        if (response && response.ok && response.monitor) {
-          resolve(response.monitor);
-        } else {
-          reject(new Error((response && response.msg) || `Failed to fetch monitor ${monitorID}`));
-        }
-      });
-    });
+  async fetchMonitor(monitorID: number): Promise<Record<string, unknown>> {
+    const what = `monitor ${monitorID}`;
+    const response = await this.readBack<{ monitor?: Record<string, unknown> }>('getMonitor', [monitorID], what);
+    if (!response.monitor) throw new Error(response.msg || `Failed to fetch ${what}`);
+    return response.monitor;
   }
 
   /**
@@ -1269,22 +1184,10 @@ export class UptimeKumaClient {
    * @param monitorID - The ID of the monitor to delete
    * @returns Promise resolving to the API response
    */
-  deleteMonitor(monitorID: number): Promise<ApiResponse> {
-    return new Promise((resolve, reject) => {
-      if (!this.socket || !this.socket.connected) {
-        reject(new Error('Not connected to server'));
-        return;
-      }
-
-      this.socket.emit('deleteMonitor', monitorID, (response: ApiResponse) => {
-        if (response.ok) {
-          this.safeLog('info', `Successfully deleted monitor ${monitorID}`);
-          resolve(response);
-        } else {
-          reject(new Error(response.msg || 'Failed to delete monitor'));
-        }
-      });
-    });
+  async deleteMonitor(monitorID: number): Promise<ApiResponse> {
+    const response = await this.request('deleteMonitor', [monitorID], 'Failed to delete monitor');
+    this.safeLog('info', `Successfully deleted monitor ${monitorID}`);
+    return response;
   }
 
   // ─── Notification operations ────────────────────────────────────────────────
@@ -1303,23 +1206,14 @@ export class UptimeKumaClient {
    * @param notificationID - If provided, updates existing; otherwise creates new
    * @returns Promise resolving to the API response with the notification id
    */
-  addNotification(notification: Record<string, unknown>, notificationID?: number): Promise<ApiResponse & { id?: number }> {
-    return new Promise((resolve, reject) => {
-      if (!this.socket || !this.socket.connected) {
-        reject(new Error('Not connected to server'));
-        return;
-      }
-
-      const id = notificationID ?? null;
-      this.socket.emit('addNotification', notification, id, (response: ApiResponse & { id?: number }) => {
-        if (response.ok) {
-          this.safeLog('info', `Successfully saved notification (ID: ${response.id})`);
-          resolve(response);
-        } else {
-          reject(new Error(response.msg || 'Failed to save notification'));
-        }
-      });
-    });
+  async addNotification(notification: Record<string, unknown>, notificationID?: number): Promise<ApiResponse & { id?: number }> {
+    const response = await this.request<{ id?: number }>(
+      'addNotification',
+      [notification, notificationID ?? null],
+      'Failed to save notification'
+    );
+    this.safeLog('info', `Successfully saved notification (ID: ${response.id})`);
+    return response;
   }
 
   /**
@@ -1328,22 +1222,10 @@ export class UptimeKumaClient {
    * @param notificationID - The ID of the notification to delete
    * @returns Promise resolving to the API response
    */
-  deleteNotification(notificationID: number): Promise<ApiResponse> {
-    return new Promise((resolve, reject) => {
-      if (!this.socket || !this.socket.connected) {
-        reject(new Error('Not connected to server'));
-        return;
-      }
-
-      this.socket.emit('deleteNotification', notificationID, (response: ApiResponse) => {
-        if (response.ok) {
-          this.safeLog('info', `Successfully deleted notification ${notificationID}`);
-          resolve(response);
-        } else {
-          reject(new Error(response.msg || 'Failed to delete notification'));
-        }
-      });
-    });
+  async deleteNotification(notificationID: number): Promise<ApiResponse> {
+    const response = await this.request('deleteNotification', [notificationID], 'Failed to delete notification');
+    this.safeLog('info', `Successfully deleted notification ${notificationID}`);
+    return response;
   }
 
   // ─── Docker host operations ─────────────────────────────────────────────────
@@ -1362,23 +1244,14 @@ export class UptimeKumaClient {
    * @param dockerHostID - If provided, updates existing; otherwise creates new
    * @returns Promise resolving to the API response with the docker host id
    */
-  addDockerHost(dockerHost: Record<string, unknown>, dockerHostID?: number): Promise<ApiResponse & { id?: number }> {
-    return new Promise((resolve, reject) => {
-      if (!this.socket || !this.socket.connected) {
-        reject(new Error('Not connected to server'));
-        return;
-      }
-
-      const id = dockerHostID ?? null;
-      this.socket.emit('addDockerHost', dockerHost, id, (response: ApiResponse & { id?: number }) => {
-        if (response.ok) {
-          this.safeLog('info', `Successfully saved docker host (ID: ${response.id})`);
-          resolve(response);
-        } else {
-          reject(new Error(response.msg || 'Failed to save docker host'));
-        }
-      });
-    });
+  async addDockerHost(dockerHost: Record<string, unknown>, dockerHostID?: number): Promise<ApiResponse & { id?: number }> {
+    const response = await this.request<{ id?: number }>(
+      'addDockerHost',
+      [dockerHost, dockerHostID ?? null],
+      'Failed to save docker host'
+    );
+    this.safeLog('info', `Successfully saved docker host (ID: ${response.id})`);
+    return response;
   }
 
   /**
@@ -1388,22 +1261,10 @@ export class UptimeKumaClient {
    * @param dockerHostID - The ID of the docker host to delete
    * @returns Promise resolving to the API response
    */
-  deleteDockerHost(dockerHostID: number): Promise<ApiResponse> {
-    return new Promise((resolve, reject) => {
-      if (!this.socket || !this.socket.connected) {
-        reject(new Error('Not connected to server'));
-        return;
-      }
-
-      this.socket.emit('deleteDockerHost', dockerHostID, (response: ApiResponse) => {
-        if (response.ok) {
-          this.safeLog('info', `Successfully deleted docker host ${dockerHostID}`);
-          resolve(response);
-        } else {
-          reject(new Error(response.msg || 'Failed to delete docker host'));
-        }
-      });
-    });
+  async deleteDockerHost(dockerHostID: number): Promise<ApiResponse> {
+    const response = await this.request('deleteDockerHost', [dockerHostID], 'Failed to delete docker host');
+    this.safeLog('info', `Successfully deleted docker host ${dockerHostID}`);
+    return response;
   }
 
   /**
@@ -1420,7 +1281,7 @@ export class UptimeKumaClient {
         return;
       }
 
-      this.socket.emit('testDockerHost', dockerHost, (response: ApiResponse) => {
+      this.emitAck('testDockerHost', [dockerHost], (response: ApiResponse) => {
         // Resolve either way so callers can inspect ok/msg without try/catch
         // (matches the pattern used by UK's UI, which shows both success and
         // failure messages from the same callback).
@@ -1451,22 +1312,14 @@ export class UptimeKumaClient {
    * @param color - Tag color (hex string, e.g. '#ff0000')
    * @returns Promise resolving to the created tag object
    */
-  addTag(name: string, color: string): Promise<ApiResponse & { tag?: { id: number; name: string; color: string } }> {
-    return new Promise((resolve, reject) => {
-      if (!this.socket || !this.socket.connected) {
-        reject(new Error('Not connected to server'));
-        return;
-      }
-
-      this.socket.emit('addTag', { name, color }, (response: ApiResponse & { tag?: { id: number; name: string; color: string } }) => {
-        if (response.ok) {
-          this.safeLog('info', `Successfully created tag "${name}" (ID: ${response.tag?.id})`);
-          resolve(response);
-        } else {
-          reject(new Error(response.msg || 'Failed to create tag'));
-        }
-      });
-    });
+  async addTag(name: string, color: string): Promise<ApiResponse & { tag?: { id: number; name: string; color: string } }> {
+    const response = await this.request<{ tag?: { id: number; name: string; color: string } }>(
+      'addTag',
+      [{ name, color }],
+      'Failed to create tag'
+    );
+    this.safeLog('info', `Successfully created tag "${name}" (ID: ${response.tag?.id})`);
+    return response;
   }
 
   /**
@@ -1475,22 +1328,10 @@ export class UptimeKumaClient {
    * @param tagID - The ID of the tag to delete
    * @returns Promise resolving to the API response
    */
-  deleteTag(tagID: number): Promise<ApiResponse> {
-    return new Promise((resolve, reject) => {
-      if (!this.socket || !this.socket.connected) {
-        reject(new Error('Not connected to server'));
-        return;
-      }
-
-      this.socket.emit('deleteTag', tagID, (response: ApiResponse) => {
-        if (response.ok) {
-          this.safeLog('info', `Successfully deleted tag ${tagID}`);
-          resolve(response);
-        } else {
-          reject(new Error(response.msg || 'Failed to delete tag'));
-        }
-      });
-    });
+  async deleteTag(tagID: number): Promise<ApiResponse> {
+    const response = await this.request('deleteTag', [tagID], 'Failed to delete tag');
+    this.safeLog('info', `Successfully deleted tag ${tagID}`);
+    return response;
   }
 
   // ─── Maintenance operations ─────────────────────────────────────────────────
@@ -1508,22 +1349,14 @@ export class UptimeKumaClient {
    * @param maintenanceData - Maintenance window configuration
    * @returns Promise resolving to the API response with the maintenance ID
    */
-  createMaintenance(maintenanceData: Record<string, unknown>): Promise<ApiResponse & { maintenanceID?: number }> {
-    return new Promise((resolve, reject) => {
-      if (!this.socket || !this.socket.connected) {
-        reject(new Error('Not connected to server'));
-        return;
-      }
-
-      this.socket.emit('addMaintenance', maintenanceData, (response: ApiResponse & { maintenanceID?: number }) => {
-        if (response.ok) {
-          this.safeLog('info', `Successfully created maintenance window (ID: ${response.maintenanceID})`);
-          resolve(response);
-        } else {
-          reject(new Error(response.msg || 'Failed to create maintenance window'));
-        }
-      });
-    });
+  async createMaintenance(maintenanceData: Record<string, unknown>): Promise<ApiResponse & { maintenanceID?: number }> {
+    const response = await this.request<{ maintenanceID?: number }>(
+      'addMaintenance',
+      [maintenanceData],
+      'Failed to create maintenance window'
+    );
+    this.safeLog('info', `Successfully created maintenance window (ID: ${response.maintenanceID})`);
+    return response;
   }
 
   /**
@@ -1536,22 +1369,14 @@ export class UptimeKumaClient {
    * @param maintenanceData - The complete maintenance window, including its id
    * @returns Promise resolving to the API response
    */
-  editMaintenance(maintenanceData: Record<string, unknown>): Promise<ApiResponse & { maintenanceID?: number }> {
-    return new Promise((resolve, reject) => {
-      if (!this.socket || !this.socket.connected) {
-        reject(new Error('Not connected to server'));
-        return;
-      }
-
-      this.socket.emit('editMaintenance', maintenanceData, (response: ApiResponse & { maintenanceID?: number }) => {
-        if (response.ok) {
-          this.safeLog('info', `Successfully updated maintenance window ${maintenanceData.id}`);
-          resolve(response);
-        } else {
-          reject(new Error(response.msg || `Failed to update maintenance window ${maintenanceData.id}`));
-        }
-      });
-    });
+  async editMaintenance(maintenanceData: Record<string, unknown>): Promise<ApiResponse & { maintenanceID?: number }> {
+    const response = await this.request<{ maintenanceID?: number }>(
+      'editMaintenance',
+      [maintenanceData],
+      `Failed to update maintenance window ${maintenanceData.id}`
+    );
+    this.safeLog('info', `Successfully updated maintenance window ${maintenanceData.id}`);
+    return response;
   }
 
   /**
@@ -1566,7 +1391,7 @@ export class UptimeKumaClient {
    * @returns Promise resolving to the window exactly as stored server-side
    */
   fetchMaintenance(maintenanceID: number): Promise<Record<string, unknown>> {
-    return this.emitWithTimeout<{ maintenance?: Record<string, unknown> }>(
+    return this.readBack<{ maintenance?: Record<string, unknown> }>(
       'getMaintenance',
       [maintenanceID],
       `maintenance window ${maintenanceID}`
@@ -1585,7 +1410,7 @@ export class UptimeKumaClient {
    * @returns Promise resolving to the monitor IDs, read from the database
    */
   getMonitorMaintenance(maintenanceID: number): Promise<number[]> {
-    return this.emitWithTimeout<{ monitors?: Array<{ id: number }> }>(
+    return this.readBack<{ monitors?: Array<{ id: number }> }>(
       'getMonitorMaintenance',
       [maintenanceID],
       `the monitors of maintenance window ${maintenanceID}`
@@ -1603,23 +1428,14 @@ export class UptimeKumaClient {
    * @param monitorIDs - The complete list of monitor IDs the window should cover
    * @returns Promise resolving to the API response
    */
-  setMonitorMaintenance(maintenanceID: number, monitorIDs: number[]): Promise<ApiResponse> {
-    return new Promise((resolve, reject) => {
-      if (!this.socket || !this.socket.connected) {
-        reject(new Error('Not connected to server'));
-        return;
-      }
-
-      const monitors = monitorIDs.map((id) => ({ id }));
-      this.socket.emit('addMonitorMaintenance', maintenanceID, monitors, (response: ApiResponse) => {
-        if (response.ok) {
-          this.safeLog('info', `Set ${monitorIDs.length} monitor(s) on maintenance window ${maintenanceID}`);
-          resolve(response);
-        } else {
-          reject(new Error(response.msg || `Failed to set monitors on maintenance window ${maintenanceID}`));
-        }
-      });
-    });
+  async setMonitorMaintenance(maintenanceID: number, monitorIDs: number[]): Promise<ApiResponse> {
+    const response = await this.request(
+      'addMonitorMaintenance',
+      [maintenanceID, monitorIDs.map((id) => ({ id }))],
+      `Failed to set monitors on maintenance window ${maintenanceID}`
+    );
+    this.safeLog('info', `Set ${monitorIDs.length} monitor(s) on maintenance window ${maintenanceID}`);
+    return response;
   }
 
   /**
@@ -1663,56 +1479,15 @@ export class UptimeKumaClient {
    * time this resolves.
    */
   refreshMaintenanceList(): Promise<Maintenance[]> {
-    return this.emitWithTimeout('getMaintenanceList', [], 'the maintenance window list').then(() =>
+    return this.readBack('getMaintenanceList', [], 'the maintenance window list').then(() =>
       this.getMaintenanceList()
     );
   }
 
-  private emitMaintenanceAction(event: string, maintenanceID: number, verb: string): Promise<ApiResponse> {
-    return new Promise((resolve, reject) => {
-      if (!this.socket || !this.socket.connected) {
-        reject(new Error('Not connected to server'));
-        return;
-      }
-
-      this.socket.emit(event, maintenanceID, (response: ApiResponse) => {
-        if (response.ok) {
-          this.safeLog('info', `Successfully ran ${verb} on maintenance window ${maintenanceID}`);
-          resolve(response);
-        } else {
-          reject(new Error(response.msg || `Failed to ${verb} maintenance window ${maintenanceID}`));
-        }
-      });
-    });
-  }
-
-  /**
-   * Emit a read event and wait for its acknowledgement, bounded by the same timeout as
-   * fetchMonitor() — a disconnect between emit and ack leaves a callback that never fires.
-   */
-  private emitWithTimeout<T extends object>(event: string, args: unknown[], what: string): Promise<ApiResponse & T> {
-    return new Promise((resolve, reject) => {
-      if (!this.socket || !this.socket.connected) {
-        reject(new Error('Not connected to server'));
-        return;
-      }
-
-      let settled = false;
-      const timer = setTimeout(() => {
-        settled = true;
-        reject(new Error(`Timed out after ${FETCH_MONITOR_TIMEOUT_MS}ms waiting for the server to return ${what}`));
-      }, FETCH_MONITOR_TIMEOUT_MS);
-
-      this.socket.emit(event, ...args, (response: ApiResponse & T) => {
-        if (settled) return;
-        clearTimeout(timer);
-        if (response && response.ok) {
-          resolve(response);
-        } else {
-          reject(new Error((response && response.msg) || `Failed to fetch ${what}`));
-        }
-      });
-    });
+  private async emitMaintenanceAction(event: string, maintenanceID: number, verb: string): Promise<ApiResponse> {
+    const response = await this.request(event, [maintenanceID], `Failed to ${verb} maintenance window ${maintenanceID}`);
+    this.safeLog('info', `Successfully ran ${verb} on maintenance window ${maintenanceID}`);
+    return response;
   }
 
   // ─── Status page operations ─────────────────────────────────────────────────
@@ -1729,20 +1504,10 @@ export class UptimeKumaClient {
    * StatusPage.toJSON(): every field saveStatusPage takes, including domainNameList, but not
    * the groups).
    */
-  getStatusPageConfig(slug: string): Promise<StatusPage & Record<string, unknown>> {
-    return new Promise((resolve, reject) => {
-      if (!this.socket || !this.socket.connected) {
-        reject(new Error('Not connected to server'));
-        return;
-      }
-      this.socket.emit('getStatusPage', slug, (response: ApiResponse & { config?: StatusPage }) => {
-        if (response.ok && response.config) {
-          resolve(response.config as StatusPage & Record<string, unknown>);
-        } else {
-          reject(new Error(response.msg || `Status page ${slug} not found`));
-        }
-      });
-    });
+  async getStatusPageConfig(slug: string): Promise<StatusPage & Record<string, unknown>> {
+    const response = await this.request<{ config?: StatusPage }>('getStatusPage', [slug], `Status page ${slug} not found`);
+    if (!response.config) throw new Error(response.msg || `Status page ${slug} not found`);
+    return response.config as StatusPage & Record<string, unknown>;
   }
 
   /**
@@ -1777,7 +1542,13 @@ export class UptimeKumaClient {
       const baseUrl = this.url.replace(/\/$/, '');
       // Uptime Kuma caches this route for 5 minutes and only clears that on a save, so a page
       // read after other changes (a monitor deleted, say) could be stale. Unique query, fresh read.
-      const res = await fetch(`${baseUrl}/api/status-page/${encodeURIComponent(slug)}?_=${Date.now()}`);
+      //
+      // The extra headers go on this request as on the socket: a proxy that guards Uptime Kuma
+      // guards this route too (issue #95). And it is bounded, like the socket reads.
+      const res = await fetch(`${baseUrl}/api/status-page/${encodeURIComponent(slug)}?_=${Date.now()}`, {
+        headers: this.extraHeaders,
+        signal: AbortSignal.timeout(FETCH_MONITOR_TIMEOUT_MS),
+      });
       if (res.status === 404) {
         return { ok: false, msg: `Status page ${slug} not found` };
       }
@@ -1797,7 +1568,7 @@ export class UptimeKumaClient {
       };
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unknown error';
-      throw new Error(`Failed to get status page ${slug}: ${msg}`);
+      throw new Error(`Failed to get status page ${slug}: ${msg}`, { cause: error });
     }
   }
 
@@ -1811,23 +1582,11 @@ export class UptimeKumaClient {
    * @param slug - URL slug (lowercase letters, digits, and dashes only)
    * @returns Promise resolving to the API response
    */
-  createStatusPage(title: string, slug: string): Promise<ApiResponse> {
-    return new Promise((resolve, reject) => {
-      if (!this.socket || !this.socket.connected) {
-        reject(new Error('Not connected to server'));
-        return;
-      }
-
-      this.socket.emit('addStatusPage', title, slug, (response: ApiResponse) => {
-        if (response.ok) {
-          this.safeLog('info', `Successfully created status page ${slug}`);
-          this.refreshStatusPageCache(slug, { title });
-          resolve(response);
-        } else {
-          reject(new Error(response.msg || `Failed to create status page ${slug}`));
-        }
-      });
-    });
+  async createStatusPage(title: string, slug: string): Promise<ApiResponse> {
+    const response = await this.request('addStatusPage', [title, slug], `Failed to create status page ${slug}`);
+    this.safeLog('info', `Successfully created status page ${slug}`);
+    this.refreshStatusPageCache(slug, { title });
+    return response;
   }
 
   /**
@@ -1839,30 +1598,22 @@ export class UptimeKumaClient {
    * @param imgDataUrl - Optional icon as data URL (pass empty string to keep existing)
    * @returns Promise resolving to the API response
    */
-  updateStatusPage(
+  async updateStatusPage(
     slug: string,
     config: Record<string, unknown>,
     publicGroupList: Array<Record<string, unknown>> = [],
     imgDataUrl: string = ''
   ): Promise<ApiResponse> {
-    return new Promise((resolve, reject) => {
-      if (!this.socket || !this.socket.connected) {
-        reject(new Error('Not connected to server'));
-        return;
-      }
-
-      this.socket.emit('saveStatusPage', slug, config, imgDataUrl, publicGroupList, (response: ApiResponse) => {
-        if (response.ok) {
-          this.safeLog('info', `Successfully updated status page ${slug}`);
-          const newSlug = typeof config.slug === 'string' && config.slug ? config.slug : slug;
-          if (newSlug !== slug) delete this.statusPageListCache[slug];
-          this.refreshStatusPageCache(newSlug, config as Partial<StatusPage>);
-          resolve(response);
-        } else {
-          reject(new Error(response.msg || `Failed to update status page ${slug}`));
-        }
-      });
-    });
+    const response = await this.request(
+      'saveStatusPage',
+      [slug, config, imgDataUrl, publicGroupList],
+      `Failed to update status page ${slug}`
+    );
+    this.safeLog('info', `Successfully updated status page ${slug}`);
+    const newSlug = typeof config.slug === 'string' && config.slug ? config.slug : slug;
+    if (newSlug !== slug) delete this.statusPageListCache[slug];
+    this.refreshStatusPageCache(newSlug, config as Partial<StatusPage>);
+    return response;
   }
 
   /**
@@ -1871,23 +1622,11 @@ export class UptimeKumaClient {
    * @param slug - The status page slug
    * @returns Promise resolving to the API response
    */
-  deleteStatusPage(slug: string): Promise<ApiResponse> {
-    return new Promise((resolve, reject) => {
-      if (!this.socket || !this.socket.connected) {
-        reject(new Error('Not connected to server'));
-        return;
-      }
-
-      this.socket.emit('deleteStatusPage', slug, (response: ApiResponse) => {
-        if (response.ok) {
-          this.safeLog('info', `Successfully deleted status page ${slug}`);
-          delete this.statusPageListCache[slug];
-          resolve(response);
-        } else {
-          reject(new Error(response.msg || `Failed to delete status page ${slug}`));
-        }
-      });
-    });
+  async deleteStatusPage(slug: string): Promise<ApiResponse> {
+    const response = await this.request('deleteStatusPage', [slug], `Failed to delete status page ${slug}`);
+    this.safeLog('info', `Successfully deleted status page ${slug}`);
+    delete this.statusPageListCache[slug];
+    return response;
   }
 
   // ─── Socket accessor ─────────────────────────────────────────────────────────

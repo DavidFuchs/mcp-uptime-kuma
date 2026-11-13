@@ -1,6 +1,5 @@
 import { z } from 'zod';
-import type { MonitorBase } from './monitor-base.js';
-import type { MonitorBaseWithExtendedData, MonitorWithExtendedData, MonitorRawData } from './monitor-types.js';
+import type { MonitorBaseWithExtendedData, MonitorWithExtendedData } from './monitor-types.js';
 
 /**
  * Response structure for API callbacks

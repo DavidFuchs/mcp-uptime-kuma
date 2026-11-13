@@ -13,9 +13,6 @@ import { UptimeKumaClient } from '../../src/uptime-kuma-client.js';
  * tests pin the defaults that keep it from throwing or writing NULL.
  */
 
-// See verify-monitor-write.test.ts — createServer() adds signal listeners per instance.
-process.setMaxListeners(50);
-
 const STORED_WINDOW = {
   id: 4,
   title: 'Weekly restart',

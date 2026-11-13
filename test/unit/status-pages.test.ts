@@ -132,7 +132,46 @@ describe('UptimeKumaClient - Status Page Operations', () => {
       expect(result.config?.slug).toBe('test');
       expect(result.publicGroupList).toHaveLength(1);
       // A unique query bypasses Uptime Kuma's 5 minute cache of this route.
-      expect(fetchSpy).toHaveBeenCalledWith(expect.stringMatching(/^http:\/\/localhost:3001\/api\/status-page\/test\?_=\d+$/));
+      expect(fetchSpy).toHaveBeenCalledWith(
+        expect.stringMatching(/^http:\/\/localhost:3001\/api\/status-page\/test\?_=\d+$/),
+        expect.anything()
+      );
+
+      fetchSpy.mockRestore();
+    });
+
+    // Issue #95: an auth proxy in front of Uptime Kuma guards this route like every other.
+    it('sends the configured extra headers', async () => {
+      const proxied = new UptimeKumaClient('http://localhost:3001', undefined, undefined, {
+        'CF-Access-Client-Id': 'abc.access',
+        'CF-Access-Client-Secret': 's3cret',
+      });
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ config: { slug: 'test' }, publicGroupList: [] }),
+      } as unknown as Response);
+
+      await proxied.getStatusPage('test');
+
+      expect(fetchSpy.mock.calls[0][1]?.headers).toEqual({
+        'CF-Access-Client-Id': 'abc.access',
+        'CF-Access-Client-Secret': 's3cret',
+      });
+
+      fetchSpy.mockRestore();
+    });
+
+    it('bounds the request, so a server that never answers cannot hang the call', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ config: { slug: 'test' }, publicGroupList: [] }),
+      } as unknown as Response);
+
+      await client.getStatusPage('test');
+
+      expect(fetchSpy.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal);
 
       fetchSpy.mockRestore();
     });
@@ -174,7 +213,10 @@ describe('UptimeKumaClient - Status Page Operations', () => {
 
       await client.getStatusPage('my page');
       // A unique query bypasses Uptime Kuma's 5 minute cache of this route.
-      expect(fetchSpy).toHaveBeenCalledWith(expect.stringMatching(/^http:\/\/localhost:3001\/api\/status-page\/my%20page\?_=\d+$/));
+      expect(fetchSpy).toHaveBeenCalledWith(
+        expect.stringMatching(/^http:\/\/localhost:3001\/api\/status-page\/my%20page\?_=\d+$/),
+        expect.anything()
+      );
 
       fetchSpy.mockRestore();
     });

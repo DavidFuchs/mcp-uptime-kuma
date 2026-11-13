@@ -94,7 +94,7 @@ async function main() {
 
   // Connect
   console.log('\n🚀 Connecting to MCP server...');
-  const { client, transport } = await createTestClient(config);
+  const { client } = await createTestClient(config);
   console.log('✅ Connected and authenticated\n');
 
   const ctx: TestContext = { client, config };

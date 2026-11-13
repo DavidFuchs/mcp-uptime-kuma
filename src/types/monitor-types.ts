@@ -359,8 +359,9 @@ export interface MonitorRawData {
   hostname?: string;
   port?: number | null;
   accepted_statuscodes_json?: string;
-  conditions?: any[];
+  conditions?: unknown[];
   
   // Allow any other fields from Uptime Kuma
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Uptime Kuma adds fields per monitor type and per release
   [key: string]: any;
 }

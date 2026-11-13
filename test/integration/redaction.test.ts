@@ -240,7 +240,7 @@ export const redactionTests: Array<{ name: string; fn: TestFn }> = [
         const message = err instanceof Error ? err.message : String(err);
         if (/accepted the redaction marker/.test(message)) throw err;
         if (!message.includes('smtpPassword')) {
-          throw new Error(`error should name the offending field, got: ${message}`);
+          throw new Error(`error should name the offending field, got: ${message}`, { cause: err });
         }
         console.log('  ✓ addNotification refuses the marker and names the field');
       } finally {

@@ -14,8 +14,6 @@ import { UptimeKumaClient } from '../../src/uptime-kuma-client.js';
  *   Kuma's own UI uses the Primary Base URL when one is set.
  */
 
-process.setMaxListeners(100);
-
 async function connectServer(url = 'http://localhost:3001') {
   const { server } = await createServer({ url, username: undefined, password: undefined, token: undefined, jwtToken: undefined });
   const client = new Client({ name: 'eval-findings-test', version: '1.0.0' }, { capabilities: {} });
