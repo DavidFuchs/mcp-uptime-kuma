@@ -62,7 +62,7 @@
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "express-rate-limit": "^8.2.1",
-    "fuzzysort": "^3.1.0",
+    "fuzzysort": "^4.0.2",
     "socket.io-client": "^4.8.1",
     "zod": "^4.6.7"
   },
