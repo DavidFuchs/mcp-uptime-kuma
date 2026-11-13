@@ -110,7 +110,9 @@ describe('the HTTP transport at startup', () => {
       PORT: String(port),
     });
 
-    await proc.waitForOutput(/server running on http:\/\/127\.0\.0\.1:\d+\/mcp/);
+    // Two separate lines, so they can arrive in separate chunks: wait for the last one.
+    await proc.waitForOutput(/Health check available at http:\/\/127\.0\.0\.1:\d+\/health/);
+    expect(proc.output()).toContain(`server running on http://127.0.0.1:${port}/mcp`);
     expect(proc.output()).toContain(`http://127.0.0.1:${port}/health`);
   }, 30_000);
 });
