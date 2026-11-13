@@ -18,19 +18,46 @@ import { MONITOR_TYPE_FIELD_NAMES, looseFieldName } from '../monitors/fields.js'
  * choosing, and getMonitorTypeFields only serves the write tools, so neither is here.
  */
 export const READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
-  'getMonitor', 'listMonitors', 'listMonitorTypes', 'getMonitorSummary', 'getHeartbeats', 'listHeartbeats',
-  'getSettings', 'listNotifications', 'listDockerHosts', 'listTags', 'getMaintenanceWindows', 'listStatusPages',
+  'getMonitor',
+  'listMonitors',
+  'listMonitorTypes',
+  'getMonitorSummary',
+  'getHeartbeats',
+  'listHeartbeats',
+  'getSettings',
+  'listNotifications',
+  'listDockerHosts',
+  'listTags',
+  'getMaintenanceWindows',
+  'listStatusPages',
   'getStatusPage',
 ]);
 
 /** Every other tool. Left out of read-only mode. */
 export const WRITE_TOOLS: ReadonlySet<string> = new Set([
-  'getMonitorTypeFields', 'createMonitor', 'updateMonitor', 'deleteMonitor', 'pauseMonitor', 'resumeMonitor',
-  'addNotification', 'updateNotification', 'deleteNotification',
-  'addDockerHost', 'updateDockerHost', 'deleteDockerHost', 'testDockerHost',
-  'addTag', 'deleteTag',
-  'createMaintenance', 'updateMaintenance', 'deleteMaintenance', 'pauseMaintenance', 'resumeMaintenance',
-  'createStatusPage', 'updateStatusPage', 'deleteStatusPage',
+  'getMonitorTypeFields',
+  'createMonitor',
+  'updateMonitor',
+  'deleteMonitor',
+  'pauseMonitor',
+  'resumeMonitor',
+  'addNotification',
+  'updateNotification',
+  'deleteNotification',
+  'addDockerHost',
+  'updateDockerHost',
+  'deleteDockerHost',
+  'testDockerHost',
+  'addTag',
+  'deleteTag',
+  'createMaintenance',
+  'updateMaintenance',
+  'deleteMaintenance',
+  'pauseMaintenance',
+  'resumeMaintenance',
+  'createStatusPage',
+  'updateStatusPage',
+  'deleteStatusPage',
 ]);
 
 /** In WRITE_TOOLS, so absent from read-only mode, but a call changes nothing. */
@@ -223,7 +250,8 @@ export function installToolRegistration(server: McpServer, readOnly: boolean): v
           .filter(([, match]) => match !== undefined)
           .map(([k, match]) => `'${match}' for '${k}'`);
         // The fields that live in typeFields are the likeliest thing to be passed here instead.
-        const typeFieldFor = (k: string) => MONITOR_TYPE_FIELD_NAMES.find((name) => looseFieldName(name) === looseFieldName(k));
+        const typeFieldFor = (k: string) =>
+          MONITOR_TYPE_FIELD_NAMES.find((name) => looseFieldName(name) === looseFieldName(k));
         const nested = 'typeFields' in shape ? issue.keys.filter((k) => typeFieldFor(k) !== undefined) : [];
         return (
           `Unknown field(s) for ${toolName}: ${issue.keys.map((k) => `'${k}'`).join(', ')}. ` +
@@ -242,9 +270,7 @@ export function installToolRegistration(server: McpServer, readOnly: boolean): v
 
     type Payload = { issues: Array<{ code?: string }> };
     const unknownKeysFirst = <P extends Payload>(payload: P): P => {
-      payload.issues.sort(
-        (a, b) => Number(b.code === 'unrecognized_keys') - Number(a.code === 'unrecognized_keys')
-      );
+      payload.issues.sort((a, b) => Number(b.code === 'unrecognized_keys') - Number(a.code === 'unrecognized_keys'));
       return payload;
     };
     const internals = schema._zod as unknown as {

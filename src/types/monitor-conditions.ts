@@ -25,5 +25,8 @@ export const MonitorConditionSchema: z.ZodType<MonitorCondition> = z.object({
   operator: z.string().optional().describe('Comparison operator'),
   value: z.string().optional().describe('Expected value'),
   andOr: z.enum(['and', 'or']).optional().describe('Group logic operator'),
-  children: z.array(z.lazy(() => MonitorConditionSchema)).optional().describe('Nested conditions'),
+  children: z
+    .array(z.lazy(() => MonitorConditionSchema))
+    .optional()
+    .describe('Nested conditions'),
 });

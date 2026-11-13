@@ -113,9 +113,7 @@ export function createAuthMiddleware(token: string | undefined): RequestHandler 
 
   return (req, res, next) => {
     const header = req.headers.authorization;
-    const presented = typeof header === 'string' && /^bearer /i.test(header)
-      ? header.slice('bearer '.length)
-      : '';
+    const presented = typeof header === 'string' && /^bearer /i.test(header) ? header.slice('bearer '.length) : '';
 
     const presentedDigest = createHash('sha256').update(presented, 'utf8').digest();
 

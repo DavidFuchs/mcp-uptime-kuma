@@ -20,9 +20,7 @@ describe('UptimeKumaClient - Heartbeat Operations', () => {
           { monitorID: 1, status: 1, msg: 'OK', time: '2024-01-02' },
           { monitorID: 1, status: 0, msg: 'Down', time: '2024-01-01' },
         ],
-        '2': [
-          { monitorID: 2, status: 1, msg: 'OK', time: '2024-01-02' },
-        ],
+        '2': [{ monitorID: 2, status: 1, msg: 'OK', time: '2024-01-02' }],
       });
 
       const result = client.getHeartbeatList();
@@ -46,9 +44,7 @@ describe('UptimeKumaClient - Heartbeat Operations', () => {
 
     it('returns all heartbeats when maxHeartbeats exceeds available', () => {
       injectHeartbeatListCache(client, {
-        '1': [
-          { monitorID: 1, status: 1, msg: 'OK', time: '2024-01-01' },
-        ],
+        '1': [{ monitorID: 1, status: 1, msg: 'OK', time: '2024-01-01' }],
       });
 
       const result = client.getHeartbeatList(10);

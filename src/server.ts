@@ -1,5 +1,11 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { McpError, ErrorCode, SetLevelRequestSchema, LoggingLevelSchema, type LoggingLevel } from '@modelcontextprotocol/sdk/types.js';
+import {
+  McpError,
+  ErrorCode,
+  SetLevelRequestSchema,
+  LoggingLevelSchema,
+  type LoggingLevel,
+} from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { UptimeKumaClient } from './uptime-kuma-client.js';
 import type { UptimeKumaConfig } from './types/index.js';
@@ -20,7 +26,13 @@ import { registerStatusPageTools } from './tools/status-pages.js';
 
 // The parts of this module that moved out, still importable from here.
 export { createKumaSession, type KumaSession, type KumaLogSink } from './kuma-session.js';
-export { READ_ONLY_TOOLS, WRITE_TOOLS, CHANGE_NOTHING_TOOLS, toolAnnotations, normalizeAdvertisedSchema } from './tools/registration.js';
+export {
+  READ_ONLY_TOOLS,
+  WRITE_TOOLS,
+  CHANGE_NOTHING_TOOLS,
+  toolAnnotations,
+  normalizeAdvertisedSchema,
+} from './tools/registration.js';
 export { MONITOR_TYPE_FIELD_NAMES } from './monitors/fields.js';
 export { mergeStatusPageConfig } from './tools/status-pages.js';
 
@@ -28,7 +40,10 @@ export { mergeStatusPageConfig } from './tools/status-pages.js';
  * Creates and configures the MCP server with tools, resources, and prompts
  * Note: Authentication must be done separately after connecting the transport
  */
-export async function createServer(config: UptimeKumaConfig, session?: KumaSession): Promise<{ server: McpServer; client: UptimeKumaClient; authenticateClient: () => Promise<void> }> {
+export async function createServer(
+  config: UptimeKumaConfig,
+  session?: KumaSession
+): Promise<{ server: McpServer; client: UptimeKumaClient; authenticateClient: () => Promise<void> }> {
   // Track current logging level (default: info)
   let currentLogLevel: LoggingLevel = 'info';
 
@@ -78,12 +93,16 @@ ${writeInstructions}
           workflows never need the real values.
         - Pass includeSecrets: true (or set UPTIME_KUMA_INCLUDE_SECRETS=true) only when the
           value itself is needed. It will be written to this conversation's transcript.
-${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotification restores the stored value
-          rather than overwriting it, so a read-edit-write round trip is safe.`}
+${
+  readOnlyMode
+    ? ''
+    : `        - "***" sent back to updateMonitor / updateNotification restores the stored value
+          rather than overwriting it, so a read-edit-write round trip is safe.`
+}
       `,
       capabilities: {
-        logging: {}
-      }
+        logging: {},
+      },
     }
   );
 
@@ -124,12 +143,18 @@ ${readOnlyMode ? '' : `        - "***" sent back to updateMonitor / updateNotifi
   // narrow one; the parameter wins where both are present, in either direction, so a
   // globally-permissive deployment can still ask a single call to redact.
   const includeSecretsByDefault = config.includeSecrets === true;
-  const wantsSecrets = (perCall?: boolean): boolean =>
-    perCall === undefined ? includeSecretsByDefault : perCall;
+  const wantsSecrets = (perCall?: boolean): boolean => (perCall === undefined ? includeSecretsByDefault : perCall);
   const includeSecretsParam = z.boolean().optional().describe(INCLUDE_SECRETS_DESCRIPTION);
 
   // Registered in the order tools/list advertises them.
-  const ctx: ToolContext = { server, client, authenticateClient, wantsSecrets, includeSecretsParam, kumaUrl: config.url };
+  const ctx: ToolContext = {
+    server,
+    client,
+    authenticateClient,
+    wantsSecrets,
+    includeSecretsParam,
+    kumaUrl: config.url,
+  };
   registerMonitorReadTools(ctx);
   registerHeartbeatTools(ctx);
   registerSettingsTools(ctx);

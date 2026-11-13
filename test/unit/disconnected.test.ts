@@ -10,7 +10,9 @@ describe('UptimeKumaClient - Disconnected state', () => {
 
   it('all write methods reject when socket is null', async () => {
     // Socket is null by default (not connected)
-    await expect(client.addDockerHost({ name: 'x', dockerType: 'socket', dockerDaemon: '/x' })).rejects.toThrow('Not connected');
+    await expect(client.addDockerHost({ name: 'x', dockerType: 'socket', dockerDaemon: '/x' })).rejects.toThrow(
+      'Not connected'
+    );
     await expect(client.deleteDockerHost(1)).rejects.toThrow('Not connected');
     await expect(client.testDockerHost({ name: 'x' })).rejects.toThrow('Not connected');
     await expect(client.createStatusPage('t', 's')).rejects.toThrow('Not connected');

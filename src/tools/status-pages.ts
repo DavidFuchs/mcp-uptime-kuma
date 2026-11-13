@@ -16,7 +16,7 @@ import { StatusPageSchema } from '../types/index.js';
 export function mergeStatusPageConfig(
   slug: string,
   stored: Record<string, unknown>,
-  changes: Record<string, unknown>,
+  changes: Record<string, unknown>
 ): Record<string, unknown> {
   const merged: Record<string, unknown> = { ...stored, ...changes, slug };
   merged.logo = changes.logo ?? changes.icon ?? stored.icon;
@@ -51,7 +51,8 @@ export function registerStatusPageTools(ctx: ToolContext): void {
     'listStatusPages',
     {
       title: 'List Status Pages',
-      description: 'Returns all configured status pages with their slug, title, visibility, and custom domain settings. Uptime Kuma only sends this list when a client logs in, so a page created or deleted by another client (or the web UI) since then may be missing or still listed; changes made through this server are reflected at once. getStatusPage with a slug always reads the page fresh.',
+      description:
+        'Returns all configured status pages with their slug, title, visibility, and custom domain settings. Uptime Kuma only sends this list when a client logs in, so a page created or deleted by another client (or the web UI) since then may be missing or still listed; changes made through this server are reflected at once. getStatusPage with a slug always reads the page fresh.',
       inputSchema: {},
       outputSchema: {
         statusPages: z.array(StatusPageSchema).describe('Array of status page configurations'),
@@ -78,15 +79,22 @@ export function registerStatusPageTools(ctx: ToolContext): void {
     'getStatusPage',
     {
       title: 'Get Status Page',
-      description: 'Returns the full configuration of a status page by slug, including the ordered list of groups, the monitors inside each group, and active incidents. Works for unpublished pages too.',
+      description:
+        'Returns the full configuration of a status page by slug, including the ordered list of groups, the monitors inside each group, and active incidents. Works for unpublished pages too.',
       inputSchema: {
         slug: z.string().describe('The status page slug (the URL-safe identifier)'),
       },
       outputSchema: {
         ok: z.boolean(),
         config: StatusPageSchema.optional(),
-        publicGroupList: z.array(z.record(z.string(), z.unknown())).optional().describe('Ordered groups with their monitorList'),
-        incidents: z.array(z.record(z.string(), z.unknown())).optional().describe('Active incidents on the status page'),
+        publicGroupList: z
+          .array(z.record(z.string(), z.unknown()))
+          .optional()
+          .describe('Ordered groups with their monitorList'),
+        incidents: z
+          .array(z.record(z.string(), z.unknown()))
+          .optional()
+          .describe('Active incidents on the status page'),
         msg: z.string().optional(),
       },
     },
@@ -116,10 +124,14 @@ export function registerStatusPageTools(ctx: ToolContext): void {
     'createStatusPage',
     {
       title: 'Create Status Page',
-      description: 'Creates a new (empty) status page with the given title and slug. After creating, call updateStatusPage to set the description, theme, groups, and monitors. Slug must be lowercase letters, digits, and dashes only.',
+      description:
+        'Creates a new (empty) status page with the given title and slug. After creating, call updateStatusPage to set the description, theme, groups, and monitors. Slug must be lowercase letters, digits, and dashes only.',
       inputSchema: {
         title: z.string().describe('Display title of the status page'),
-        slug: z.string().regex(/^[a-z0-9-]+$/).describe('URL slug (lowercase letters, digits, and dashes only)'),
+        slug: z
+          .string()
+          .regex(/^[a-z0-9-]+$/)
+          .describe('URL slug (lowercase letters, digits, and dashes only)'),
       },
       outputSchema: {
         ok: z.boolean(),
@@ -146,11 +158,22 @@ export function registerStatusPageTools(ctx: ToolContext): void {
     'updateStatusPage',
     {
       title: 'Update Status Page',
-      description: 'Updates an existing status page. config holds only the settings to change; everything else keeps its stored value. publicGroupList, when given, replaces all of the page\'s groups (a group not in it is deleted; include a group\'s id to keep it rather than recreate it); omit it to keep the groups as they are. Each group has a name and a monitorList of [{id}]. Use getStatusPage first to read current state before modifying.',
+      description:
+        "Updates an existing status page. config holds only the settings to change; everything else keeps its stored value. publicGroupList, when given, replaces all of the page's groups (a group not in it is deleted; include a group's id to keep it rather than recreate it); omit it to keep the groups as they are. Each group has a name and a monitorList of [{id}]. Use getStatusPage first to read current state before modifying.",
       inputSchema: {
         slug: z.string().describe('The status page slug (immutable identifier)'),
-        config: z.record(z.string(), z.unknown()).optional().describe('The settings to change, merged onto the stored page: title, description, theme, published, showTags, showPoweredBy, domainNameList, customCSS, footerText, icon, etc. Omit to change only the groups.'),
-        publicGroupList: z.array(z.record(z.string(), z.unknown())).optional().describe('Ordered groups, replacing all current ones. Each: {id?, name, monitorList: [{id}]}. Omit to keep the current groups.'),
+        config: z
+          .record(z.string(), z.unknown())
+          .optional()
+          .describe(
+            'The settings to change, merged onto the stored page: title, description, theme, published, showTags, showPoweredBy, domainNameList, customCSS, footerText, icon, etc. Omit to change only the groups.'
+          ),
+        publicGroupList: z
+          .array(z.record(z.string(), z.unknown()))
+          .optional()
+          .describe(
+            'Ordered groups, replacing all current ones. Each: {id?, name, monitorList: [{id}]}. Omit to keep the current groups.'
+          ),
         imgDataUrl: z.string().optional().describe('Icon as data URL. Omit or pass empty string to keep existing.'),
       },
       outputSchema: {
@@ -168,13 +191,19 @@ export function registerStatusPageTools(ctx: ToolContext): void {
         try {
           stored = await client.getStatusPageConfig(slug);
         } catch (e) {
-          throw new Error(`status page "${slug}" not found (${e instanceof Error ? e.message : String(e)}). listStatusPages shows the slugs.`, { cause: e });
+          throw new Error(
+            `status page "${slug}" not found (${e instanceof Error ? e.message : String(e)}). listStatusPages shows the slugs.`,
+            { cause: e }
+          );
         }
         const merged = mergeStatusPageConfig(slug, stored, config ?? {});
 
         let groups: Array<Record<string, unknown>>;
         if (publicGroupList) {
-          groups = publicGroupList.map((g) => ({ ...g, monitorList: Array.isArray(g.monitorList) ? g.monitorList : [] }));
+          groups = publicGroupList.map((g) => ({
+            ...g,
+            monitorList: Array.isArray(g.monitorList) ? g.monitorList : [],
+          }));
         } else {
           let current: Awaited<ReturnType<typeof client.getStatusPage>>;
           try {
@@ -182,7 +211,7 @@ export function registerStatusPageTools(ctx: ToolContext): void {
           } catch (e) {
             throw new Error(
               `could not read the current groups of "${slug}" to keep them (${e instanceof Error ? e.message : String(e)}). ` +
-              'Pass publicGroupList with every group the page should have: Uptime Kuma deletes the groups that are not in it.',
+                'Pass publicGroupList with every group the page should have: Uptime Kuma deletes the groups that are not in it.',
               { cause: e }
             );
           }

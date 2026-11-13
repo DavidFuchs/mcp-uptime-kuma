@@ -10,7 +10,7 @@ export const statusPageTests: Array<{ name: string; fn: TestFn }> = [
   {
     name: 'listStatusPages returns array',
     fn: async ({ client }) => {
-      const result = await client.callTool({ name: 'listStatusPages', arguments: {} }) as CallToolResult;
+      const result = (await client.callTool({ name: 'listStatusPages', arguments: {} })) as CallToolResult;
       const text = extractText(result, 'listStatusPages');
       const pages = JSON.parse(text);
       if (!Array.isArray(pages)) throw new Error('Expected array');
@@ -24,16 +24,16 @@ export const statusPageTests: Array<{ name: string; fn: TestFn }> = [
       const title = 'Integration Test Page';
 
       // Create
-      const createResult = await client.callTool({
+      const createResult = (await client.callTool({
         name: 'createStatusPage',
         arguments: { title, slug },
-      }) as CallToolResult;
+      })) as CallToolResult;
       const createText = extractText(createResult, 'createStatusPage');
       if (!createText) throw new Error('createStatusPage returned empty');
 
       try {
         // Update with a description and publish it so getStatusPage works
-        const updateResult = await client.callTool({
+        const updateResult = (await client.callTool({
           name: 'updateStatusPage',
           arguments: {
             slug,
@@ -52,18 +52,16 @@ export const statusPageTests: Array<{ name: string; fn: TestFn }> = [
               googleAnalyticsId: '',
               analyticsType: null,
             },
-            publicGroupList: [
-              { name: 'Default', weight: 1, monitorList: [] },
-            ],
+            publicGroupList: [{ name: 'Default', weight: 1, monitorList: [] }],
           },
-        }) as CallToolResult;
+        })) as CallToolResult;
         extractText(updateResult, 'updateStatusPage');
 
         // Get full details (this hits the API directly, not cache)
-        const getResult = await client.callTool({
+        const getResult = (await client.callTool({
           name: 'getStatusPage',
           arguments: { slug },
-        }) as CallToolResult;
+        })) as CallToolResult;
         const details = JSON.parse(extractText(getResult, 'getStatusPage'));
         if (!details.config) throw new Error('getStatusPage returned no config');
         if (details.config.title !== title) {

@@ -28,8 +28,8 @@ export function parseExtraHeaders(raw: string | undefined): Record<string, strin
   } catch {
     // JSON.parse's own message quotes a slice of the input, which may be the secret.
     throw new Error(
-      'UPTIME_KUMA_HEADERS is not valid JSON. Expected an object such as '
-      + '{"CF-Access-Client-Id":"<id>","CF-Access-Client-Secret":"<secret>"}.'
+      'UPTIME_KUMA_HEADERS is not valid JSON. Expected an object such as ' +
+        '{"CF-Access-Client-Id":"<id>","CF-Access-Client-Secret":"<secret>"}.'
     );
   }
 

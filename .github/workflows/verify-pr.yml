@@ -52,6 +52,11 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # Layout only, and only a check: `npm run format` is what rewrites files.
+      - name: Check formatting
+        if: matrix.node-version == 22
+        run: npm run format:check
+
       - name: Build
         run: npm run build
 

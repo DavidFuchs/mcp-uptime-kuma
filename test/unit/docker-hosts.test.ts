@@ -34,7 +34,11 @@ describe('UptimeKumaClient - Docker Host Operations', () => {
       });
       injectSocket(client, socket);
 
-      const result = await client.addDockerHost({ name: 'test', dockerType: 'socket', dockerDaemon: '/var/run/docker.sock' });
+      const result = await client.addDockerHost({
+        name: 'test',
+        dockerType: 'socket',
+        dockerDaemon: '/var/run/docker.sock',
+      });
       expect(result.ok).toBe(true);
       expect(result.id).toBe(5);
     });
@@ -48,7 +52,10 @@ describe('UptimeKumaClient - Docker Host Operations', () => {
       });
       injectSocket(client, socket);
 
-      const result = await client.addDockerHost({ name: 'updated', dockerType: 'tcp', dockerDaemon: 'http://host:2375' }, 3);
+      const result = await client.addDockerHost(
+        { name: 'updated', dockerType: 'tcp', dockerDaemon: 'http://host:2375' },
+        3
+      );
       expect(result.ok).toBe(true);
       expect(result.id).toBe(3);
     });
@@ -115,7 +122,11 @@ describe('UptimeKumaClient - Docker Host Operations', () => {
       });
       injectSocket(client, socket);
 
-      const result = await client.testDockerHost({ name: 'test', dockerType: 'socket', dockerDaemon: '/var/run/docker.sock' });
+      const result = await client.testDockerHost({
+        name: 'test',
+        dockerType: 'socket',
+        dockerDaemon: '/var/run/docker.sock',
+      });
       expect(result.ok).toBe(true);
       expect(result.msg).toContain('5');
     });
@@ -135,9 +146,9 @@ describe('UptimeKumaClient - Docker Host Operations', () => {
 
     it('rejects when not connected', async () => {
       injectSocket(client, createDisconnectedSocket());
-      await expect(
-        client.testDockerHost({ name: 'x', dockerType: 'socket', dockerDaemon: '/x' })
-      ).rejects.toThrow('Not connected to server');
+      await expect(client.testDockerHost({ name: 'x', dockerType: 'socket', dockerDaemon: '/x' })).rejects.toThrow(
+        'Not connected to server'
+      );
     });
   });
 });

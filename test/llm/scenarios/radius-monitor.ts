@@ -20,8 +20,16 @@ export default defineScenario({
       expectThat('username', m.radiusUsername === 'healthcheck', `radiusUsername=${m.radiusUsername}`),
       expectThat('password', m.radiusPassword === 'rad-Pass9', `radiusPassword=${m.radiusPassword}`),
       expectThat('secret', m.radiusSecret === 'shh-secret', `radiusSecret=${m.radiusSecret}`),
-      expectThat('called-station ID', m.radiusCalledStationId === 'AA-BB-CC-DD-EE-FF:corp', `radiusCalledStationId=${m.radiusCalledStationId}`),
-      expectThat('calling-station ID', m.radiusCallingStationId === '11-22-33-44-55-66', `radiusCallingStationId=${m.radiusCallingStationId}`),
+      expectThat(
+        'called-station ID',
+        m.radiusCalledStationId === 'AA-BB-CC-DD-EE-FF:corp',
+        `radiusCalledStationId=${m.radiusCalledStationId}`
+      ),
+      expectThat(
+        'calling-station ID',
+        m.radiusCallingStationId === '11-22-33-44-55-66',
+        `radiusCallingStationId=${m.radiusCallingStationId}`
+      ),
     ];
   },
   budget: { maxToolCalls: 6, maxToolErrors: 1 },

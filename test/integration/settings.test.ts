@@ -14,19 +14,30 @@ export const settingsTests: Array<{ name: string; fn: TestFn }> = [
       if (tools.tools.length === 0) throw new Error('No tools found');
 
       const expectedTools = [
-        'getMonitor', 'listMonitors', 'listMonitorTypes', 'getMonitorTypeFields', 'getMonitorSummary',
-        'createMonitor', 'updateMonitor', 'deleteMonitor',
-        'pauseMonitor', 'resumeMonitor',
-        'getHeartbeats', 'listHeartbeats',
+        'getMonitor',
+        'listMonitors',
+        'listMonitorTypes',
+        'getMonitorTypeFields',
+        'getMonitorSummary',
+        'createMonitor',
+        'updateMonitor',
+        'deleteMonitor',
+        'pauseMonitor',
+        'resumeMonitor',
+        'getHeartbeats',
+        'listHeartbeats',
         'getSettings',
         'listNotifications',
         'listDockerHosts',
-        'listTags', 'addTag', 'deleteTag',
-        'getMaintenanceWindows', 'createMaintenance',
+        'listTags',
+        'addTag',
+        'deleteTag',
+        'getMaintenanceWindows',
+        'createMaintenance',
         'listStatusPages',
       ];
 
-      const missing = expectedTools.filter(t => !tools.tools.find(tool => tool.name === t));
+      const missing = expectedTools.filter((t) => !tools.tools.find((tool) => tool.name === t));
       if (missing.length > 0) {
         throw new Error(`Missing expected tools: ${missing.join(', ')}`);
       }
@@ -37,7 +48,7 @@ export const settingsTests: Array<{ name: string; fn: TestFn }> = [
   {
     name: 'getSettings returns server configuration',
     fn: async ({ client }) => {
-      const result = await client.callTool({ name: 'getSettings', arguments: {} }) as CallToolResult;
+      const result = (await client.callTool({ name: 'getSettings', arguments: {} })) as CallToolResult;
       const text = extractText(result, 'getSettings');
       const settings = JSON.parse(text);
       if (typeof settings !== 'object' || settings === null) throw new Error('Expected object');

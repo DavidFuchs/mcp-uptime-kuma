@@ -22,13 +22,23 @@ const fixtureLines = readFileSync(join(here, 'fixtures/claude-stream.jsonl'), 'u
 const toolUse = (id: string, name: string, input: unknown = {}) =>
   JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name, input }] } });
 const toolResult = (id: string, content: unknown, isError?: boolean) =>
-  JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content, is_error: isError }] } });
-const result = JSON.stringify({ type: 'result', subtype: 'success', total_cost_usd: 0.01, num_turns: 2, duration_ms: 5, result: 'done' });
+  JSON.stringify({
+    type: 'user',
+    message: { content: [{ type: 'tool_result', tool_use_id: id, content, is_error: isError }] },
+  });
+const result = JSON.stringify({
+  type: 'result',
+  subtype: 'success',
+  total_cost_usd: 0.01,
+  num_turns: 2,
+  duration_ms: 5,
+  result: 'done',
+});
 
 describe('parseStreamJson', () => {
   it('parses MCP tool calls in order with prefix stripped', () => {
     const t = parseStreamJson(fixtureLines, 'x');
-    expect(t.toolCalls.map(c => c.name)).toEqual(['listMonitors', 'getMonitor']);
+    expect(t.toolCalls.map((c) => c.name)).toEqual(['listMonitors', 'getMonitor']);
     for (const c of t.toolCalls) expect(c.name).not.toContain('mcp__uptime-kuma__');
     expect(t.toolCalls[1].input).toEqual({ monitorID: 999999 });
     expect(t.rawPath).toBe('x');
@@ -42,23 +52,33 @@ describe('parseStreamJson', () => {
   });
 
   it('reads text from array-form tool result content', () => {
-    const t = parseStreamJson([
-      toolUse('a', 'mcp__uptime-kuma__listTags'),
-      toolResult('a', [{ type: 'text', text: 'Input validation error: bad' }], true),
-      result,
-    ], 'x');
-    expect(t.toolCalls[0]).toMatchObject({ name: 'listTags', isError: true, resultText: 'Input validation error: bad' });
+    const t = parseStreamJson(
+      [
+        toolUse('a', 'mcp__uptime-kuma__listTags'),
+        toolResult('a', [{ type: 'text', text: 'Input validation error: bad' }], true),
+        result,
+      ],
+      'x'
+    );
+    expect(t.toolCalls[0]).toMatchObject({
+      name: 'listTags',
+      isError: true,
+      resultText: 'Input validation error: bad',
+    });
   });
 
   it('excludes non-MCP tools from toolCalls', () => {
-    const t = parseStreamJson([
-      toolUse('s', 'ToolSearch', { query: 'monitor' }),
-      toolResult('s', 'found'),
-      toolUse('a', 'mcp__uptime-kuma__listMonitors'),
-      toolResult('a', '[]'),
-      result,
-    ], 'x');
-    expect(t.toolCalls.map(c => c.name)).toEqual(['listMonitors']);
+    const t = parseStreamJson(
+      [
+        toolUse('s', 'ToolSearch', { query: 'monitor' }),
+        toolResult('s', 'found'),
+        toolUse('a', 'mcp__uptime-kuma__listMonitors'),
+        toolResult('a', '[]'),
+        result,
+      ],
+      'x'
+    );
+    expect(t.toolCalls.map((c) => c.name)).toEqual(['listMonitors']);
   });
 
   it('reads cost, duration, turns, subtype and final text from the result message', () => {
@@ -82,7 +102,15 @@ describe('parseStreamJson', () => {
 
 describe('failed sessions', () => {
   // The result line a logged-out `claude -p` really prints: subtype success, but is_error true.
-  const loggedOut = JSON.stringify({ type: 'result', subtype: 'success', is_error: true, result: 'Not logged in · Please run /login', total_cost_usd: 0, num_turns: 1, duration_ms: 3 });
+  const loggedOut = JSON.stringify({
+    type: 'result',
+    subtype: 'success',
+    is_error: true,
+    result: 'Not logged in · Please run /login',
+    total_cost_usd: 0,
+    num_turns: 1,
+    duration_ms: 3,
+  });
 
   it('treats an is_error result as a failed session', () => {
     const t = parseStreamJson([loggedOut], 'x');
@@ -97,7 +125,16 @@ describe('failed sessions', () => {
   });
 
   it('names the API error status of a failed session', () => {
-    const failed = JSON.stringify({ type: 'result', subtype: 'success', is_error: true, result: '', api_error_status: 529, total_cost_usd: 0, num_turns: 1, duration_ms: 3 });
+    const failed = JSON.stringify({
+      type: 'result',
+      subtype: 'success',
+      is_error: true,
+      result: '',
+      api_error_status: 529,
+      total_cost_usd: 0,
+      num_turns: 1,
+      duration_ms: 3,
+    });
     const t = parseStreamJson([failed], 'x');
     expect(() => assertProbeTrace(t)).toThrow(/529/);
     expect(classify({ assertions: [], trace: t, scenario: {} }).errorMessage).toContain('529');
@@ -105,14 +142,22 @@ describe('failed sessions', () => {
 
   it('reads the MCP server status from the init message', () => {
     expect(parseStreamJson(fixtureLines, 'x').mcpStatus).toBe('connected');
-    const failed = JSON.stringify({ type: 'system', subtype: 'init', mcp_servers: [{ name: 'uptime-kuma', status: 'failed' }] });
+    const failed = JSON.stringify({
+      type: 'system',
+      subtype: 'init',
+      mcp_servers: [{ name: 'uptime-kuma', status: 'failed' }],
+    });
     expect(parseStreamJson([failed, result], 'x').mcpStatus).toBe('failed');
     expect(parseStreamJson([result], 'x').mcpStatus).toBeUndefined();
   });
 
   it('assertProbeTrace rejects a logged-out or disconnected session and accepts a good one', () => {
     expect(() => assertProbeTrace(parseStreamJson([loggedOut], 'x'))).toThrow(/Not logged in/);
-    const failed = JSON.stringify({ type: 'system', subtype: 'init', mcp_servers: [{ name: 'uptime-kuma', status: 'failed' }] });
+    const failed = JSON.stringify({
+      type: 'system',
+      subtype: 'init',
+      mcp_servers: [{ name: 'uptime-kuma', status: 'failed' }],
+    });
     expect(() => assertProbeTrace(parseStreamJson([failed, result], 'x'))).toThrow(/uptime-kuma.*failed/);
     expect(() => assertProbeTrace(parseStreamJson(fixtureLines, 'x'))).not.toThrow();
   });
@@ -141,7 +186,7 @@ describe('buildChildEnv', () => {
   it('strips UPTIME_KUMA_ vars', () => {
     const env = buildChildEnv({ UPTIME_KUMA_URL: 'http://real', UPTIME_KUMA_JWT_TOKEN: 't', PATH: '/bin' });
     expect(env.PATH).toBe('/bin');
-    expect(Object.keys(env).filter(k => k.startsWith('UPTIME_KUMA_'))).toEqual([]);
+    expect(Object.keys(env).filter((k) => k.startsWith('UPTIME_KUMA_'))).toEqual([]);
   });
 });
 
@@ -173,13 +218,19 @@ describe('runClaude', () => {
     process.env.CLAUDE_BIN = bin;
     const started = Date.now();
     try {
-      await expect(runClaude({
-        prompt: 'p', model: 'sonnet', maxBudgetUsd: 0.1, timeoutMs: 200,
-        config: { url: 'http://localhost:3001', username: 'a', password: 'b' },
-        rawPath: join(dir, 'raw.jsonl'),
-      })).rejects.toBeInstanceOf(ClaudeTimeoutError);
+      await expect(
+        runClaude({
+          prompt: 'p',
+          model: 'sonnet',
+          maxBudgetUsd: 0.1,
+          timeoutMs: 200,
+          config: { url: 'http://localhost:3001', username: 'a', password: 'b' },
+          rawPath: join(dir, 'raw.jsonl'),
+        })
+      ).rejects.toBeInstanceOf(ClaudeTimeoutError);
     } finally {
-      if (prev === undefined) delete process.env.CLAUDE_BIN; else process.env.CLAUDE_BIN = prev;
+      if (prev === undefined) delete process.env.CLAUDE_BIN;
+      else process.env.CLAUDE_BIN = prev;
     }
     expect(Date.now() - started).toBeLessThan(2000);
   });
@@ -187,7 +238,10 @@ describe('runClaude', () => {
   it('a timeout while the process is still writing does not crash the runner', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'llm-driver-test-'));
     const bin = join(dir, 'chatty-claude');
-    writeFileSync(bin, '#!/bin/sh\nwhile true; do echo \'{"type":"noise","padding":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}\'; done\n');
+    writeFileSync(
+      bin,
+      '#!/bin/sh\nwhile true; do echo \'{"type":"noise","padding":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}\'; done\n'
+    );
     chmodSync(bin, 0o755);
     const uncaught: unknown[] = [];
     const onUncaught = (e: unknown) => uncaught.push(e);
@@ -195,15 +249,21 @@ describe('runClaude', () => {
     const prev = process.env.CLAUDE_BIN;
     process.env.CLAUDE_BIN = bin;
     try {
-      await expect(runClaude({
-        prompt: 'p', model: 'sonnet', maxBudgetUsd: 0.1, timeoutMs: 300,
-        config: { url: 'http://localhost:3001', username: 'a', password: 'b' },
-        rawPath: join(dir, 'raw.jsonl'),
-      })).rejects.toBeInstanceOf(ClaudeTimeoutError);
-      await new Promise(r => setTimeout(r, 300));
+      await expect(
+        runClaude({
+          prompt: 'p',
+          model: 'sonnet',
+          maxBudgetUsd: 0.1,
+          timeoutMs: 300,
+          config: { url: 'http://localhost:3001', username: 'a', password: 'b' },
+          rawPath: join(dir, 'raw.jsonl'),
+        })
+      ).rejects.toBeInstanceOf(ClaudeTimeoutError);
+      await new Promise((r) => setTimeout(r, 300));
     } finally {
       process.off('uncaughtException', onUncaught);
-      if (prev === undefined) delete process.env.CLAUDE_BIN; else process.env.CLAUDE_BIN = prev;
+      if (prev === undefined) delete process.env.CLAUDE_BIN;
+      else process.env.CLAUDE_BIN = prev;
     }
     expect(uncaught).toEqual([]);
   });
@@ -216,13 +276,19 @@ describe('runClaude', () => {
     const prev = process.env.CLAUDE_BIN;
     process.env.CLAUDE_BIN = bin;
     try {
-      await expect(runClaude({
-        prompt: 'p', model: 'sonnet', maxBudgetUsd: 0.1, timeoutMs: 5000,
-        config: { url: 'http://localhost:3001', username: 'a', password: 'b' },
-        rawPath: join(dir, 'no-such-dir', 'raw.jsonl'),
-      })).rejects.toThrow(/ENOENT/);
+      await expect(
+        runClaude({
+          prompt: 'p',
+          model: 'sonnet',
+          maxBudgetUsd: 0.1,
+          timeoutMs: 5000,
+          config: { url: 'http://localhost:3001', username: 'a', password: 'b' },
+          rawPath: join(dir, 'no-such-dir', 'raw.jsonl'),
+        })
+      ).rejects.toThrow(/ENOENT/);
     } finally {
-      if (prev === undefined) delete process.env.CLAUDE_BIN; else process.env.CLAUDE_BIN = prev;
+      if (prev === undefined) delete process.env.CLAUDE_BIN;
+      else process.env.CLAUDE_BIN = prev;
     }
   });
 
@@ -237,21 +303,25 @@ describe('runClaude', () => {
     process.env.CLAUDE_BIN = bin;
     try {
       const run = runClaude({
-        prompt: 'p', model: 'sonnet', maxBudgetUsd: 0.1, timeoutMs: 20_000,
+        prompt: 'p',
+        model: 'sonnet',
+        maxBudgetUsd: 0.1,
+        timeoutMs: 20_000,
         config: { url: 'http://localhost:3001', username: 'a', password: 'b' },
         rawPath: join(dir, 'raw.jsonl'),
       });
-      await new Promise(r => setTimeout(r, 300));
+      await new Promise((r) => setTimeout(r, 300));
       const started = Date.now();
       expect(abortActiveClaude()).toBe(true);
       await expect(run).rejects.toBeInstanceOf(ClaudeAbortedError);
       expect(Date.now() - started).toBeLessThan(2000);
       const grandchild = Number(readFileSync(pidFile, 'utf8'));
-      await new Promise(r => setTimeout(r, 100));
+      await new Promise((r) => setTimeout(r, 100));
       expect(() => process.kill(grandchild, 0)).toThrow();
       expect(abortActiveClaude()).toBe(false);
     } finally {
-      if (prev === undefined) delete process.env.CLAUDE_BIN; else process.env.CLAUDE_BIN = prev;
+      if (prev === undefined) delete process.env.CLAUDE_BIN;
+      else process.env.CLAUDE_BIN = prev;
     }
   });
 
@@ -266,13 +336,18 @@ describe('runClaude', () => {
     try {
       const raw = join(dir, 'raw.jsonl');
       const t = await runClaude({
-        prompt: 'p', model: 'sonnet', maxBudgetUsd: 0.1, timeoutMs: 5000,
-        config: { url: 'http://localhost:3001', username: 'a', password: 'b' }, rawPath: raw,
+        prompt: 'p',
+        model: 'sonnet',
+        maxBudgetUsd: 0.1,
+        timeoutMs: 5000,
+        config: { url: 'http://localhost:3001', username: 'a', password: 'b' },
+        rawPath: raw,
       });
-      expect(t.toolCalls.map(c => c.name)).toEqual(['listMonitors', 'getMonitor']);
+      expect(t.toolCalls.map((c) => c.name)).toEqual(['listMonitors', 'getMonitor']);
       expect(readFileSync(raw, 'utf8')).toContain('"type": "result"');
     } finally {
-      if (prev === undefined) delete process.env.CLAUDE_BIN; else process.env.CLAUDE_BIN = prev;
+      if (prev === undefined) delete process.env.CLAUDE_BIN;
+      else process.env.CLAUDE_BIN = prev;
     }
   });
 });

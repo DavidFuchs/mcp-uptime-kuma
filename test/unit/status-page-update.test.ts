@@ -37,12 +37,26 @@ const STORED = {
 
 // What the public /api/status-page/{slug} returns for its groups.
 const GROUPS = [
-  { id: 11, name: 'Core', weight: 1, monitorList: [{ id: 5, name: 'Web', sendUrl: 0 }, { id: 6, name: 'API', url: 'https://api.acme.test' }] },
+  {
+    id: 11,
+    name: 'Core',
+    weight: 1,
+    monitorList: [
+      { id: 5, name: 'Web', sendUrl: 0 },
+      { id: 6, name: 'API', url: 'https://api.acme.test' },
+    ],
+  },
   { id: 12, name: 'Edge', weight: 2, monitorList: [] },
 ];
 
 async function connectServer() {
-  const { server } = await createServer({ url: 'http://localhost:3001', username: undefined, password: undefined, token: undefined, jwtToken: undefined });
+  const { server } = await createServer({
+    url: 'http://localhost:3001',
+    username: undefined,
+    password: undefined,
+    token: undefined,
+    jwtToken: undefined,
+  });
   const client = new Client({ name: 'status-page-update-test', version: '1.0.0' }, { capabilities: {} });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
@@ -64,8 +78,18 @@ describe('updateStatusPage merges onto the stored page', () => {
     vi.spyOn(UptimeKumaClient.prototype, 'login').mockResolvedValue({ ok: true } as never);
     vi.spyOn(UptimeKumaClient.prototype, 'getSettings').mockResolvedValue({ ok: true, data: {} } as never);
     vi.spyOn(UptimeKumaClient.prototype, 'getStatusPageConfig').mockResolvedValue({ ...STORED } as never);
-    vi.spyOn(UptimeKumaClient.prototype, 'getStatusPage').mockResolvedValue({ ok: true, config: { ...STORED }, publicGroupList: structuredClone(GROUPS), incidents: [] } as never);
-    save = vi.spyOn(UptimeKumaClient.prototype, 'updateStatusPage').mockImplementation((async (slug: string, config: any, groups: any[], img: string) => {
+    vi.spyOn(UptimeKumaClient.prototype, 'getStatusPage').mockResolvedValue({
+      ok: true,
+      config: { ...STORED },
+      publicGroupList: structuredClone(GROUPS),
+      incidents: [],
+    } as never);
+    save = vi.spyOn(UptimeKumaClient.prototype, 'updateStatusPage').mockImplementation((async (
+      slug: string,
+      config: any,
+      groups: any[],
+      img: string
+    ) => {
       sent = { slug, config, groups, img };
       return { ok: true };
     }) as never);
@@ -110,14 +134,20 @@ describe('updateStatusPage merges onto the stored page', () => {
 
   for (const value of [undefined, '', null]) {
     it(`sends analyticsType ${JSON.stringify(value)} as null`, async () => {
-      vi.spyOn(UptimeKumaClient.prototype, 'getStatusPageConfig').mockResolvedValue({ ...STORED, analyticsType: undefined } as never);
+      vi.spyOn(UptimeKumaClient.prototype, 'getStatusPageConfig').mockResolvedValue({
+        ...STORED,
+        analyticsType: undefined,
+      } as never);
       await update({ config: value === undefined ? { title: 'T' } : { analyticsType: value } });
       expect(sent.config.analyticsType).toBeNull();
     });
   }
 
   it('sends domainNameList as an array even when the stored page has none', async () => {
-    vi.spyOn(UptimeKumaClient.prototype, 'getStatusPageConfig').mockResolvedValue({ ...STORED, domainNameList: undefined } as never);
+    vi.spyOn(UptimeKumaClient.prototype, 'getStatusPageConfig').mockResolvedValue({
+      ...STORED,
+      domainNameList: undefined,
+    } as never);
     await update({ config: { title: 'T' } });
     expect(sent.config.domainNameList).toEqual([]);
   });
@@ -125,14 +155,24 @@ describe('updateStatusPage merges onto the stored page', () => {
   it('keeps the current groups and their monitors when publicGroupList is omitted', async () => {
     await update({ config: { description: 'x' } });
     expect(sent.groups).toEqual([
-      { id: 11, name: 'Core', monitorList: [{ id: 5, sendUrl: 0 }, { id: 6, url: 'https://api.acme.test' }] },
+      {
+        id: 11,
+        name: 'Core',
+        monitorList: [
+          { id: 5, sendUrl: 0 },
+          { id: 6, url: 'https://api.acme.test' },
+        ],
+      },
       { id: 12, name: 'Edge', monitorList: [] },
     ]);
   });
 
   it('replaces the groups when publicGroupList is given, defaulting monitorList to []', async () => {
     await update({ config: {}, publicGroupList: [{ name: 'Core', monitorList: [{ id: 5 }] }, { name: 'Empty' }] });
-    expect(sent.groups).toEqual([{ name: 'Core', monitorList: [{ id: 5 }] }, { name: 'Empty', monitorList: [] }]);
+    expect(sent.groups).toEqual([
+      { name: 'Core', monitorList: [{ id: 5 }] },
+      { name: 'Empty', monitorList: [] },
+    ]);
   });
 
   it('config may be omitted when only the groups change', async () => {

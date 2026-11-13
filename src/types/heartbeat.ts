@@ -7,7 +7,11 @@ import { normaliseMsg } from '../utils/normalize-msg.js';
 export const HeartbeatSchema = z.object({
   // Required fields
   status: z.number().describe('0=DOWN 1=UP 2=PENDING 3=MAINT'),
-  time: z.string().describe('Timestamp, in UTC as "YYYY-MM-DD HH:mm:ss.SSS". Uptime Kuma sends no zone marker, so compare against the current UTC time, not local time.'),
+  time: z
+    .string()
+    .describe(
+      'Timestamp, in UTC as "YYYY-MM-DD HH:mm:ss.SSS". Uptime Kuma sends no zone marker, so compare against the current UTC time, not local time.'
+    ),
   msg: z.preprocess(normaliseMsg, z.string()).describe('Status message'),
   important: z.union([z.boolean(), z.number()]).describe('Status change flag'),
   // Optional fields

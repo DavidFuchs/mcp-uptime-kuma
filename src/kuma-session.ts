@@ -61,11 +61,13 @@ export function createKumaSession(config: UptimeKumaConfig): KumaSession {
     if (!t) return null;
     const segments = String(t).split('.').length;
     if (segments === 3) return null;
-    return `UPTIME_KUMA_JWT_TOKEN is not a JWT: it has ${segments} dot-separated segment(s), expected 3 `
-      + `(length ${String(t).length}). Uptime Kuma will always reject this with "authInvalidToken". `
-      + `Generate a real token with: mcp-uptime-kuma-get-jwt ${config.url} <username> <password>. `
-      + 'Note this variable may also be set in your shell environment as well as your MCP client '
-      + 'config — check both and make sure they agree.';
+    return (
+      `UPTIME_KUMA_JWT_TOKEN is not a JWT: it has ${segments} dot-separated segment(s), expected 3 ` +
+      `(length ${String(t).length}). Uptime Kuma will always reject this with "authInvalidToken". ` +
+      `Generate a real token with: mcp-uptime-kuma-get-jwt ${config.url} <username> <password>. ` +
+      'Note this variable may also be set in your shell environment as well as your MCP client ' +
+      'config — check both and make sure they agree.'
+    );
   };
 
   // Function to authenticate the client (to be called after transport is connected).
@@ -95,10 +97,7 @@ export function createKumaSession(config: UptimeKumaConfig): KumaSession {
         const credentialProblem = describeCredential();
         const detail = credentialProblem ? `${errorMessage}. ${credentialProblem}` : errorMessage;
         await log('error', `Failed to authenticate with Uptime Kuma: ${detail}`);
-        throw new McpError(
-          ErrorCode.InternalError,
-          `Failed to authenticate with Uptime Kuma: ${detail}`
-        );
+        throw new McpError(ErrorCode.InternalError, `Failed to authenticate with Uptime Kuma: ${detail}`);
       }
     })();
 
@@ -122,7 +121,9 @@ export function createKumaSession(config: UptimeKumaConfig): KumaSession {
     authenticateClient,
     attachLogSink: (sink) => {
       sinks.add(sink);
-      return () => { sinks.delete(sink); };
+      return () => {
+        sinks.delete(sink);
+      };
     },
   };
 }

@@ -51,7 +51,7 @@ describe('UptimeKumaClient - Tag Reconciliation (createMonitor/updateMonitor)', 
       expect(result.ok).toBe(true);
       expect(result.monitorID).toBe(42);
       // Verify tag was applied
-      const addTagCall = emitCalls.find(c => c.event === 'addMonitorTag');
+      const addTagCall = emitCalls.find((c) => c.event === 'addMonitorTag');
       expect(addTagCall).toBeDefined();
       expect(addTagCall!.args).toEqual([10, 42, 'prod']);
     });
@@ -83,7 +83,10 @@ describe('UptimeKumaClient - Tag Reconciliation (createMonitor/updateMonitor)', 
         },
         addTag: (tagData, callback) => {
           createdTags.push(tagData as { name: string; color: string });
-          (callback as (res: unknown) => void)({ ok: true, tag: { id: 99, name: (tagData as { name: string }).name, color: '#808080' } });
+          (callback as (res: unknown) => void)({
+            ok: true,
+            tag: { id: 99, name: (tagData as { name: string }).name, color: '#808080' },
+          });
         },
         addMonitorTag: (_tagID, _monitorID, _value, callback) => {
           (callback as (res: unknown) => void)({ ok: true });
@@ -349,10 +352,42 @@ describe('UptimeKumaClient - Monitor CRUD Operations', () => {
   describe('getMonitorList', () => {
     beforeEach(() => {
       injectMonitorListCache(client, {
-        '1': { id: 1, name: 'Web', type: 'http', active: true, maintenance: false, pathName: 'Web', tags: [{ name: 'env', value: 'prod' }] },
-        '2': { id: 2, name: 'API', type: 'http', active: true, maintenance: false, pathName: 'API', tags: [{ name: 'env', value: 'staging' }] },
-        '3': { id: 3, name: 'DNS Check', type: 'dns', active: false, maintenance: false, pathName: 'DNS Check', tags: [] },
-        '4': { id: 4, name: 'Ping Server', type: 'ping', active: true, maintenance: true, pathName: 'Ping Server', tags: [{ name: 'region', value: 'us-east' }] },
+        '1': {
+          id: 1,
+          name: 'Web',
+          type: 'http',
+          active: true,
+          maintenance: false,
+          pathName: 'Web',
+          tags: [{ name: 'env', value: 'prod' }],
+        },
+        '2': {
+          id: 2,
+          name: 'API',
+          type: 'http',
+          active: true,
+          maintenance: false,
+          pathName: 'API',
+          tags: [{ name: 'env', value: 'staging' }],
+        },
+        '3': {
+          id: 3,
+          name: 'DNS Check',
+          type: 'dns',
+          active: false,
+          maintenance: false,
+          pathName: 'DNS Check',
+          tags: [],
+        },
+        '4': {
+          id: 4,
+          name: 'Ping Server',
+          type: 'ping',
+          active: true,
+          maintenance: true,
+          pathName: 'Ping Server',
+          tags: [{ name: 'region', value: 'us-east' }],
+        },
       });
     });
 
@@ -422,15 +457,17 @@ describe('UptimeKumaClient - Monitor CRUD Operations', () => {
 
     it('includes latest heartbeat status in summary', () => {
       const summaries = client.getMonitorSummary();
-      const web = summaries.find(s => s.name === 'Web');
+      const web = summaries.find((s) => s.name === 'Web');
       expect(web?.status).toBe(1);
       expect(web?.msg).toBe('OK');
     });
 
     it('normalizes non-string heartbeat messages before returning summaries', () => {
       injectHeartbeatListCache(client, {
-        '1': [{ monitorID: 1, status: 1, msg: 200, ping: 50, time: '2024-01-01' },
-          { monitorID: 1, status: 1, msg: ['HTTP 200', 'OK'], ping: 50, time: '2023-12-31' }],
+        '1': [
+          { monitorID: 1, status: 1, msg: 200, ping: 50, time: '2024-01-01' },
+          { monitorID: 1, status: 1, msg: ['HTTP 200', 'OK'], ping: 50, time: '2023-12-31' },
+        ],
       });
 
       const summary = client.getMonitorSummary()[0];
@@ -464,7 +501,9 @@ describe('UptimeKumaClient - Monitor CRUD Operations', () => {
     });
 
     it('names the accepted statuses when it refuses one', () => {
-      expect(() => client.getMonitorSummary({ status: 'broken' })).toThrow(/"broken".*down.*up.*pending.*maintenance/is);
+      expect(() => client.getMonitorSummary({ status: 'broken' })).toThrow(
+        /"broken".*down.*up.*pending.*maintenance/is
+      );
     });
 
     it('treats a blank status as no filter', () => {
@@ -473,7 +512,7 @@ describe('UptimeKumaClient - Monitor CRUD Operations', () => {
 
     it('includes uptime and avgPing data', () => {
       const summaries = client.getMonitorSummary();
-      const web = summaries.find(s => s.name === 'Web');
+      const web = summaries.find((s) => s.name === 'Web');
       expect(web?.uptime).toEqual({ '24h': 0.99 });
       expect(web?.avgPing).toBe(50);
     });

@@ -14,12 +14,17 @@ export function registerNotificationTools(ctx: ToolContext): void {
     'listNotifications',
     {
       title: 'List Notifications',
-      description: 'Returns all configured notification channels (Slack, ntfy, Discord, email, webhooks, etc.), each with its `type` and its type-specific settings in `config`. To attach a channel to a monitor you only need its id — the credentials in `config` are withheld by default and the names of the withheld fields are listed in `redactedConfigKeys`.',
+      description:
+        'Returns all configured notification channels (Slack, ntfy, Discord, email, webhooks, etc.), each with its `type` and its type-specific settings in `config`. To attach a channel to a monitor you only need its id — the credentials in `config` are withheld by default and the names of the withheld fields are listed in `redactedConfigKeys`.',
       inputSchema: {
-        includeSecrets: includeSecretsParam
+        includeSecrets: includeSecretsParam,
       },
       outputSchema: {
-        notifications: z.array(NotificationSchema).describe('Array of notification channel configurations. By default `config` is reduced to its non-secret fields and `redactedConfigKeys` names what was withheld.'),
+        notifications: z
+          .array(NotificationSchema)
+          .describe(
+            'Array of notification channel configurations. By default `config` is reduced to its non-secret fields and `redactedConfigKeys` names what was withheld.'
+          ),
         count: z.number(),
       },
     },
@@ -49,13 +54,16 @@ export function registerNotificationTools(ctx: ToolContext): void {
     'addNotification',
     {
       title: 'Add Notification',
-      description: 'Creates a new notification channel. The configuration fields depend on the notification type (e.g., for slack: webhookURL; for ntfy: ntfyTopic, ntfyServerUrl; for discord: discordWebhookUrl).',
+      description:
+        'Creates a new notification channel. The configuration fields depend on the notification type (e.g., for slack: webhookURL; for ntfy: ntfyTopic, ntfyServerUrl; for discord: discordWebhookUrl).',
       inputSchema: {
         name: z.string().describe('Human-readable name for this notification channel'),
         type: z.string().describe('Notification type (e.g. slack, ntfy, discord, telegram, webhook, smtp)'),
         isDefault: z.boolean().optional().describe('Enable by default for new monitors'),
         applyExisting: z.boolean().optional().describe('Apply this notification to all existing monitors now'),
-        config: z.record(z.string(), z.unknown()).describe('Type-specific configuration fields (e.g. webhookURL for slack, ntfyTopic for ntfy)'),
+        config: z
+          .record(z.string(), z.unknown())
+          .describe('Type-specific configuration fields (e.g. webhookURL for slack, ntfyTopic for ntfy)'),
       },
       outputSchema: {
         ok: z.boolean(),
@@ -76,7 +84,7 @@ export function registerNotificationTools(ctx: ToolContext): void {
         if (markers.length > 0) {
           throw new Error(
             `"***" is the redaction marker, not a credential — pass the real value for ${markers.join(', ')}. ` +
-            'To copy an existing channel, read it with listNotifications { includeSecrets: true }.'
+              'To copy an existing channel, read it with listNotifications { includeSecrets: true }.'
           );
         }
 
@@ -127,9 +135,7 @@ export function registerNotificationTools(ctx: ToolContext): void {
         // channel would otherwise destroy the credential that makes it work.
         const stored = client
           .getNotificationList()
-          .find((n) => (n as Record<string, unknown>)['id'] === notificationID) as
-          | Record<string, unknown>
-          | undefined;
+          .find((n) => (n as Record<string, unknown>)['id'] === notificationID) as Record<string, unknown> | undefined;
         let storedConfig: Record<string, unknown> | undefined;
         const rawStored = stored?.['config'];
         if (typeof rawStored === 'string') {
@@ -147,8 +153,8 @@ export function registerNotificationTools(ctx: ToolContext): void {
         if (missing.length > 0) {
           throw new Error(
             `Cannot write the redaction marker "***" to ${missing.join(', ')} — notification ${notificationID} has ` +
-            'no stored value to restore. Pass the real value, or call listNotifications with includeSecrets ' +
-            'to read the current one.'
+              'no stored value to restore. Pass the real value, or call listNotifications with includeSecrets ' +
+              'to read the current one.'
           );
         }
 
@@ -172,7 +178,8 @@ export function registerNotificationTools(ctx: ToolContext): void {
     'deleteNotification',
     {
       title: 'Delete Notification',
-      description: 'Permanently deletes a notification channel. Monitors that used this channel will no longer send alerts through it.',
+      description:
+        'Permanently deletes a notification channel. Monitors that used this channel will no longer send alerts through it.',
       inputSchema: {
         notificationID: requiredId('The ID of the notification to delete'),
       },

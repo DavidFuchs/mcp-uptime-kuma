@@ -26,9 +26,7 @@ function mainProcessCommandLine(): string {
 let healthy: boolean;
 try {
   const target = process.argv[2] ?? healthcheckTarget(mainProcessCommandLine(), process.env);
-  healthy = target === null
-    ? true
-    : (await fetch(target, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) })).ok;
+  healthy = target === null ? true : (await fetch(target, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) })).ok;
 } catch {
   healthy = false;
 }

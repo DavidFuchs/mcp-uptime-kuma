@@ -52,10 +52,10 @@ function validateEnvironment(): UptimeKumaConfig {
   // expired credential — so say what is actually wrong. Reports the SHAPE only, never the value.
   if (jwtToken && String(jwtToken).split('.').length !== 3) {
     console.error(
-      'WARNING: UPTIME_KUMA_JWT_TOKEN is not a JWT '
-      + `(${String(jwtToken).split('.').length} dot-separated segment(s), length ${String(jwtToken).length}; expected 3). `
-      + 'Uptime Kuma will reject every request with "authInvalidToken". '
-      + `Regenerate with: mcp-uptime-kuma-get-jwt ${url} <username> <password>`
+      'WARNING: UPTIME_KUMA_JWT_TOKEN is not a JWT ' +
+        `(${String(jwtToken).split('.').length} dot-separated segment(s), length ${String(jwtToken).length}; expected 3). ` +
+        'Uptime Kuma will reject every request with "authInvalidToken". ' +
+        `Regenerate with: mcp-uptime-kuma-get-jwt ${url} <username> <password>`
     );
   }
 
@@ -66,7 +66,7 @@ function validateEnvironment(): UptimeKumaConfig {
 function parseArgs() {
   const args = process.argv.slice(2);
   let transport: 'stdio' | 'streamable-http' = 'stdio';
-  
+
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '-t' || args[i] === '--transport') {
       const value = args[i + 1];
@@ -102,7 +102,7 @@ Environment variables for the streamable HTTP transport:
       process.exit(0);
     }
   }
-  
+
   return { transport };
 }
 
@@ -122,7 +122,11 @@ async function runStdio(config: UptimeKumaConfig) {
     const shutdown = (code = 0) => {
       if (shuttingDown) return;
       shuttingDown = true;
-      try { client.disconnect(); } catch { /* best effort on the way out */ }
+      try {
+        client.disconnect();
+      } catch {
+        /* best effort on the way out */
+      }
       process.exit(code);
     };
     process.stdin.on('end', () => shutdown());
@@ -178,33 +182,35 @@ async function runHttp(config: UptimeKumaConfig) {
   // where 0.0.0.0 is mandatory — so the safer value is offered rather than imposed.
   const host = process.env.HOST || '0.0.0.0';
 
-  const httpServer = app.listen(port, host, () => {
-    // The port actually bound, which is not the one asked for when that was 0.
-    const address = httpServer.address();
-    const boundPort = address !== null && typeof address === 'object' ? address.port : port;
-    console.log(`mcp-uptime-kuma server running on ${listenUrl(host, boundPort, '/mcp')}`);
-    console.log(`Health check available at ${listenUrl(host, boundPort, '/health')}`);
+  const httpServer = app
+    .listen(port, host, () => {
+      // The port actually bound, which is not the one asked for when that was 0.
+      const address = httpServer.address();
+      const boundPort = address !== null && typeof address === 'object' ? address.port : port;
+      console.log(`mcp-uptime-kuma server running on ${listenUrl(host, boundPort, '/mcp')}`);
+      console.log(`Health check available at ${listenUrl(host, boundPort, '/health')}`);
 
-    // Warn rather than refuse to start. Both settings default to permissive so that
-    // upgrading cannot break a working deployment, which makes an unprotected server the
-    // quiet outcome — and a quiet outcome is exactly what nobody notices.
-    if (!authToken?.trim()) {
-      console.warn(
-        'WARNING: MCP_AUTH_TOKEN is not set. This endpoint is unauthenticated — anyone who can '
-        + 'reach it has full read/write control of your Uptime Kuma instance, including deleting monitors.'
-      );
-    }
-    if (allowedOrigins === '*') {
-      console.warn(
-        'WARNING: ALLOWED_ORIGIN is "*", so no Origin validation is performed. A website the user '
-        + 'visits can reach this server via DNS rebinding. Set ALLOWED_ORIGIN to a comma-separated '
-        + 'list of the origins your browser-based clients actually use.'
-      );
-    }
-  }).on('error', (error) => {
-    process.stderr.write(`Server error: ${error}\n`);
-    process.exit(1);
-  });
+      // Warn rather than refuse to start. Both settings default to permissive so that
+      // upgrading cannot break a working deployment, which makes an unprotected server the
+      // quiet outcome — and a quiet outcome is exactly what nobody notices.
+      if (!authToken?.trim()) {
+        console.warn(
+          'WARNING: MCP_AUTH_TOKEN is not set. This endpoint is unauthenticated — anyone who can ' +
+            'reach it has full read/write control of your Uptime Kuma instance, including deleting monitors.'
+        );
+      }
+      if (allowedOrigins === '*') {
+        console.warn(
+          'WARNING: ALLOWED_ORIGIN is "*", so no Origin validation is performed. A website the user ' +
+            'visits can reach this server via DNS rebinding. Set ALLOWED_ORIGIN to a comma-separated ' +
+            'list of the origins your browser-based clients actually use.'
+        );
+      }
+    })
+    .on('error', (error) => {
+      process.stderr.write(`Server error: ${error}\n`);
+      process.exit(1);
+    });
 
   // Graceful shutdown: stop accepting requests, let those in flight finish, then drop the
   // connection to Uptime Kuma, which would otherwise keep the process alive.
@@ -215,10 +221,14 @@ async function runHttp(config: UptimeKumaConfig) {
     console.log('\n[MCP] Shutting down gracefully...');
     httpServer.close(() => {
       console.log('[MCP] Server closed');
-      try { session.client.disconnect(); } catch { /* best effort on the way out */ }
+      try {
+        session.client.disconnect();
+      } catch {
+        /* best effort on the way out */
+      }
       process.exit(0);
     });
-    
+
     // Force exit after 10 seconds
     setTimeout(() => {
       console.error('[MCP] Forced shutdown after timeout');
@@ -234,7 +244,7 @@ async function runHttp(config: UptimeKumaConfig) {
 async function main() {
   const { transport } = parseArgs();
   const config = validateEnvironment();
-  
+
   if (transport === 'stdio') {
     await runStdio(config);
   } else {

@@ -15,16 +15,16 @@ export const startupTests: Array<{ name: string; fn: TestFn }> = [
     name: 'fresh server answers a tool call made immediately after initialize',
     fn: async ({ client, config }) => {
       const name = 'Integration Test - Startup Race';
-      const createResult = await client.callTool({
+      const createResult = (await client.callTool({
         name: 'createMonitor',
         arguments: { name, type: 'http', url: 'https://example.com', interval: 120 },
-      }) as CallToolResult;
+      })) as CallToolResult;
       const monitorID = extractID(createResult, 'createMonitor', 'monitorID');
 
       try {
         const { client: fresh } = await createTestClient(config, { settleMs: 0 });
         try {
-          const result = await fresh.callTool({ name: 'getMonitor', arguments: { monitorID } }) as CallToolResult;
+          const result = (await fresh.callTool({ name: 'getMonitor', arguments: { monitorID } })) as CallToolResult;
           const monitor = JSON.parse(extractText(result, 'getMonitor'));
           if (monitor.name !== name) throw new Error(`Expected monitor "${name}", got "${monitor.name}"`);
           console.log(`  ✓ first call on a fresh server returned monitor ID ${monitorID}`);

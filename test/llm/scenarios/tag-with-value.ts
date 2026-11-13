@@ -10,7 +10,9 @@ export default defineScenario({
   async setup(ctx) {
     return {
       id: await createMonitor(ctx, {
-        name: `${PREFIX}Search`, type: 'http', url: 'https://example.com/search',
+        name: `${PREFIX}Search`,
+        type: 'http',
+        url: 'https://example.com/search',
         tags: [{ name: `${PREFIX}team`, value: 'discovery' }],
       }),
     };
@@ -20,8 +22,16 @@ export default defineScenario({
     const m = await getMonitor(ctx, seed.id);
     const tags: any[] = m.tags ?? [];
     return [
-      expectThat(`has ${TAG} with value prod`, tags.some(t => t.name === TAG && t.value === 'prod'), `tags=${JSON.stringify(tags.map(t => `${t.name}=${t.value}`))}`),
-      expectThat('kept team=discovery', tags.some(t => t.name === `${PREFIX}team` && t.value === 'discovery'), `tags=${JSON.stringify(tags.map(t => `${t.name}=${t.value}`))}`),
+      expectThat(
+        `has ${TAG} with value prod`,
+        tags.some((t) => t.name === TAG && t.value === 'prod'),
+        `tags=${JSON.stringify(tags.map((t) => `${t.name}=${t.value}`))}`
+      ),
+      expectThat(
+        'kept team=discovery',
+        tags.some((t) => t.name === `${PREFIX}team` && t.value === 'discovery'),
+        `tags=${JSON.stringify(tags.map((t) => `${t.name}=${t.value}`))}`
+      ),
     ];
   },
   budget: { maxToolCalls: 6, maxToolErrors: 1 },

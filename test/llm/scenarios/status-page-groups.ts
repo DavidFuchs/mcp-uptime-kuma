@@ -25,12 +25,12 @@ export default defineScenario({
     }
     const cfg = page.config ?? page.statusPage ?? page;
     const groups: any[] = page.publicGroupList ?? [];
-    const core = groups.find(g => g.name === 'Core');
+    const core = groups.find((g) => g.name === 'Core');
     const ids = (core?.monitorList ?? []).map((m: any) => m.id);
     return [
       expectThat('title', cfg.title === 'Example Status', `title=${cfg.title}`),
       expectThat('description', cfg.description === 'Live service health', `description=${cfg.description}`),
-      expectThat('has a Core group', !!core, `groups=${JSON.stringify(groups.map(g => g.name))}`),
+      expectThat('has a Core group', !!core, `groups=${JSON.stringify(groups.map((g) => g.name))}`),
       expectThat('Core shows Website', ids.includes(seed.web), `monitorList=${JSON.stringify(ids)}`),
       expectThat('Core shows Public API', ids.includes(seed.api), `monitorList=${JSON.stringify(ids)}`),
     ];

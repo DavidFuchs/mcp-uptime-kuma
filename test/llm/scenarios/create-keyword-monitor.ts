@@ -13,7 +13,11 @@ export default defineScenario({
     if (!m) return [expectThat(`monitor "${NAME}" exists`, false)];
     return [
       expectThat('type is keyword', m.type === 'keyword', `type=${m.type}`),
-      expectThat('url is https://example.com', String(m.url ?? '').replace(/\/$/, '') === 'https://example.com', `url=${m.url}`),
+      expectThat(
+        'url is https://example.com',
+        String(m.url ?? '').replace(/\/$/, '') === 'https://example.com',
+        `url=${m.url}`
+      ),
       expectThat('keyword is Error', m.keyword === 'Error', `keyword=${m.keyword}`),
       expectThat('keyword is inverted', m.invertKeyword === true, `invertKeyword=${m.invertKeyword}`),
     ];

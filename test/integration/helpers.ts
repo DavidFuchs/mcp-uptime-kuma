@@ -39,17 +39,14 @@ export interface TestContext {
  */
 export async function createTestClient(
   config: TestConfig,
-  { settleMs = 2000 }: { settleMs?: number } = {},
+  { settleMs = 2000 }: { settleMs?: number } = {}
 ): Promise<{ client: Client; transport: StdioClientTransport }> {
-  const client = new Client(
-    { name: 'mcp-uptime-kuma-integration-test', version: '1.0.0' },
-    { capabilities: {} }
-  );
+  const client = new Client({ name: 'mcp-uptime-kuma-integration-test', version: '1.0.0' }, { capabilities: {} });
 
   const serverPath = join(__dirname, '../../src/index.ts');
 
   const env: Record<string, string> = {
-    ...process.env as Record<string, string>,
+    ...(process.env as Record<string, string>),
     UPTIME_KUMA_URL: config.url,
     MCP_TEST_MODE: '1',
   };
@@ -67,7 +64,7 @@ export async function createTestClient(
   });
 
   await client.connect(transport);
-  if (settleMs > 0) await new Promise(resolve => setTimeout(resolve, settleMs));
+  if (settleMs > 0) await new Promise((resolve) => setTimeout(resolve, settleMs));
   await client.listTools();
 
   return { client, transport };
@@ -155,7 +152,7 @@ export function extractID(result: CallToolResult, toolName: string, idField?: st
 export async function runTestSuite(
   suiteName: string,
   tests: Array<{ name: string; fn: TestFn }>,
-  ctx: TestContext,
+  ctx: TestContext
 ): Promise<{ passed: number; failed: number }> {
   console.log(`\n${'='.repeat(60)}`);
   console.log(`🧪 ${suiteName}`);

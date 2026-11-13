@@ -1,10 +1,4 @@
-import {
-  createTestClient,
-  loadTestConfig,
-  validateTestConfig,
-  runTestSuite,
-  type TestContext,
-} from './helpers.js';
+import { createTestClient, loadTestConfig, validateTestConfig, runTestSuite, type TestContext } from './helpers.js';
 import { settingsTests } from './settings.test.js';
 import { monitorTests } from './monitors.test.js';
 import { heartbeatTests } from './heartbeats.test.js';
@@ -72,12 +66,11 @@ async function main() {
   }
 
   const defaultSuites = args.includes('--long') ? ALL_SUITES : SHORT_SUITES;
-  const suitesToRun = selectedSuites.length > 0
-    ? selectedSuites.filter(s => ALL_SUITES[s])
-    : Object.keys(defaultSuites);
+  const suitesToRun =
+    selectedSuites.length > 0 ? selectedSuites.filter((s) => ALL_SUITES[s]) : Object.keys(defaultSuites);
 
   if (selectedSuites.length > 0) {
-    const invalid = selectedSuites.filter(s => !ALL_SUITES[s]);
+    const invalid = selectedSuites.filter((s) => !ALL_SUITES[s]);
     if (invalid.length > 0) {
       console.error(`❌ Unknown suites: ${invalid.join(', ')}`);
       console.error(`   Available: ${Object.keys(ALL_SUITES).join(', ')}`);

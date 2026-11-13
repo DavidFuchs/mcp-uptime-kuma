@@ -21,25 +21,118 @@ import { redactSecrets, SECRET_MARKER } from '../../src/redact.js';
  * second is derived from `accepted_statuscodes`.
  */
 const FIELDS_EDIT_MONITOR_READS = [
-  'name', 'description', 'parent', 'type', 'subtype', 'url', 'wsIgnoreSecWebsocketAcceptHeader', 'wsSubprotocol',
-  'method', 'body', 'ipFamily', 'headers', 'basic_auth_user', 'basic_auth_pass', 'bearer_token', 'timeout',
-  'oauth_client_id', 'oauth_client_secret', 'oauth_auth_method', 'oauth_token_url', 'oauth_scopes', 'oauth_audience',
-  'tlsCa', 'tlsCert', 'tlsKey', 'interval', 'retryInterval', 'resendInterval', 'hostname', 'game', 'maxretries',
-  'port', 'location', 'protocol', 'keyword', 'invertKeyword', 'ignoreTls', 'expiryNotification',
-  'domainExpiryNotification', 'upsideDown', 'packetSize', 'maxredirects', 'accepted_statuscodes', 'saveResponse',
-  'saveErrorResponse', 'responseMaxLength', 'dns_resolve_type', 'dns_resolve_server', 'pushToken',
-  'docker_container', 'docker_host', 'proxyId', 'mqttUsername', 'mqttPassword', 'mqttTopic', 'mqttSuccessMessage',
-  'mqttCheckType', 'mqttWebsocketPath', 'databaseConnectionString', 'databaseQuery', 'authMethod',
-  'authWorkstation', 'authDomain', 'grpcUrl', 'grpcProtobuf', 'grpcServiceName', 'grpcMethod', 'grpcBody',
-  'grpcMetadata', 'grpcEnableTls', 'radiusUsername', 'radiusPassword', 'radiusCalledStationId',
-  'radiusCallingStationId', 'radiusSecret', 'httpBodyEncoding', 'expectedValue', 'jsonPath', 'kafkaProducerTopic',
-  'kafkaProducerBrokers', 'kafkaProducerAllowAutoTopicCreation', 'kafkaProducerSaslOptions',
-  'kafkaProducerMessage', 'cacheBust', 'kafkaProducerSsl', 'gamedigGivenPortOnly', 'gamedigToken',
-  'remote_browser', 'screenshot_delay', 'smtpSecurity', 'snmpVersion', 'snmpOid', 'jsonPathOperator',
-  'retryOnlyOnStatusCodeFailure', 'rabbitmqNodes', 'rabbitmqUsername', 'rabbitmqPassword', 'conditions',
-  'manual_status', 'system_service_name', 'sshUsername', 'sshPassword', 'sftpPath', 'sshPrivateKey',
-  'sshPassphrase', 'sshAuthMethod', 'ntpStratumThreshold', 'ntpTimeOffsetThreshold', 'ntpRootDispersionThreshold',
-  'ping_numeric', 'ping_count', 'ping_per_request_timeout',
+  'name',
+  'description',
+  'parent',
+  'type',
+  'subtype',
+  'url',
+  'wsIgnoreSecWebsocketAcceptHeader',
+  'wsSubprotocol',
+  'method',
+  'body',
+  'ipFamily',
+  'headers',
+  'basic_auth_user',
+  'basic_auth_pass',
+  'bearer_token',
+  'timeout',
+  'oauth_client_id',
+  'oauth_client_secret',
+  'oauth_auth_method',
+  'oauth_token_url',
+  'oauth_scopes',
+  'oauth_audience',
+  'tlsCa',
+  'tlsCert',
+  'tlsKey',
+  'interval',
+  'retryInterval',
+  'resendInterval',
+  'hostname',
+  'game',
+  'maxretries',
+  'port',
+  'location',
+  'protocol',
+  'keyword',
+  'invertKeyword',
+  'ignoreTls',
+  'expiryNotification',
+  'domainExpiryNotification',
+  'upsideDown',
+  'packetSize',
+  'maxredirects',
+  'accepted_statuscodes',
+  'saveResponse',
+  'saveErrorResponse',
+  'responseMaxLength',
+  'dns_resolve_type',
+  'dns_resolve_server',
+  'pushToken',
+  'docker_container',
+  'docker_host',
+  'proxyId',
+  'mqttUsername',
+  'mqttPassword',
+  'mqttTopic',
+  'mqttSuccessMessage',
+  'mqttCheckType',
+  'mqttWebsocketPath',
+  'databaseConnectionString',
+  'databaseQuery',
+  'authMethod',
+  'authWorkstation',
+  'authDomain',
+  'grpcUrl',
+  'grpcProtobuf',
+  'grpcServiceName',
+  'grpcMethod',
+  'grpcBody',
+  'grpcMetadata',
+  'grpcEnableTls',
+  'radiusUsername',
+  'radiusPassword',
+  'radiusCalledStationId',
+  'radiusCallingStationId',
+  'radiusSecret',
+  'httpBodyEncoding',
+  'expectedValue',
+  'jsonPath',
+  'kafkaProducerTopic',
+  'kafkaProducerBrokers',
+  'kafkaProducerAllowAutoTopicCreation',
+  'kafkaProducerSaslOptions',
+  'kafkaProducerMessage',
+  'cacheBust',
+  'kafkaProducerSsl',
+  'gamedigGivenPortOnly',
+  'gamedigToken',
+  'remote_browser',
+  'screenshot_delay',
+  'smtpSecurity',
+  'snmpVersion',
+  'snmpOid',
+  'jsonPathOperator',
+  'retryOnlyOnStatusCodeFailure',
+  'rabbitmqNodes',
+  'rabbitmqUsername',
+  'rabbitmqPassword',
+  'conditions',
+  'manual_status',
+  'system_service_name',
+  'sshUsername',
+  'sshPassword',
+  'sftpPath',
+  'sshPrivateKey',
+  'sshPassphrase',
+  'sshAuthMethod',
+  'ntpStratumThreshold',
+  'ntpTimeOffsetThreshold',
+  'ntpRootDispersionThreshold',
+  'ping_numeric',
+  'ping_count',
+  'ping_per_request_timeout',
 ];
 
 /** A working minimum for each type #112 added required fields to. */
@@ -58,8 +151,12 @@ const MINIMAL: Record<string, Record<string, unknown>> = {
     kafkaProducerMessage: 'ping',
   },
   radius: {
-    hostname: 'radius.internal', radiusUsername: 'probe', radiusPassword: 'pw', radiusSecret: 'shared',
-    radiusCalledStationId: 'AA-BB-CC-DD-EE-FF:corp', radiusCallingStationId: '11-22-33-44-55-66',
+    hostname: 'radius.internal',
+    radiusUsername: 'probe',
+    radiusPassword: 'pw',
+    radiusSecret: 'shared',
+    radiusCalledStationId: 'AA-BB-CC-DD-EE-FF:corp',
+    radiusCallingStationId: '11-22-33-44-55-66',
   },
   rabbitmq: { rabbitmqNodes: ['https://rabbit.internal:15672'] },
   smtp: { hostname: 'mail.internal' },
@@ -172,20 +269,23 @@ describe('type-specific monitor fields (#112)', () => {
   };
 
   describe('schema coverage', () => {
-    it.each(['createMonitor', 'updateMonitor'])('%s accepts every field editMonitor reads, at the top level or in typeFields', async (toolName) => {
-      const { client } = await connectServer();
-      const { tools } = await client.listTools();
-      const properties = Object.keys(
-        (tools.find((t) => t.name === toolName)!.inputSchema.properties ?? {}) as Record<string, unknown>
-      );
+    it.each(['createMonitor', 'updateMonitor'])(
+      '%s accepts every field editMonitor reads, at the top level or in typeFields',
+      async (toolName) => {
+        const { client } = await connectServer();
+        const { tools } = await client.listTools();
+        const properties = Object.keys(
+          (tools.find((t) => t.name === toolName)!.inputSchema.properties ?? {}) as Record<string, unknown>
+        );
 
-      expect(properties).toContain('typeFields');
-      expect(
-        FIELDS_EDIT_MONITOR_READS.filter((f) => !properties.includes(f) && !MONITOR_TYPE_FIELD_NAMES.includes(f))
-      ).toEqual([]);
-      // One place each: a field accepted in both would have two values to disagree.
-      expect(properties.filter((p) => MONITOR_TYPE_FIELD_NAMES.includes(p))).toEqual([]);
-    });
+        expect(properties).toContain('typeFields');
+        expect(
+          FIELDS_EDIT_MONITOR_READS.filter((f) => !properties.includes(f) && !MONITOR_TYPE_FIELD_NAMES.includes(f))
+        ).toEqual([]);
+        // One place each: a field accepted in both would have two values to disagree.
+        expect(properties.filter((p) => MONITOR_TYPE_FIELD_NAMES.includes(p))).toEqual([]);
+      }
+    );
 
     it('declares the same fields on both tools', async () => {
       const { client } = await connectServer();
@@ -194,11 +294,19 @@ describe('type-specific monitor fields (#112)', () => {
         Object.keys((tools.find((t) => t.name === name)!.inputSchema.properties ?? {}) as Record<string, unknown>);
       const onlyOnUpdate = ['monitorID'];
 
-      expect(props('updateMonitor').filter((p) => !onlyOnUpdate.includes(p)).sort()).toEqual(props('createMonitor').sort());
+      expect(
+        props('updateMonitor')
+          .filter((p) => !onlyOnUpdate.includes(p))
+          .sort()
+      ).toEqual(props('createMonitor').sort());
     });
 
     it('stores a typeFields field in the flat payload Uptime Kuma takes', async () => {
-      const result = await create({ type: 'http', url: 'https://example.com', typeFields: { cacheBust: true, proxyId: '3' } });
+      const result = await create({
+        type: 'http',
+        url: 'https://example.com',
+        typeFields: { cacheBust: true, proxyId: '3' },
+      });
 
       expect(result.isError).toBeFalsy();
       expect(lastWrite).toMatchObject({ url: 'https://example.com', cacheBust: true, proxyId: 3 });
@@ -206,7 +314,13 @@ describe('type-specific monitor fields (#112)', () => {
     });
 
     it('says a type-specific field passed at the top level belongs in typeFields', async () => {
-      const result = await create({ type: 'http', url: 'https://example.com', typeFields: undefined, bearer_token: 't', basicAuthUser: 'u' });
+      const result = await create({
+        type: 'http',
+        url: 'https://example.com',
+        typeFields: undefined,
+        bearer_token: 't',
+        basicAuthUser: 'u',
+      });
 
       expect(result.isError).toBe(true);
       expect(textOf(result)).toContain(
@@ -216,7 +330,11 @@ describe('type-specific monitor fields (#112)', () => {
     });
 
     it('refuses an unknown name inside typeFields, and suggests the accepted spelling', async () => {
-      const result = await create({ type: 'http', url: 'https://example.com', typeFields: { bearerToken: 't', nonsense: 1 } });
+      const result = await create({
+        type: 'http',
+        url: 'https://example.com',
+        typeFields: { bearerToken: 't', nonsense: 1 },
+      });
 
       expect(result.isError).toBe(true);
       expect(textOf(result)).toContain("'bearerToken' is not a field — did you mean 'bearer_token'?");
@@ -233,7 +351,11 @@ describe('type-specific monitor fields (#112)', () => {
     });
 
     it('validates the values inside typeFields', async () => {
-      const result = await create({ type: 'ping', hostname: 'example.com', typeFields: { ping_count: 500, authMethod: 'digest' } });
+      const result = await create({
+        type: 'ping',
+        hostname: 'example.com',
+        typeFields: { ping_count: 500, authMethod: 'digest' },
+      });
 
       expect(result.isError).toBe(true);
       expect(textOf(result)).toContain('typeFields.ping_count');
@@ -250,12 +372,15 @@ describe('type-specific monitor fields (#112)', () => {
     });
 
     // Tool input schemas with references are rejected by several MCP clients.
-    it.each(['createMonitor', 'updateMonitor'])('%s advertises no $ref, nested conditions included', async (toolName) => {
-      const { client } = await connectServer();
-      const { tools } = await client.listTools();
+    it.each(['createMonitor', 'updateMonitor'])(
+      '%s advertises no $ref, nested conditions included',
+      async (toolName) => {
+        const { client } = await connectServer();
+        const { tools } = await client.listTools();
 
-      expect(JSON.stringify(tools.find((t) => t.name === toolName)!.inputSchema)).not.toContain('$ref');
-    });
+        expect(JSON.stringify(tools.find((t) => t.name === toolName)!.inputSchema)).not.toContain('$ref');
+      }
+    );
 
     it('passes nested condition groups through intact', async () => {
       const conditions = [
@@ -279,7 +404,13 @@ describe('type-specific monitor fields (#112)', () => {
 
   describe('getMonitorTypeFields', () => {
     type FieldDoc = { name: string; in: string; description: string; accepts: Record<string, unknown> };
-    type TypeFields = { type: string; required: FieldDoc[]; optional: FieldDoc[]; notes: string[]; commonFields: string[] };
+    type TypeFields = {
+      type: string;
+      required: FieldDoc[];
+      optional: FieldDoc[];
+      notes: string[];
+      commonFields: string[];
+    };
 
     const connect = async () => {
       const { client } = await connectServer();
@@ -305,7 +436,9 @@ describe('type-specific monitor fields (#112)', () => {
         expect(fields.type).toBe(type);
         for (const field of [...fields.required, ...fields.optional]) {
           // Each field is passed in exactly the place the tool says it is.
-          expect(field.in, `${type}.${field.name}`).toBe(MONITOR_TYPE_FIELD_NAMES.includes(field.name) ? 'typeFields' : 'top-level');
+          expect(field.in, `${type}.${field.name}`).toBe(
+            MONITOR_TYPE_FIELD_NAMES.includes(field.name) ? 'typeFields' : 'top-level'
+          );
           if (field.in === 'top-level') expect(accepted, `${type}.${field.name}`).toContain(field.name);
           expect(field.description, `${type}.${field.name}`).not.toBe('');
           expect(Object.keys(field.accepts).length, `${type}.${field.name}`).toBeGreaterThan(0);
@@ -315,24 +448,31 @@ describe('type-specific monitor fields (#112)', () => {
     });
 
     // The refusal and the documentation come from one table; this is what holds them together.
-    it.each(Object.entries(MINIMAL))('lists as required for %s exactly what a create is refused without', async (type, fields) => {
-      const { describe } = await connect();
-      const required = (await describe(type)).required.map((f) => f.name);
+    it.each(Object.entries(MINIMAL))(
+      'lists as required for %s exactly what a create is refused without',
+      async (type, fields) => {
+        const { describe } = await connect();
+        const required = (await describe(type)).required.map((f) => f.name);
 
-      // globalping has none that hold for every subtype; its requirement is in the notes.
-      for (const field of required) expect(Object.keys(fields), `${type} required ${field}`).toContain(field);
-      // Whatever MINIMAL passes beyond that is a conditional requirement, and must be in the notes.
-      const conditional = Object.keys(fields).filter((f) => !required.includes(f));
-      const notes = (await describe(type)).notes.join(' ');
-      for (const field of conditional) expect(notes, `${type} note about ${field}`).toContain(field);
-    });
+        // globalping has none that hold for every subtype; its requirement is in the notes.
+        for (const field of required) expect(Object.keys(fields), `${type} required ${field}`).toContain(field);
+        // Whatever MINIMAL passes beyond that is a conditional requirement, and must be in the notes.
+        const conditional = Object.keys(fields).filter((f) => !required.includes(f));
+        const notes = (await describe(type)).notes.join(' ');
+        for (const field of conditional) expect(notes, `${type} note about ${field}`).toContain(field);
+      }
+    );
 
     it('explains every type-specific field under at least one type', async () => {
       const { properties, types, describe } = await connect();
       const described = new Set<string>();
       for (const type of types) {
         const fields = await describe(type);
-        for (const field of [...fields.required, ...fields.optional, ...fields.commonFields.map((name) => ({ name }))]) {
+        for (const field of [
+          ...fields.required,
+          ...fields.optional,
+          ...fields.commonFields.map((name) => ({ name })),
+        ]) {
           described.add(field.name);
         }
       }
@@ -362,30 +502,53 @@ describe('type-specific monitor fields (#112)', () => {
     it('says what the caller should pass for the snmp community, not where it is stored', async () => {
       const { describe } = await connect();
 
-      expect((await describe('snmp')).required.map((f) => f.name)).toEqual(['hostname', 'snmpOid', 'snmpCommunity', 'expectedValue']);
+      expect((await describe('snmp')).required.map((f) => f.name)).toEqual([
+        'hostname',
+        'snmpOid',
+        'snmpCommunity',
+        'expectedValue',
+      ]);
     });
 
     // Uptime Kuma 2.5.10, src/util.ts TYPES_WITH_DOMAIN_EXPIRY_SUPPORT_VIA_FIELD: the types whose
     // domain DomainExpiry.checkSupport() can read. Every other type refuses domain expiry.
     const DOMAIN_EXPIRY_TYPES = [
-      'http', 'keyword', 'json-query', 'real-browser', 'websocket-upgrade', 'port', 'ping', 'grpc-keyword', 'dns',
-      'smtp', 'snmp', 'gamedig', 'steam', 'mqtt', 'radius', 'tailscale-ping', 'sip-options',
+      'http',
+      'keyword',
+      'json-query',
+      'real-browser',
+      'websocket-upgrade',
+      'port',
+      'ping',
+      'grpc-keyword',
+      'dns',
+      'smtp',
+      'snmp',
+      'gamedig',
+      'steam',
+      'mqtt',
+      'radius',
+      'tailscale-ping',
+      'sip-options',
     ];
     // The certificate check runs from handleTlsInfo() in the http/keyword/json-query branch of
     // server/model/monitor.js, and from globalping.js. No other type reads expiryNotification.
     const CERT_EXPIRY_TYPES = ['http', 'keyword', 'json-query', 'globalping'];
 
-    it.each(['domainExpiryNotification', 'expiryNotification'])('lists %s for exactly the types that check it', async (field) => {
-      const { types, describe } = await connect();
-      const expected = field === 'domainExpiryNotification' ? DOMAIN_EXPIRY_TYPES : CERT_EXPIRY_TYPES;
-      const listing: string[] = [];
-      for (const type of types) {
-        const fields = await describe(type);
-        if ([...fields.required, ...fields.optional].some((f) => f.name === field)) listing.push(type);
-      }
+    it.each(['domainExpiryNotification', 'expiryNotification'])(
+      'lists %s for exactly the types that check it',
+      async (field) => {
+        const { types, describe } = await connect();
+        const expected = field === 'domainExpiryNotification' ? DOMAIN_EXPIRY_TYPES : CERT_EXPIRY_TYPES;
+        const listing: string[] = [];
+        for (const type of types) {
+          const fields = await describe(type);
+          if ([...fields.required, ...fields.optional].some((f) => f.name === field)) listing.push(type);
+        }
 
-      expect(listing.sort()).toEqual([...expected].sort());
-    });
+        expect(listing.sort()).toEqual([...expected].sort());
+      }
+    );
 
     // Each one read off the check in Uptime Kuma 2.5.10 (server/monitor-types/*.js and the
     // per-type branches of server/model/monitor.js).
@@ -416,7 +579,10 @@ describe('type-specific monitor fields (#112)', () => {
       // Found by the LLM eval: models asked for type "minecraft" and needed another call to find gamedig.
       const { client } = await connect();
       for (const tool of ['getMonitorTypeFields', 'createMonitor']) {
-        const args = tool === 'createMonitor' ? { name: 'MC', type: 'minecraft', hostname: 'mc.example.com' } : { type: 'minecraft' };
+        const args =
+          tool === 'createMonitor'
+            ? { name: 'MC', type: 'minecraft', hostname: 'mc.example.com' }
+            : { type: 'minecraft' };
         const result = await client.callTool({ name: tool, arguments: args });
         expect(result.isError).toBe(true);
         expect(textOf(result)).toContain('gamedig');
@@ -456,7 +622,10 @@ describe('type-specific monitor fields (#112)', () => {
       const { tools } = await client.listTools();
 
       expect(JSON.stringify(tools)).not.toContain('9007199254740991');
-      const properties = tools.find((t) => t.name === 'createMonitor')!.inputSchema.properties as Record<string, Record<string, unknown>>;
+      const properties = tools.find((t) => t.name === 'createMonitor')!.inputSchema.properties as Record<
+        string,
+        Record<string, unknown>
+      >;
       expect(properties.interval).toMatchObject({ minimum: 1 });
     });
   });
@@ -477,17 +646,22 @@ describe('type-specific monitor fields (#112)', () => {
 
       expect(names.sort()).toEqual([...READ_ONLY_TOOLS].sort());
       for (const verb of ['create', 'update', 'delete', 'add', 'pause', 'resume', 'test']) {
-        expect(names.filter((n) => n.startsWith(verb)), verb).toEqual([]);
+        expect(
+          names.filter((n) => n.startsWith(verb)),
+          verb
+        ).toEqual([]);
       }
     });
 
     it('cannot be made to write by calling a tool it does not list', async () => {
       const { client } = await connectServer(true);
 
-      const result = await client.callTool({ name: 'deleteMonitor', arguments: { monitorID: 7 } }).catch((error: Error) => ({
-        isError: true,
-        content: [{ text: error.message }],
-      }));
+      const result = await client
+        .callTool({ name: 'deleteMonitor', arguments: { monitorID: 7 } })
+        .catch((error: Error) => ({
+          isError: true,
+          content: [{ text: error.message }],
+        }));
 
       expect(result.isError).toBe(true);
       expect(createMonitor).not.toHaveBeenCalled();
@@ -512,18 +686,25 @@ describe('type-specific monitor fields (#112)', () => {
 
   describe('reading the monitor back', () => {
     // Both failed output validation, so the monitor could be created and then not read.
-    it.each(['steam', 'globalping', 'ntp', 'websocket-upgrade', 'sftp', 'sip-options', 'oracledb', 'system-service', 'pm2'])(
-      'getMonitor returns a %s monitor',
-      async (type) => {
-        existing = { id: 7, name: 'M', type, interval: 60, retryInterval: 60, maxretries: 0, resendInterval: 0 };
-        const { client } = await connectServer();
+    it.each([
+      'steam',
+      'globalping',
+      'ntp',
+      'websocket-upgrade',
+      'sftp',
+      'sip-options',
+      'oracledb',
+      'system-service',
+      'pm2',
+    ])('getMonitor returns a %s monitor', async (type) => {
+      existing = { id: 7, name: 'M', type, interval: 60, retryInterval: 60, maxretries: 0, resendInterval: 0 };
+      const { client } = await connectServer();
 
-        const result = await client.callTool({ name: 'getMonitor', arguments: { monitorID: 7 } });
+      const result = await client.callTool({ name: 'getMonitor', arguments: { monitorID: 7 } });
 
-        expect(textOf(result)).not.toContain('Output validation error');
-        expect(result.isError).toBeFalsy();
-      }
-    );
+      expect(textOf(result)).not.toContain('Output validation error');
+      expect(result.isError).toBeFalsy();
+    });
 
     // Uptime Kuma's floor is 1 second (MIN_INTERVAL_SECOND); the read schema used to demand 20.
     it('getMonitor returns a monitor checked every second', async () => {
@@ -537,7 +718,9 @@ describe('type-specific monitor fields (#112)', () => {
     });
 
     it('accepts a 1 second interval on write and refuses anything shorter', async () => {
-      expect((await create({ type: 'http', url: 'https://example.com', interval: 1, retryInterval: 1 })).isError).toBeFalsy();
+      expect(
+        (await create({ type: 'http', url: 'https://example.com', interval: 1, retryInterval: 1 })).isError
+      ).toBeFalsy();
       expect(lastWrite).toMatchObject({ interval: 1, retryInterval: 1 });
 
       for (const field of ['interval', 'retryInterval']) {
@@ -558,7 +741,11 @@ describe('type-specific monitor fields (#112)', () => {
         retryInterval: 60,
         conditions: [
           { type: 'expression', andOr: 'and', variable: 'record', operator: 'contains', value: '192.0.2.' },
-          { type: 'group', andOr: 'or', children: [{ type: 'expression', variable: 'record', operator: 'equals', value: 'x' }] },
+          {
+            type: 'group',
+            andOr: 'or',
+            children: [{ type: 'expression', variable: 'record', operator: 'equals', value: 'x' }],
+          },
         ],
       };
       const { client } = await connectServer();
@@ -594,7 +781,14 @@ describe('type-specific monitor fields (#112)', () => {
       await create({ type: 'http', url: 'https://example.com', bearer_token: 'tok' });
       expect(lastWrite.authMethod).toBe('bearer');
 
-      await create({ type: 'keyword', url: 'https://example.com', keyword: 'ok', basic_auth_user: 'u', basic_auth_pass: 'p', authDomain: 'CORP' });
+      await create({
+        type: 'keyword',
+        url: 'https://example.com',
+        keyword: 'ok',
+        basic_auth_user: 'u',
+        basic_auth_pass: 'p',
+        authDomain: 'CORP',
+      });
       expect(lastWrite.authMethod).toBe('ntlm');
 
       await create({
@@ -630,12 +824,22 @@ describe('type-specific monitor fields (#112)', () => {
       expect(lastWrite.oauth_auth_method).toBe('client_secret_post');
 
       existing = { ...EXISTING_HTTP_MONITOR, oauth_auth_method: null };
-      await update({ authMethod: 'oauth2-cc', oauth_token_url: 'https://idp.internal/token', oauth_client_id: 'id', oauth_client_secret: 'secret' });
+      await update({
+        authMethod: 'oauth2-cc',
+        oauth_token_url: 'https://idp.internal/token',
+        oauth_client_id: 'id',
+        oauth_client_secret: 'secret',
+      });
       expect(lastWrite.oauth_auth_method).toBe('client_secret_basic');
     });
 
     it('does not report an authMethod the caller chose themselves', async () => {
-      const result = await create({ type: 'http', url: 'https://example.com', authMethod: 'bearer', bearer_token: 'tok' });
+      const result = await create({
+        type: 'http',
+        url: 'https://example.com',
+        authMethod: 'bearer',
+        bearer_token: 'tok',
+      });
 
       expect(result.isError).toBeFalsy();
       expect(lastWrite.authMethod).toBe('bearer');
@@ -643,7 +847,12 @@ describe('type-specific monitor fields (#112)', () => {
     });
 
     it('refuses credentials of two methods without an authMethod to choose between them', async () => {
-      const result = await create({ type: 'http', url: 'https://example.com', basic_auth_user: 'u', bearer_token: 'tok' });
+      const result = await create({
+        type: 'http',
+        url: 'https://example.com',
+        basic_auth_user: 'u',
+        bearer_token: 'tok',
+      });
 
       expect(result.isError).toBe(true);
       expect(textOf(result)).toContain('different authentication methods (basic, bearer)');
@@ -675,7 +884,12 @@ describe('type-specific monitor fields (#112)', () => {
       const result = await update({ bearer_token: 'tok' });
 
       expect(result.isError).toBeFalsy();
-      expect(lastWrite).toMatchObject({ type: 'http', url: 'https://api.internal/health', authMethod: 'bearer', bearer_token: 'tok' });
+      expect(lastWrite).toMatchObject({
+        type: 'http',
+        url: 'https://api.internal/health',
+        authMethod: 'bearer',
+        bearer_token: 'tok',
+      });
       expect(textOf(result)).toContain("Set authMethod to 'bearer'");
     });
 
@@ -707,7 +921,7 @@ describe('type-specific monitor fields (#112)', () => {
       expect(lastWrite.authMethod).toBeNull();
     });
 
-    it('leaves an unrelated edit alone on a monitor holding another method\'s leftovers', async () => {
+    it("leaves an unrelated edit alone on a monitor holding another method's leftovers", async () => {
       // What the web form leaves behind when it switches from bearer to basic.
       existing = { ...existing, authMethod: 'basic', basic_auth_user: 'u', basic_auth_pass: 'p', bearer_token: 'old' };
 
@@ -761,9 +975,18 @@ describe('type-specific monitor fields (#112)', () => {
     });
 
     it('treats an empty broker or node list as missing', async () => {
-      expect(textOf(await create({ type: 'rabbitmq', rabbitmqNodes: [] }))).toContain('A rabbitmq monitor needs rabbitmqNodes');
+      expect(textOf(await create({ type: 'rabbitmq', rabbitmqNodes: [] }))).toContain(
+        'A rabbitmq monitor needs rabbitmqNodes'
+      );
       expect(
-        textOf(await create({ type: 'kafka-producer', kafkaProducerBrokers: [], kafkaProducerTopic: 't', kafkaProducerMessage: 'm' }))
+        textOf(
+          await create({
+            type: 'kafka-producer',
+            kafkaProducerBrokers: [],
+            kafkaProducerTopic: 't',
+            kafkaProducerMessage: 'm',
+          })
+        )
       ).toContain('A kafka-producer monitor needs kafkaProducerBrokers');
     });
 
@@ -786,7 +1009,12 @@ describe('type-specific monitor fields (#112)', () => {
     // Node's resolver, globalping to the Globalping API. Neither list contains the other.
     it('accepts the record types globalping offers that a dns monitor does not', async () => {
       for (const recordType of ['ANY', 'DNSKEY', 'DS', 'HTTPS', 'NSEC', 'RRSIG', 'SVCB']) {
-        const result = await create({ type: 'globalping', subtype: 'dns', hostname: 'example.com', dns_resolve_type: recordType });
+        const result = await create({
+          type: 'globalping',
+          subtype: 'dns',
+          hostname: 'example.com',
+          dns_resolve_type: recordType,
+        });
         expect(result.isError, recordType).toBeFalsy();
         expect(lastWrite.dns_resolve_type).toBe(recordType);
       }
@@ -827,7 +1055,12 @@ describe('type-specific monitor fields (#112)', () => {
       ['dns', 'DNSKEY'],
       ['globalping', 'CAA'],
     ])('refuses a record type a %s monitor cannot query (%s)', async (type, recordType) => {
-      const result = await create({ type, subtype: type === 'globalping' ? 'dns' : undefined, hostname: 'example.com', dns_resolve_type: recordType });
+      const result = await create({
+        type,
+        subtype: type === 'globalping' ? 'dns' : undefined,
+        hostname: 'example.com',
+        dns_resolve_type: recordType,
+      });
 
       expect(result.isError).toBe(true);
       expect(textOf(result)).toContain(`cannot query ${recordType} records`);
@@ -835,7 +1068,15 @@ describe('type-specific monitor fields (#112)', () => {
     });
 
     it('refuses on update a record type the stored type cannot query', async () => {
-      existing = { id: 7, name: 'D', type: 'dns', hostname: 'example.com', interval: 60, retryInterval: 60, timeout: 48 };
+      existing = {
+        id: 7,
+        name: 'D',
+        type: 'dns',
+        hostname: 'example.com',
+        interval: 60,
+        retryInterval: 60,
+        timeout: 48,
+      };
 
       const result = await update({ dns_resolve_type: 'HTTPS' });
 
@@ -877,7 +1118,11 @@ describe('type-specific monitor fields (#112)', () => {
       await create({ type: 'websocket-upgrade', url: 'wss://ws.internal/socket' });
       expect(lastWrite.accepted_statuscodes).toEqual(['1000']);
 
-      await create({ type: 'websocket-upgrade', url: 'wss://ws.internal/socket', accepted_statuscodes: ['1000', '1001'] });
+      await create({
+        type: 'websocket-upgrade',
+        url: 'wss://ws.internal/socket',
+        accepted_statuscodes: ['1000', '1001'],
+      });
       expect(lastWrite.accepted_statuscodes).toEqual(['1000', '1001']);
 
       // An http monitor converted in place still holds the HTTP default.
@@ -909,7 +1154,11 @@ describe('type-specific monitor fields (#112)', () => {
     // Uptime Kuma reads one name per field. A second spelling is not accepted under it; the
     // refusal names the one that is.
     it('refuses a snake_case spelling of a camelCase field and names the accepted one', async () => {
-      const result = await create({ type: 'http', url: 'https://example.com', typeFields: { save_response: true, auth_method: 'bearer' } });
+      const result = await create({
+        type: 'http',
+        url: 'https://example.com',
+        typeFields: { save_response: true, auth_method: 'bearer' },
+      });
 
       expect(result.isError).toBe(true);
       expect(textOf(result)).toContain("'save_response' is not a field — did you mean 'saveResponse'?");
@@ -930,8 +1179,15 @@ describe('type-specific monitor fields (#112)', () => {
       const { tools } = await client.listTools();
 
       for (const toolName of ['createMonitor', 'updateMonitor']) {
-        const properties = tools.find((t) => t.name === toolName)!.inputSchema.properties as Record<string, { description?: string }>;
-        expect(Object.entries(properties).filter(([, p]) => /^Alias for /.test(p.description ?? '')).map(([n]) => n)).toEqual([]);
+        const properties = tools.find((t) => t.name === toolName)!.inputSchema.properties as Record<
+          string,
+          { description?: string }
+        >;
+        expect(
+          Object.entries(properties)
+            .filter(([, p]) => /^Alias for /.test(p.description ?? ''))
+            .map(([n]) => n)
+        ).toEqual([]);
       }
     });
 
@@ -966,7 +1222,13 @@ describe('type-specific monitor fields (#112)', () => {
     it('redacts every credential these fields can hold on read', () => {
       const redacted = redactSecrets({
         ...SECRETS,
-        kafkaProducerSaslOptions: { mechanism: 'aws', accessKeyId: 'AKIA', secretAccessKey: 'p', sessionToken: 'q', password: 'r' },
+        kafkaProducerSaslOptions: {
+          mechanism: 'aws',
+          accessKeyId: 'AKIA',
+          secretAccessKey: 'p',
+          sessionToken: 'q',
+          password: 'r',
+        },
         rabbitmqNodes: ['https://user:pw@rabbit.internal:15672'],
       }) as Record<string, unknown>;
 
@@ -982,7 +1244,12 @@ describe('type-specific monitor fields (#112)', () => {
     });
 
     it('refuses the redaction marker on create', async () => {
-      const result = await create({ type: 'http', url: 'https://example.com', basic_auth_user: 'u', basic_auth_pass: SECRET_MARKER });
+      const result = await create({
+        type: 'http',
+        url: 'https://example.com',
+        basic_auth_user: 'u',
+        basic_auth_pass: SECRET_MARKER,
+      });
 
       expect(result.isError).toBe(true);
       expect(textOf(result)).toContain('redaction marker');
@@ -1017,7 +1284,11 @@ describe('type-specific monitor fields (#112)', () => {
       });
 
       expect(result.isError).toBeFalsy();
-      expect(lastWrite.kafkaProducerSaslOptions).toEqual({ mechanism: 'scram-sha-256', username: 'probe', password: 'stored-pw' });
+      expect(lastWrite.kafkaProducerSaslOptions).toEqual({
+        mechanism: 'scram-sha-256',
+        username: 'probe',
+        password: 'stored-pw',
+      });
     });
 
     describe('inline in rabbitmqNodes', () => {
@@ -1033,7 +1304,7 @@ describe('type-specific monitor fields (#112)', () => {
         };
       });
 
-      it('restores each node\'s own credentials, whatever order they come back in', async () => {
+      it("restores each node's own credentials, whatever order they come back in", async () => {
         const result = await update({
           rabbitmqNodes: [
             'https://***:***@rabbit2.internal:15672',
@@ -1142,7 +1413,9 @@ describe('type-specific monitor fields (#112)', () => {
       const result = await updateHost('https://***:***@dockerd.internal:2375');
 
       expect(result.isError).toBeFalsy();
-      expect(addDockerHost.mock.calls[0][0]).toMatchObject({ dockerDaemon: 'https://admin:stored-pw@dockerd.internal:2375/' });
+      expect(addDockerHost.mock.calls[0][0]).toMatchObject({
+        dockerDaemon: 'https://admin:stored-pw@dockerd.internal:2375/',
+      });
     });
 
     it.each(['http://***:***@elsewhere.internal:2375', 'http://***:***@dockerd.internal:2376'])(
@@ -1161,7 +1434,9 @@ describe('type-specific monitor fields (#112)', () => {
       const result = await updateHost('http://admin:new-pw@elsewhere.internal:2375');
 
       expect(result.isError).toBeFalsy();
-      expect(addDockerHost.mock.calls[0][0]).toMatchObject({ dockerDaemon: 'http://admin:new-pw@elsewhere.internal:2375' });
+      expect(addDockerHost.mock.calls[0][0]).toMatchObject({
+        dockerDaemon: 'http://admin:new-pw@elsewhere.internal:2375',
+      });
     });
   });
 
@@ -1193,7 +1468,9 @@ describe('type-specific monitor fields (#112)', () => {
       const result = await create({ type: 'kafka-producer', ...MINIMAL['kafka-producer'] });
 
       expect(result.isError).toBe(true);
-      expect(textOf(result)).toContain('kafkaProducerBrokers: asked for "[\\"kafka.internal:9092\\"]", server reports null');
+      expect(textOf(result)).toContain(
+        'kafkaProducerBrokers: asked for "[\\"kafka.internal:9092\\"]", server reports null'
+      );
     });
 
     it('accepts the trimmed service name Uptime Kuma stores', async () => {

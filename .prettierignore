@@ -1,0 +1,18 @@
+# Build and tool output
+dist/
+coverage/
+package-lock.json
+
+# Written by `npm run docker-catalog:tools`, in that script's own layout
+docker-mcp-catalog/uptime-kuma/tools.json
+
+# Recorded output the tests read back byte for byte
+test/unit/fixtures/
+test/llm/results/
+test/integration/data/
+
+# Prose and hand-laid-out config are left as written
+*.md
+*.yml
+*.yaml
+.vscode/

@@ -14,11 +14,15 @@ export function registerTagTools(ctx: ToolContext): void {
       description: 'Returns all tags defined in Uptime Kuma (name, color, and ID).',
       inputSchema: {},
       outputSchema: {
-        tags: z.array(z.object({
-          id: z.number(),
-          name: z.string(),
-          color: z.string(),
-        })).describe('Array of tags'),
+        tags: z
+          .array(
+            z.object({
+              id: z.number(),
+              name: z.string(),
+              color: z.string(),
+            })
+          )
+          .describe('Array of tags'),
         count: z.number(),
       },
     },
@@ -73,7 +77,8 @@ export function registerTagTools(ctx: ToolContext): void {
     'deleteTag',
     {
       title: 'Delete Tag',
-      description: 'Permanently deletes a tag. It will be removed from all monitors that use it. Use listTags to find the tag ID.',
+      description:
+        'Permanently deletes a tag. It will be removed from all monitors that use it. Use listTags to find the tag ID.',
       inputSchema: {
         tagID: requiredId('The ID of the tag to delete'),
       },

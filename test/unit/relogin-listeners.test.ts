@@ -21,7 +21,9 @@ function createListeningSocket() {
     on: (event: string, handler: (...args: unknown[]) => void) => {
       listeners.set(event, [...(listeners.get(event) ?? []), handler]);
     },
-    off: (event: string) => { listeners.delete(event); },
+    off: (event: string) => {
+      listeners.delete(event);
+    },
     disconnect: () => {},
   };
 
@@ -33,9 +35,18 @@ function createListeningSocket() {
 }
 
 const DATA_EVENTS = [
-  'monitorList', 'updateMonitorIntoList', 'deleteMonitorFromList',
-  'heartbeatList', 'heartbeat', 'uptime', 'avgPing',
-  'notificationList', 'tagList', 'maintenanceList', 'statusPageList', 'dockerHostList',
+  'monitorList',
+  'updateMonitorIntoList',
+  'deleteMonitorFromList',
+  'heartbeatList',
+  'heartbeat',
+  'uptime',
+  'avgPing',
+  'notificationList',
+  'tagList',
+  'maintenanceList',
+  'statusPageList',
+  'dockerHostList',
 ];
 
 /**

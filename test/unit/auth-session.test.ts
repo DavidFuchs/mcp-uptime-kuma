@@ -20,7 +20,9 @@ describe('UptimeKumaClient - authenticated session loss', () => {
     const seen: string[] = [];
     client.onAuthLost = (reason) => seen.push(reason);
 
-    (client as unknown as { notifyAuthLost: (r: string) => void }).notifyAuthLost('socket disconnected (transport close)');
+    (client as unknown as { notifyAuthLost: (r: string) => void }).notifyAuthLost(
+      'socket disconnected (transport close)'
+    );
 
     expect(seen).toEqual(['socket disconnected (transport close)']);
   });
@@ -32,11 +34,11 @@ describe('UptimeKumaClient - authenticated session loss', () => {
   });
 
   it('a throwing listener cannot break socket handling', () => {
-    client.onAuthLost = () => { throw new Error('listener blew up'); };
+    client.onAuthLost = () => {
+      throw new Error('listener blew up');
+    };
 
-    expect(() =>
-      (client as unknown as { notifyAuthLost: (r: string) => void }).notifyAuthLost('boom')
-    ).not.toThrow();
+    expect(() => (client as unknown as { notifyAuthLost: (r: string) => void }).notifyAuthLost('boom')).not.toThrow();
   });
 
   it('ensureConnected reuses a live socket instead of opening another', async () => {
@@ -57,7 +59,9 @@ describe('UptimeKumaClient - authenticated session loss', () => {
 
     // Stub connect() so the test does not open a real network connection; we only care that
     // the dead socket was disposed of first rather than leaked.
-    const connect = vi.fn(async () => { injectSocket(client, { connected: true }); });
+    const connect = vi.fn(async () => {
+      injectSocket(client, { connected: true });
+    });
     (client as unknown as { connect: unknown }).connect = connect;
 
     await client.ensureConnected();

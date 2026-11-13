@@ -87,7 +87,9 @@ describe('UptimeKumaClient - acknowledgements that never come', () => {
   it('ignores an acknowledgement that arrives after the wait was given up', async () => {
     let lateAck: ((response: unknown) => void) | undefined;
     const { socket } = createMockSocket({
-      deleteMonitor: (_id, callback) => { lateAck = callback as (response: unknown) => void; },
+      deleteMonitor: (_id, callback) => {
+        lateAck = callback as (response: unknown) => void;
+      },
     });
     injectSocket(client, socket);
 

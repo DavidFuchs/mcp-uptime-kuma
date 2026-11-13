@@ -1,7 +1,7 @@
 import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
 
-// Linting only: this config has no opinion on layout. Formatting is a separate tool's job.
+// Linting only: this config has no opinion on layout. Prettier does the formatting (npm run format).
 export default tseslint.config(
   { ignores: ['dist/', 'node_modules/', 'scripts/', 'eslint.config.js', 'vitest.config.ts'] },
   eslint.configs.recommended,
@@ -21,7 +21,10 @@ export default tseslint.config(
       '@typescript-eslint/no-floating-promises': 'error',
       '@typescript-eslint/no-misused-promises': 'error',
       // A leading underscore marks something unused on purpose.
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrors: 'none' }],
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrors: 'none' },
+      ],
     },
   },
   {

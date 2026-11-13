@@ -8,17 +8,52 @@ const sc = (id: string, tags: string[]) =>
   defineScenario({ id, description: id, tags, prompt: 'p', check: async () => [] });
 
 const run = (scenarioId: string, outcome: RunResult['outcome'], extra: Partial<RunResult> = {}): RunResult => ({
-  scenarioId, run: 1, outcome, degraded: false, degradedReasons: [], assertions: [], ...extra,
+  scenarioId,
+  run: 1,
+  outcome,
+  degraded: false,
+  degradedReasons: [],
+  assertions: [],
+  ...extra,
 });
 
 describe('parseArgs', () => {
   it('parseArgs defaults', () => {
-    expect(parseArgs([])).toEqual({ scenarios: [], tags: [], repeat: 1, model: 'sonnet', minPassRate: 1, keepTraces: false });
+    expect(parseArgs([])).toEqual({
+      scenarios: [],
+      tags: [],
+      repeat: 1,
+      model: 'sonnet',
+      minPassRate: 1,
+      keepTraces: false,
+    });
   });
 
   it('parseArgs repeats and overrides', () => {
-    expect(parseArgs(['--scenario', 'a', '--scenario', 'b', '--tag', 'monitors', '--repeat', '3', '--model', 'opus', '--min-pass-rate', '0.66', '--keep-traces']))
-      .toEqual({ scenarios: ['a', 'b'], tags: ['monitors'], repeat: 3, model: 'opus', minPassRate: 0.66, keepTraces: true });
+    expect(
+      parseArgs([
+        '--scenario',
+        'a',
+        '--scenario',
+        'b',
+        '--tag',
+        'monitors',
+        '--repeat',
+        '3',
+        '--model',
+        'opus',
+        '--min-pass-rate',
+        '0.66',
+        '--keep-traces',
+      ])
+    ).toEqual({
+      scenarios: ['a', 'b'],
+      tags: ['monitors'],
+      repeat: 3,
+      model: 'opus',
+      minPassRate: 0.66,
+      keepTraces: true,
+    });
   });
 
   it('parseArgs rejects bad values', () => {
@@ -35,9 +70,9 @@ describe('selectScenarios', () => {
   const base = parseArgs([]);
 
   it('selectScenarios filters by id and tag, errors on unknown id', () => {
-    expect(selectScenarios(all, base).map(s => s.id)).toEqual(['a', 'b', 'c']);
-    expect(selectScenarios(all, { ...base, scenarios: ['b'] }).map(s => s.id)).toEqual(['b']);
-    expect(selectScenarios(all, { ...base, tags: ['monitors'] }).map(s => s.id)).toEqual(['a', 'c']);
+    expect(selectScenarios(all, base).map((s) => s.id)).toEqual(['a', 'b', 'c']);
+    expect(selectScenarios(all, { ...base, scenarios: ['b'] }).map((s) => s.id)).toEqual(['b']);
+    expect(selectScenarios(all, { ...base, tags: ['monitors'] }).map((s) => s.id)).toEqual(['a', 'c']);
     expect(() => selectScenarios(all, { ...base, scenarios: ['zzz'] })).toThrow(/zzz/);
   });
 });
@@ -65,7 +100,12 @@ describe('summarize', () => {
   it('averages tool calls and errors and totals cost', () => {
     const t = (n: number, errs: number, cost: number) => ({
       toolCalls: Array.from({ length: n }, (_, i) => ({ name: 'x', input: {}, isError: i < errs, resultText: '' })),
-      turns: 1, costUsd: cost, durationMs: 0, finalText: '', rawPath: '', resultSubtype: 'success',
+      turns: 1,
+      costUsd: cost,
+      durationMs: 0,
+      finalText: '',
+      rawPath: '',
+      resultSubtype: 'success',
     });
     const s = summarize([run('a', 'pass', { trace: t(4, 0, 0.01) }), run('a', 'pass', { trace: t(6, 2, 0.03) })], 1);
     expect(s.rows[0]).toMatchObject({ avgToolCalls: 5, avgToolErrors: 1 });
@@ -75,16 +115,23 @@ describe('summarize', () => {
 
 describe('formatConsole', () => {
   it('formatConsole shows failed assertion labels and a tool timeline for failing runs', () => {
-    const results = [run('a', 'fail', {
-      assertions: [expectThat('monitor is paused', false), expectThat('has tag', true)],
-      trace: {
-        toolCalls: [
-          { name: 'listMonitors', input: {}, isError: true, resultText: 'boom' },
-          { name: 'pauseMonitor', input: { monitorID: 3 }, isError: false, resultText: 'ok' },
-        ],
-        turns: 2, costUsd: 0.01, durationMs: 10, finalText: '', rawPath: '/r/a-1.jsonl', resultSubtype: 'success',
-      },
-    })];
+    const results = [
+      run('a', 'fail', {
+        assertions: [expectThat('monitor is paused', false), expectThat('has tag', true)],
+        trace: {
+          toolCalls: [
+            { name: 'listMonitors', input: {}, isError: true, resultText: 'boom' },
+            { name: 'pauseMonitor', input: { monitorID: 3 }, isError: false, resultText: 'ok' },
+          ],
+          turns: 2,
+          costUsd: 0.01,
+          durationMs: 10,
+          finalText: '',
+          rawPath: '/r/a-1.jsonl',
+          resultSubtype: 'success',
+        },
+      }),
+    ];
     const out = formatConsole(summarize(results, 1), results);
     expect(out).toContain('monitor is paused');
     expect(out).not.toContain('✗ has tag');
@@ -97,18 +144,35 @@ describe('preflight', () => {
   it('preflight failure aborts before scenarios', async () => {
     const p = preflight(() => Promise.reject(new Error('not logged in')), { retryDelayMs: 0 });
     await expect(p).rejects.toBeInstanceOf(PreflightError);
-    await expect(preflight(() => Promise.reject(new Error('not logged in')), { retryDelayMs: 0 })).rejects.toThrow(/claude.*not logged in/s);
+    await expect(preflight(() => Promise.reject(new Error('not logged in')), { retryDelayMs: 0 })).rejects.toThrow(
+      /claude.*not logged in/s
+    );
   });
 
   it('preflight retries once, so one transient API error does not abort the run', async () => {
     let calls = 0;
-    await expect(preflight(async () => { if (++calls === 1) throw new Error('overloaded'); }, { retryDelayMs: 0 })).resolves.toBeUndefined();
+    await expect(
+      preflight(
+        async () => {
+          if (++calls === 1) throw new Error('overloaded');
+        },
+        { retryDelayMs: 0 }
+      )
+    ).resolves.toBeUndefined();
     expect(calls).toBe(2);
   });
 
   it('preflight gives up after the retry fails too', async () => {
     let calls = 0;
-    await expect(preflight(async () => { calls++; throw new Error('not logged in'); }, { retryDelayMs: 0 })).rejects.toBeInstanceOf(PreflightError);
+    await expect(
+      preflight(
+        async () => {
+          calls++;
+          throw new Error('not logged in');
+        },
+        { retryDelayMs: 0 }
+      )
+    ).rejects.toBeInstanceOf(PreflightError);
     expect(calls).toBe(2);
   });
 
@@ -125,7 +189,9 @@ describe('assertTestInstance', () => {
   });
 
   it('refuses any other host unless explicitly allowed', () => {
-    expect(() => assertTestInstance('https://kuma.example.com', {})).toThrow(/kuma\.example\.com.*LLM_EVAL_ALLOW_REMOTE/s);
+    expect(() => assertTestInstance('https://kuma.example.com', {})).toThrow(
+      /kuma\.example\.com.*LLM_EVAL_ALLOW_REMOTE/s
+    );
     expect(() => assertTestInstance('not a url', {})).toThrow();
     expect(() => assertTestInstance('https://kuma.example.com', { LLM_EVAL_ALLOW_REMOTE: '1' })).not.toThrow();
   });
@@ -135,7 +201,15 @@ describe('createInterruptHandler', () => {
   it('aborts the running session on the first signal and exits on the second', () => {
     let aborts = 0;
     const exits: number[] = [];
-    const { state, onSignal } = createInterruptHandler({ abort: () => { aborts++; return true; }, exit: code => { exits.push(code); } });
+    const { state, onSignal } = createInterruptHandler({
+      abort: () => {
+        aborts++;
+        return true;
+      },
+      exit: (code) => {
+        exits.push(code);
+      },
+    });
     expect(state.interrupted).toBe(false);
     onSignal();
     expect(state.interrupted).toBe(true);
@@ -148,21 +222,37 @@ describe('createInterruptHandler', () => {
 
 describe('formatConsole masks secrets', () => {
   it('masks secret-named fields in tool inputs and assertion details of failed runs', () => {
-    const results = [run('http-oauth', 'fail', {
-      assertions: [
-        expectThat('client secret stored', false, 'oauth_client_secret=cs-0123456789'),
-        expectThat('token URL stored', false, 'oauth_token_url=https://auth.example.com/token'),
-      ],
-      trace: {
-        toolCalls: [{
-          name: 'createMonitor',
-          input: { name: 'x', typeFields: { oauth_client_secret: 'cs-0123456789', basic_auth_pass: 's3cret-Pass', oauth_token_url: 'https://auth.example.com/token' } },
-          isError: true,
-          resultText: 'refused',
-        }],
-        turns: 1, costUsd: 0, durationMs: 0, finalText: '', rawPath: '', resultSubtype: 'success',
-      },
-    })];
+    const results = [
+      run('http-oauth', 'fail', {
+        assertions: [
+          expectThat('client secret stored', false, 'oauth_client_secret=cs-0123456789'),
+          expectThat('token URL stored', false, 'oauth_token_url=https://auth.example.com/token'),
+        ],
+        trace: {
+          toolCalls: [
+            {
+              name: 'createMonitor',
+              input: {
+                name: 'x',
+                typeFields: {
+                  oauth_client_secret: 'cs-0123456789',
+                  basic_auth_pass: 's3cret-Pass',
+                  oauth_token_url: 'https://auth.example.com/token',
+                },
+              },
+              isError: true,
+              resultText: 'refused',
+            },
+          ],
+          turns: 1,
+          costUsd: 0,
+          durationMs: 0,
+          finalText: '',
+          rawPath: '',
+          resultSubtype: 'success',
+        },
+      }),
+    ];
     const out = formatConsole(summarize(results, 1), results);
     expect(out).not.toContain('cs-0123456789');
     expect(out).not.toContain('s3cret-Pass');
