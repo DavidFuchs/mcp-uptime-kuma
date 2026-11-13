@@ -65,17 +65,5 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # The image is already pushed by this point, so a refused description
-      # update must not fail the release. Docker Hub rejects some README bodies
-      # with a bare 403 (peter-evans/dockerhub-description#331), and caps them
-      # at 25,000 bytes, so it gets its own short page instead of README.md.
-      - name: Update DockerHub description
-        uses: peter-evans/dockerhub-description@v5
-        continue-on-error: true
-        with:
-          readme-filepath: ./DOCKERHUB.md
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: davidfuchs/mcp-uptime-kuma
-          short-description: ${{ github.event.repository.description }}
+      # The Docker Hub page is updated by update-dockerhub-description.yml, not here.
           

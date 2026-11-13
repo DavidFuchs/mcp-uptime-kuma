@@ -1,0 +1,35 @@
+name: Update Docker Hub Description
+
+# The Docker Hub page is independent of the image tags, so it is updated here
+# rather than as part of a release: publishing an image never depends on it, and
+# it can be refreshed without rebuilding anything.
+#
+# Docker Hub rejects some description bodies with a bare 403
+# (peter-evans/dockerhub-description#331) and caps them at 25,000 bytes, which is
+# why it gets the short DOCKERHUB.md instead of README.md.
+on:
+  push:
+    branches: [main]
+    paths:
+      - DOCKERHUB.md
+      - .github/workflows/update-dockerhub-description.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  update-description:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Update Docker Hub description
+        uses: peter-evans/dockerhub-description@v5
+        with:
+          readme-filepath: ./DOCKERHUB.md
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: davidfuchs/mcp-uptime-kuma
+          short-description: ${{ github.event.repository.description }}
