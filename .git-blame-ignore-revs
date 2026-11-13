@@ -1,0 +1,11 @@
+# Commits that `git blame` should look through: mechanical changes that touched many lines
+# without changing what any of them do. GitHub's blame view reads this file by itself.
+# For blame on your own machine, run once in this repository:
+#
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# Add a commit here by its full hash, after it is on main. A squash merge gets a new hash,
+# so the hash of a commit on a pull request branch is the wrong one.
+
+# chore: add Prettier and format the codebase (#133)
+ef0aaed3ac65dcbe1ca5673ec831ae47ac3f4c67
