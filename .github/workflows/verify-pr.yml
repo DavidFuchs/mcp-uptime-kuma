@@ -25,13 +25,19 @@ jobs:
 
   unit-tests:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest version package.json allows, and the current LTS.
+        node-version: [22, 24]
+    name: unit-tests (node ${{ matrix.node-version }})
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ matrix.node-version }}
           cache: npm
 
       - name: Install dependencies
@@ -55,7 +61,52 @@ jobs:
         run: npm run docker-catalog:tools -- --check
 
       - name: Run unit tests
-        run: npx vitest run test/unit/
+        run: npm run test:coverage
+
+      # Reported, not enforced: there is no threshold to fail on. The entry points run in
+      # child processes during the tests, so they count as uncovered here.
+      - name: Report coverage
+        if: matrix.node-version == 22
+        run: |
+          {
+            echo '### Unit test coverage of src/'
+            echo
+            echo '| Lines | Statements | Functions | Branches |'
+            echo '|---|---|---|---|'
+            jq -r '.total | "| \(.lines.pct)% | \(.statements.pct)% | \(.functions.pct)% | \(.branches.pct)% |"' coverage/coverage-summary.json
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # The image is otherwise built only when a release is published, which is late to find out
+  # that it does not build or that its healthcheck is wrong.
+  docker-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t mcp-uptime-kuma:pr .
+
+      # Under HTTP the healthcheck has to reach /health. Under stdio there is no port, and it
+      # has to pass anyway or every stdio container would be marked unhealthy. Uptime Kuma is
+      # not running here and does not need to be: the server starts without it.
+      - name: Healthcheck passes under both transports
+        run: |
+          docker run -d --name http -e UPTIME_KUMA_URL=http://127.0.0.1:1 mcp-uptime-kuma:pr -t streamable-http
+          docker run -d -i --name stdio -e UPTIME_KUMA_URL=http://127.0.0.1:1 mcp-uptime-kuma:pr
+          for name in http stdio; do
+            for attempt in $(seq 1 45); do
+              status=$(docker inspect -f '{{.State.Health.Status}}' "$name")
+              [ "$status" = healthy ] && break
+              sleep 2
+            done
+            echo "$name: $status"
+            if [ "$status" != healthy ]; then
+              docker logs "$name"
+              docker inspect -f '{{json .State.Health}}' "$name"
+              exit 1
+            fi
+          done
 
   integration-tests:
     runs-on: ubuntu-latest

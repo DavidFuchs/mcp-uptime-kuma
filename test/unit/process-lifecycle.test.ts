@@ -78,6 +78,60 @@ describe('signal handling', () => {
   }, 30_000);
 });
 
+describe('the HTTP transport at startup', () => {
+  it('refuses a PORT that is not a port, without a stack trace', async () => {
+    const proc = run(['src/index.ts', '-t', 'streamable-http'], {
+      UPTIME_KUMA_URL: 'http://127.0.0.1:1',
+      PORT: '8080abc',
+    });
+
+    expect(await proc.exited).toBe(1);
+    expect(proc.output()).toMatch(/PORT must be a whole number/);
+    expect(proc.output()).not.toMatch(/\n\s+at /);
+  }, 30_000);
+
+  it('reports the address it is bound to', async () => {
+    const port = await freePort();
+    const proc = run(['src/index.ts', '-t', 'streamable-http'], {
+      UPTIME_KUMA_URL: 'http://127.0.0.1:1',
+      HOST: '127.0.0.1',
+      PORT: String(port),
+    });
+
+    await proc.waitForOutput(/server running on http:\/\/127\.0\.0\.1:\d+\/mcp/);
+    expect(proc.output()).toContain(`http://127.0.0.1:${port}/health`);
+  }, 30_000);
+});
+
+describe('the container healthcheck', () => {
+  it('passes when there is no HTTP transport to probe', async () => {
+    // Outside a container /proc/1/cmdline is absent or someone else's, so nothing is probed.
+    const proc = run(['src/healthcheck.ts']);
+    expect(await proc.exited).toBe(0);
+  }, 30_000);
+
+  it.each([
+    ['passes', 200, 0],
+    ['fails', 503, 1],
+  ])('%s when /health answers %i', async (_label, status, exitCode) => {
+    const server = createServer((_req, res) => { res.writeHead(status).end(); });
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    const { port } = server.address() as AddressInfo;
+
+    try {
+      const proc = run(['src/healthcheck.ts', `http://127.0.0.1:${port}/health`]);
+      expect(await proc.exited).toBe(exitCode);
+    } finally {
+      await new Promise((r) => server.close(r));
+    }
+  }, 30_000);
+
+  it('fails when nothing is listening', async () => {
+    const proc = run(['src/healthcheck.ts', `http://127.0.0.1:${await freePort()}/health`]);
+    expect(await proc.exited).toBe(1);
+  }, 30_000);
+});
+
 describe('the package entry point', () => {
   it('can be imported for createServer without starting a server', async () => {
     const { main } = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { main: string };

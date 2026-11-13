@@ -74,6 +74,11 @@ USER node
 # Expose port for HTTP transport
 EXPOSE 3000
 
+# Probes /health when the container runs the HTTP transport. Under stdio, the default, there
+# is no port to probe and the check passes.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD ["node", "dist/healthcheck.js"]
+
 # Run the application (default to stdio transport)
 ENTRYPOINT ["./docker-entrypoint.sh"]
 CMD ["-t", "stdio"]

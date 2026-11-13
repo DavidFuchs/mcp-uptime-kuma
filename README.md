@@ -681,7 +681,9 @@ your own machine:
   rate limiting sees real client IPs.
 
 `/health` stays unauthenticated so container healthchecks keep working. It reports only
-liveness.
+liveness. The image's own healthcheck probes it when the container runs the HTTP transport,
+so `docker ps` shows the container as healthy or not; under stdio there is nothing to probe
+and the check passes.
 
 The details, including why `Origin` validation matters separately from the token and how
 `TRUST_PROXY` can be abused, are in [docs/http-security.md](https://github.com/DavidFuchs/mcp-uptime-kuma/blob/main/docs/http-security.md).

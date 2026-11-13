@@ -1,0 +1,30 @@
+# Dependabot version updates: weekly pull requests that keep dependencies current.
+# (Security alerts and security fixes are repository settings, not part of this file.)
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      # One pull request for the tooling, one for the minor and patch releases of what ships.
+      # A new major version of something that ships gets a pull request of its own.
+      dev-dependencies:
+        dependency-type: development
+      production-dependencies:
+        dependency-type: production
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']
+
+  # The node base image in the Dockerfile.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
