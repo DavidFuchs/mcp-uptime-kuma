@@ -1,8 +1,19 @@
 name: Publish to NPM
 
+# A release publishes its own tag. To retry a release whose publish failed, run
+# this workflow manually from main and give it the tag: the pipeline comes from
+# main (so a fix to it applies) while the code and version come from the tag.
+# Steps that already succeeded for that version are skipped, so a retry picks up
+# where the failed run stopped.
 on:
   release:
     types: [created]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to (re)publish, e.g. v0.15.0'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -14,10 +25,19 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Extract version from tag
         id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.+-]+)?$ ]]; then
+            echo "Not a release tag: '$TAG' (expected something like v0.15.0)" >&2
+            exit 1
+          fi
+          echo "VERSION=${TAG#v}" >> $GITHUB_OUTPUT
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -49,8 +69,24 @@ jobs:
       - name: Build
         run: npm run build
 
+      # npm never accepts the same version twice, so a retry has to skip the
+      # publish when an earlier run already got that far. A failed lookup counts
+      # as "not published": the publish then runs and reports the real problem.
+      - name: Check whether this version is already on npm
+        id: npm
+        run: |
+          PKG=$(jq -r .name package.json)
+          if npm view "$PKG@${{ steps.version.outputs.VERSION }}" version --prefer-online >/dev/null 2>&1; then
+            echo "$PKG@${{ steps.version.outputs.VERSION }} is already on npm; skipping the publish."
+            echo "PUBLISHED=true" >> $GITHUB_OUTPUT
+          else
+            echo "PUBLISHED=false" >> $GITHUB_OUTPUT
+          fi
+
       # --provenance signs the package with this workflow's identity (needs id-token: write).
+      # On a manual retry that identity is main, not the tag the code came from.
       - name: Publish to NPM
+        if: steps.npm.outputs.PUBLISHED != 'true'
         run: npm publish --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -69,12 +105,29 @@ jobs:
           echo "Timed out waiting for $PKG@${{ steps.version.outputs.VERSION }}" >&2
           exit 1
 
+      # The MCP Registry refuses a version it already has, so skip it on a retry.
+      # Only a definite 200 skips; anything else goes on to publish.
+      - name: Check whether this version is already on the MCP Registry
+        id: registry
+        run: |
+          NAME=$(jq -r '.name | @uri' server.json)
+          STATUS=$(curl -s -o /dev/null -w '%{http_code}' "https://registry.modelcontextprotocol.io/v0/servers/$NAME/versions/${{ steps.version.outputs.VERSION }}" || true)
+          if [[ "$STATUS" == "200" ]]; then
+            echo "Version ${{ steps.version.outputs.VERSION }} is already on the MCP Registry; skipping."
+            echo "PUBLISHED=true" >> $GITHUB_OUTPUT
+          else
+            echo "PUBLISHED=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Install mcp-publisher
+        if: steps.registry.outputs.PUBLISHED != 'true'
         run: |
           curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
 
       - name: Authenticate to MCP Registry
+        if: steps.registry.outputs.PUBLISHED != 'true'
         run: ./mcp-publisher login github-oidc
 
       - name: Publish server to MCP Registry
+        if: steps.registry.outputs.PUBLISHED != 'true'
         run: ./mcp-publisher publish
