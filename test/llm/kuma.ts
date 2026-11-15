@@ -52,7 +52,7 @@ export async function sweep(ctx: TestContext): Promise<number> {
   const { tags = [] } = await call(ctx, 'listTags');
   for (const t of tags as any[]) if (hasPrefix(t.name)) await del('deleteTag', { tagID: t.id });
 
-  const { maintenanceWindows = [] } = await call(ctx, 'getMaintenanceWindows');
+  const { maintenanceWindows = [] } = await call(ctx, 'listMaintenanceWindows');
   for (const w of maintenanceWindows as any[])
     if (hasPrefix(w.title)) await del('deleteMaintenance', { maintenanceID: w.id });
 

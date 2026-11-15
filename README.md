@@ -448,23 +448,23 @@ because the image speaks stdio by default:
 | `createMonitor` | Create a new monitor of any type (requires name, type, and whatever that type checks, e.g. `url` for http or `hostname` for ping). Type-specific fields, including HTTP authentication, go in `typeFields`. |
 | `updateMonitor` | Update an existing monitor's configuration, including changing its type in place (keeps the ID and history). |
 | `deleteMonitor` | Permanently delete a monitor and all its heartbeat history. |
-| `pauseMonitor` | Pause a monitor to stop performing checks. |
-| `resumeMonitor` | Resume a paused monitor to restart checks. |
+| `setMonitorActive` | Pause a monitor to stop its checks, or resume a paused one. |
 
 ### Heartbeats
 
 | Tool | Purpose |
 |------|---------|
-| `listHeartbeats` | Get status check history for all monitors. |
-| `getHeartbeats` | Get status check history for a specific monitor. |
+| `listHeartbeats` | Get status check history for one monitor or for all of them. |
 
 ### Notifications
 
 | Tool | Purpose |
 |------|---------|
 | `listNotifications` | List all configured notification channels (Slack, Discord, email, webhooks, etc.). |
-| `addNotification` | Create a new notification channel. |
-| `updateNotification` | Update an existing notification channel. |
+| `listNotificationTypes` | List every notification type Uptime Kuma supports, with the exact type string to use. |
+| `getNotificationTypeFields` | Get the required and optional config fields of one notification type. Covers the common types. |
+| `createNotification` | Create a new notification channel. |
+| `updateNotification` | Update an existing notification channel; only the fields you pass change. |
 | `deleteNotification` | Permanently delete a notification channel. |
 
 ### Tags
@@ -472,18 +472,18 @@ because the image speaks stdio by default:
 | Tool | Purpose |
 |------|---------|
 | `listTags` | List all tags defined in Uptime Kuma. |
-| `addTag` | Create a new tag that can be assigned to monitors. |
+| `createTag` | Create a new tag that can be assigned to monitors. |
+| `updateTag` | Rename or recolor an existing tag. |
 | `deleteTag` | Permanently delete a tag (removes it from all monitors). |
 
 ### Maintenance
 
 | Tool | Purpose |
 |------|---------|
-| `getMaintenanceWindows` | List all maintenance windows, with the monitors each one covers. |
+| `listMaintenanceWindows` | List all maintenance windows, with the monitors each one covers. |
 | `createMaintenance` | Schedule a new maintenance window and attach the monitors it suppresses. |
 | `updateMaintenance` | Change a maintenance window's schedule, details, or monitor list. |
-| `pauseMaintenance` | Switch a maintenance window off (ends a manual window). |
-| `resumeMaintenance` | Switch a paused maintenance window back on (starts a manual window). |
+| `setMaintenanceActive` | Switch a maintenance window off (ends a manual window) or back on (starts one). |
 | `deleteMaintenance` | Permanently delete a maintenance window. |
 
 ### Status Pages
@@ -502,7 +502,7 @@ because the image speaks stdio by default:
 |------|---------|
 | `listDockerHosts` | List the docker daemon connections that docker container monitors use. |
 | `testDockerHost` | Check that a docker daemon is reachable, without saving it. Reports the number of containers on success. |
-| `addDockerHost` | Add a docker daemon connection, over a unix socket or TCP (e.g. a docker socket proxy). |
+| `createDockerHost` | Add a docker daemon connection, over a unix socket or TCP (e.g. a docker socket proxy). |
 | `updateDockerHost` | Change an existing docker daemon connection. Fields you don't pass keep their values. |
 | `deleteDockerHost` | Permanently delete a docker daemon connection. Monitors that used it are kept but lose their docker host. |
 
@@ -662,8 +662,9 @@ UPTIME_KUMA_READ_ONLY=true
 ```
 
 The write tools are then not registered at all, so they cannot be called and take up no room in
-the conversation. Thirteen tools remain: the `get…` and `list…` tools, minus
-`getMonitorTypeFields`, which only serves the write tools. This limits what the MCP server
+the conversation. Twelve tools remain: the `get…` and `list…` tools, minus
+`getMonitorTypeFields`, `listNotificationTypes` and `getNotificationTypeFields`, which only
+serve the write tools. This limits what the MCP server
 offers; it does not change what the Uptime Kuma account itself is allowed to do.
 
 ## Securing the HTTP Endpoint

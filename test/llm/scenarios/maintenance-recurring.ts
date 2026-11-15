@@ -14,7 +14,7 @@ export default defineScenario({
   },
   prompt: `Set up a recurring maintenance window "${TITLE}" for the App servers monitor every Sunday from 1am to 3am Toronto time.`,
   async check(ctx, seed) {
-    const { maintenanceWindows = [] } = await call(ctx, 'getMaintenanceWindows');
+    const { maintenanceWindows = [] } = await call(ctx, 'listMaintenanceWindows');
     const w = (maintenanceWindows as any[]).find((x) => x.title === TITLE);
     if (!w) return [expectThat(`maintenance "${TITLE}" exists`, false)];
     const [from, to] = w.timeRange ?? [];

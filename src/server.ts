@@ -57,14 +57,15 @@ export async function createServer(
     : `        WRITE operations:
         - Use 'createMonitor' / 'updateMonitor' / 'deleteMonitor' to manage monitors.
         - Call 'getMonitorTypeFields' before creating or reconfiguring a monitor: it names the fields a type needs. Type-specific fields go in the typeFields argument.
-        - Use 'addNotification' / 'updateNotification' / 'deleteNotification' to manage notification channels.
-        - Use 'addTag' / 'deleteTag' to manage tags.
+        - Use 'createNotification' / 'updateNotification' / 'deleteNotification' to manage notification channels.
+        - Call 'getNotificationTypeFields' before creating a notification channel: type and field names are case-sensitive. 'listNotificationTypes' lists the types.
+        - Use 'createTag' / 'updateTag' / 'deleteTag' to manage tags.
         - Use 'createMaintenance' / 'updateMaintenance' / 'deleteMaintenance' to manage maintenance windows. Pass monitorIDs — a window with no monitors suppresses nothing.
-        - Use 'pauseMaintenance' / 'resumeMaintenance' to switch a maintenance window off and on.
-        - Use 'addDockerHost' / 'updateDockerHost' / 'deleteDockerHost' to manage docker daemon connections.
+        - Use 'setMaintenanceActive' to switch a maintenance window off and on.
+        - Use 'createDockerHost' / 'updateDockerHost' / 'deleteDockerHost' to manage docker daemon connections.
         - Use 'testDockerHost' to verify a docker daemon is reachable before saving.
         - Use 'createStatusPage' / 'updateStatusPage' / 'deleteStatusPage' to manage status pages. Creating returns an empty page — follow up with updateStatusPage to set groups and monitors.
-        - Use 'pauseMonitor' / 'resumeMonitor' to temporarily stop/start checks.
+        - Use 'setMonitorActive' to temporarily stop/start checks.
 `;
 
   const server = new McpServer(
@@ -78,11 +79,11 @@ export async function createServer(
 
         READ operations:
         - START with 'getMonitorSummary' for status overview ("how is everything?", "what's down?").
-        - Use 'getHeartbeats' or 'listHeartbeats' for historical data (set maxHeartbeats to 5-10 unless the user asks for more).
+        - Use 'listHeartbeats' for historical data, with monitorID for one monitor (set maxHeartbeats to 5-10 unless the user asks for more).
         - Use 'listMonitors' when you need configuration details (URLs, intervals, notification settings).
         - Use 'listNotifications' to see notification channels.
         - Use 'listTags' to see available tags.
-        - Use 'getMaintenanceWindows' to see maintenance windows and the monitors each one covers.
+        - Use 'listMaintenanceWindows' to see maintenance windows and the monitors each one covers.
         - Use 'listStatusPages' to see status page configurations, or 'getStatusPage' for one page's full details (groups + monitors).
         - Use 'listDockerHosts' to see configured docker daemons (used by docker container monitors).
 

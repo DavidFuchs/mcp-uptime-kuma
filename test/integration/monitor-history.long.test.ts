@@ -36,12 +36,12 @@ export const monitorHistoryTests: Array<{ name: string; fn: TestFn }> = [
         JSON.parse(
           extractText(
             (await client.callTool({
-              name: 'getHeartbeats',
+              name: 'listHeartbeats',
               arguments: { monitorID, maxHeartbeats: 100 },
             })) as CallToolResult,
-            'getHeartbeats'
+            'listHeartbeats'
           )
-        );
+        )[String(monitorID)];
 
       const waitForBeats = async (enough: (b: Array<{ time: string; status: number }>) => boolean, what: string) => {
         const deadline = Date.now() + 60_000;

@@ -3,7 +3,7 @@ import { type TestFn, extractText } from './helpers.js';
 
 /**
  * Integration tests for heartbeat operations.
- * Covers: getHeartbeats, listHeartbeats
+ * Covers: listHeartbeats, for all monitors and for one
  */
 
 export const heartbeatTests: Array<{ name: string; fn: TestFn }> = [
@@ -23,26 +23,29 @@ export const heartbeatTests: Array<{ name: string; fn: TestFn }> = [
     },
   },
   {
-    name: 'getHeartbeats returns heartbeats for a specific monitor',
+    name: 'listHeartbeats with monitorID returns that monitor only',
     fn: async ({ client }) => {
       // Find a monitor to query
       const listResult = (await client.callTool({ name: 'listMonitors', arguments: {} })) as CallToolResult;
       const monitors = JSON.parse(extractText(listResult, 'listMonitors'));
 
       if (monitors.length === 0) {
-        console.log('  ⚠ getHeartbeats: skipped (no monitors)');
+        console.log('  ⚠ listHeartbeats { monitorID }: skipped (no monitors)');
         return;
       }
 
       const monitorID = monitors[0].id;
       const result = (await client.callTool({
-        name: 'getHeartbeats',
+        name: 'listHeartbeats',
         arguments: { monitorID, maxHeartbeats: 5 },
       })) as CallToolResult;
-      const text = extractText(result, 'getHeartbeats');
-      const heartbeats = JSON.parse(text);
+      const data = JSON.parse(extractText(result, 'listHeartbeats'));
+      if (Object.keys(data).join() !== String(monitorID)) {
+        throw new Error(`Expected only monitor ${monitorID}, got ${Object.keys(data).join(', ')}`);
+      }
+      const heartbeats = data[String(monitorID)];
       if (!Array.isArray(heartbeats)) throw new Error('Expected array');
-      console.log(`  ✓ getHeartbeats: ${heartbeats.length} heartbeats for monitor ${monitorID}`);
+      console.log(`  ✓ listHeartbeats { monitorID }: ${heartbeats.length} heartbeats for monitor ${monitorID}`);
     },
   },
   {
@@ -62,12 +65,12 @@ export const heartbeatTests: Array<{ name: string; fn: TestFn }> = [
         const got = JSON.parse(
           extractText(
             (await client.callTool({
-              name: 'getHeartbeats',
+              name: 'listHeartbeats',
               arguments: { monitorID: s.id, maxHeartbeats: 5 },
             })) as CallToolResult,
-            'getHeartbeats'
+            'listHeartbeats'
           )
-        );
+        )[String(s.id)];
         if (got.length >= 3) {
           target = s.id;
           beats = got;
@@ -110,18 +113,18 @@ export const heartbeatTests: Array<{ name: string; fn: TestFn }> = [
       const beats = JSON.parse(
         extractText(
           (await client.callTool({
-            name: 'getHeartbeats',
+            name: 'listHeartbeats',
             arguments: { monitorID: withBeat.id, maxHeartbeats: 1 },
           })) as CallToolResult,
-          'getHeartbeats'
+          'listHeartbeats'
         )
-      );
+      )[String(withBeat.id)];
 
       // These are two reads of a cache a live server keeps mutating, so a beat landing
       // between them would fail a bare equality check on a perfectly correct build. Read
       // the summary again afterwards and accept either observation: whichever side of the
-      // getHeartbeats call the new beat landed on, one of the two summaries saw the same
-      // beat that getHeartbeats did. Both being wrong needs two beats inside one round
+      // listHeartbeats call the new beat landed on, one of the two summaries saw the same
+      // beat that listHeartbeats did. Both being wrong needs two beats inside one round
       // trip, which the 20s minimum check interval rules out.
       const after = JSON.parse(
         extractText(
@@ -159,12 +162,12 @@ export const heartbeatTests: Array<{ name: string; fn: TestFn }> = [
         const important = JSON.parse(
           extractText(
             (await client.callTool({
-              name: 'getHeartbeats',
+              name: 'listHeartbeats',
               arguments: { monitorID: s.id, important: true, maxHeartbeats: 10 },
             })) as CallToolResult,
-            'getHeartbeats'
+            'listHeartbeats'
           )
-        );
+        )[String(s.id)];
         if (!Array.isArray(important)) throw new Error('Expected array');
         if (important.length >= 2) {
           const times = important.map((b: any) => Date.parse(b.time));

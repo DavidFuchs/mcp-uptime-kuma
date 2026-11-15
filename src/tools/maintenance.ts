@@ -227,7 +227,7 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
     const list = await client.refreshMaintenanceList();
     if (!list.some((w) => w.id === maintenanceID)) {
       throw new Error(
-        `Maintenance window ${maintenanceID} not found. Use getMaintenanceWindows to list the windows that exist.`
+        `Maintenance window ${maintenanceID} not found. Use listMaintenanceWindows to list the windows that exist.`
       );
     }
   };
@@ -239,11 +239,11 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
   });
 
   server.registerTool(
-    'getMaintenanceWindows',
+    'listMaintenanceWindows',
     {
-      title: 'Get Maintenance Windows',
+      title: 'List Maintenance Windows',
       description:
-        'Returns all maintenance windows defined in Uptime Kuma, each with monitorIDs — the monitors it suppresses. A window with an empty monitorIDs list suppresses nothing.',
+        'Returns every maintenance window with its schedule, whether it is active, and monitorIDs, the monitors it suppresses. A window with an empty monitorIDs list suppresses nothing. Use it to find the ID that updateMaintenance, setMaintenanceActive and deleteMaintenance take.',
       inputSchema: {},
       outputSchema: {
         maintenanceWindows: z.array(MaintenanceSchema).describe('Array of maintenance windows'),
@@ -276,7 +276,7 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
     {
       title: 'Create Maintenance',
       description:
-        'Schedules a new maintenance window. During maintenance, the monitors in monitorIDs are suppressed and show MAINTENANCE status instead of DOWN. A window created without monitorIDs suppresses nothing. Use strategy "manual" for a window you switch on and off with resumeMaintenance / pauseMaintenance.',
+        'Schedules a new maintenance window: while it is in effect the monitors in monitorIDs show MAINTENANCE instead of DOWN and do not alert. A window without monitorIDs suppresses nothing. strategy sets the schedule; "manual" makes a window you switch on and off with setMaintenanceActive. To stop one monitor\'s checks outright use setMonitorActive.',
       inputSchema: {
         title: z.string().describe('Title of the maintenance window'),
         strategy: z
@@ -347,7 +347,7 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
     {
       title: 'Update Maintenance',
       description:
-        'Updates an existing maintenance window. Only the fields you provide are changed (the server merges them with the stored window). monitorIDs replaces the full monitor list. To switch a window on or off use pauseMaintenance / resumeMaintenance.',
+        'Updates an existing maintenance window. Only the fields you pass change, except monitorIDs, which replaces the whole monitor list. To switch a window on or off use setMaintenanceActive. Find the ID with listMaintenanceWindows.',
       inputSchema: {
         maintenanceID: requiredId('The ID of the maintenance window to update'),
         title: z.string().optional().describe('Title of the maintenance window'),
@@ -424,63 +424,51 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
     }
   );
 
-  const registerMaintenanceToggle = (name: string, title: string, description: string, active: boolean) => {
-    server.registerTool(
-      name,
-      {
-        title,
-        description,
-        inputSchema: {
-          maintenanceID: requiredId(`The ID of the maintenance window to ${active ? 'resume' : 'pause'}`),
-        },
-        outputSchema: {
-          ok: z.boolean(),
-          maintenanceID: z.number(),
-          active: z.boolean(),
-          msg: z.string().optional(),
-        },
+  // One tool for switching a window off and on: they were pauseMaintenance and
+  // resumeMaintenance, which took the same argument and differed only in direction.
+  server.registerTool(
+    'setMaintenanceActive',
+    {
+      title: 'Set Maintenance Active',
+      description:
+        "Switches a maintenance window off (active: false) or back on (active: true). Off, it stops suppressing its monitors and its schedule stops; on, a manual window starts maintenance immediately and a scheduled one follows its schedule again. It acts on a maintenance window; to stop a monitor's checks use setMonitorActive. Find the ID with listMaintenanceWindows.",
+      inputSchema: {
+        maintenanceID: requiredId('The ID of the maintenance window to switch'),
+        active: z.boolean().describe('false switches the window off, true switches it on'),
       },
-      async ({ maintenanceID }) => {
-        await authenticateClient();
+      outputSchema: {
+        ok: z.boolean(),
+        maintenanceID: z.number(),
+        active: z.boolean(),
+        msg: z.string().optional(),
+      },
+    },
+    async ({ maintenanceID, active }) => {
+      await authenticateClient();
 
-        try {
-          await requireMaintenance(maintenanceID);
-          const response = active
-            ? await client.resumeMaintenance(maintenanceID)
-            : await client.pauseMaintenance(maintenanceID);
-          const text = `Maintenance window ${maintenanceID} ${active ? 'resumed' : 'paused'}.`;
-          const structuredContent = { ok: response.ok, maintenanceID, active, msg: response.msg };
+      try {
+        await requireMaintenance(maintenanceID);
+        const response = active
+          ? await client.resumeMaintenance(maintenanceID)
+          : await client.pauseMaintenance(maintenanceID);
+        const text = `Maintenance window ${maintenanceID} ${active ? 'resumed' : 'paused'}.`;
+        const structuredContent = { ok: response.ok, maintenanceID, active, msg: response.msg };
 
-          const problem = await verifyMaintenanceWrite(maintenanceID, { active }, active ? 'resumed' : 'paused');
-          if (problem) return errorResult(problem, text, { ...structuredContent, ok: false });
+        const problem = await verifyMaintenanceWrite(maintenanceID, { active }, active ? 'resumed' : 'paused');
+        if (problem) return errorResult(problem, text, { ...structuredContent, ok: false });
 
-          return {
-            content: [{ type: 'text', text }],
-            structuredContent,
-          };
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          throw new McpError(
-            ErrorCode.InternalError,
-            `Failed to ${active ? 'resume' : 'pause'} maintenance window: ${errorMessage}`
-          );
-        }
+        return {
+          content: [{ type: 'text', text }],
+          structuredContent,
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new McpError(
+          ErrorCode.InternalError,
+          `Failed to ${active ? 'resume' : 'pause'} maintenance window: ${errorMessage}`
+        );
       }
-    );
-  };
-
-  registerMaintenanceToggle(
-    'pauseMaintenance',
-    'Pause Maintenance',
-    'Switches a maintenance window off: it stops suppressing its monitors and its schedule stops until resumed. For a manual window this ends the maintenance.',
-    false
-  );
-
-  registerMaintenanceToggle(
-    'resumeMaintenance',
-    'Resume Maintenance',
-    'Switches a paused maintenance window back on. For a manual window this starts the maintenance immediately; a scheduled window resumes following its schedule.',
-    true
+    }
   );
 
   server.registerTool(
@@ -488,7 +476,7 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
     {
       title: 'Delete Maintenance',
       description:
-        'Permanently deletes a maintenance window. Its monitors return to normal alerting. Use getMaintenanceWindows to find the ID.',
+        'Permanently deletes a maintenance window; its monitors return to normal alerting. To switch it off but keep it, use setMaintenanceActive. Find the ID with listMaintenanceWindows.',
       inputSchema: {
         maintenanceID: requiredId('The ID of the maintenance window to delete'),
       },

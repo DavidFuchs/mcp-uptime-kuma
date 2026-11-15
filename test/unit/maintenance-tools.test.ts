@@ -338,14 +338,14 @@ describe('maintenance tools', () => {
     });
   });
 
-  describe('pauseMaintenance / resumeMaintenance', () => {
+  describe('setMaintenanceActive', () => {
     it('fails the call when the window is still active after a pause', async () => {
       fetchMaintenance.mockResolvedValue({ ...STORED_WINDOW, active: true } as never);
       const { client } = await connectServer();
 
       const result = (await client.callTool({
-        name: 'pauseMaintenance',
-        arguments: { maintenanceID: 4 },
+        name: 'setMaintenanceActive',
+        arguments: { maintenanceID: 4, active: false },
       })) as CallToolResult;
 
       expect(pauseMaintenance).toHaveBeenCalledWith(4);
@@ -358,8 +358,8 @@ describe('maintenance tools', () => {
       const { client } = await connectServer();
 
       const result = (await client.callTool({
-        name: 'pauseMaintenance',
-        arguments: { maintenanceID: 4 },
+        name: 'setMaintenanceActive',
+        arguments: { maintenanceID: 4, active: false },
       })) as CallToolResult;
 
       expect(result.isError).toBeFalsy();
@@ -409,13 +409,13 @@ describe('maintenance tools', () => {
     });
   });
 
-  describe('getMaintenanceWindows', () => {
+  describe('listMaintenanceWindows', () => {
     it('includes the monitors each window covers', async () => {
       vi.spyOn(UptimeKumaClient.prototype, 'getMaintenanceList').mockReturnValue([{ ...STORED_WINDOW }] as never);
       getMonitorMaintenance.mockResolvedValue([3, 9] as never);
       const { client } = await connectServer();
 
-      const result = (await client.callTool({ name: 'getMaintenanceWindows', arguments: {} })) as CallToolResult;
+      const result = (await client.callTool({ name: 'listMaintenanceWindows', arguments: {} })) as CallToolResult;
 
       expect(result.isError).toBeFalsy();
       expect((result.structuredContent as { maintenanceWindows: unknown[] }).maintenanceWindows[0]).toMatchObject({

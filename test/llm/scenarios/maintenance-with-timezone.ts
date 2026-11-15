@@ -14,7 +14,7 @@ export default defineScenario({
   },
   prompt: `Schedule a one-off maintenance window called "${TITLE}" for the Payments monitor, from 2027-01-15 02:00 to 04:00 Toronto time.`,
   async check(ctx, seed) {
-    const { maintenanceWindows = [] } = await call(ctx, 'getMaintenanceWindows');
+    const { maintenanceWindows = [] } = await call(ctx, 'listMaintenanceWindows');
     const w = (maintenanceWindows as any[]).find((x) => x.title === TITLE);
     if (!w) return [expectThat(`maintenance "${TITLE}" exists`, false)];
     const [start, end] = (w.dateRange ?? []).map((d: unknown) => String(d ?? ''));

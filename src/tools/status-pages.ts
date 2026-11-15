@@ -52,7 +52,7 @@ export function registerStatusPageTools(ctx: ToolContext): void {
     {
       title: 'List Status Pages',
       description:
-        'Returns all configured status pages with their slug, title, visibility, and custom domain settings. Uptime Kuma only sends this list when a client logs in, so a page created or deleted by another client (or the web UI) since then may be missing or still listed; changes made through this server are reflected at once. getStatusPage with a slug always reads the page fresh.',
+        'Returns every status page with its slug, title, published state and custom domains. The list dates from login, so a page that another client or the web UI created or deleted since may be missing or still listed; changes made through this server show at once, and getStatusPage always reads fresh.',
       inputSchema: {},
       outputSchema: {
         statusPages: z.array(StatusPageSchema).describe('Array of status page configurations'),
@@ -80,7 +80,7 @@ export function registerStatusPageTools(ctx: ToolContext): void {
     {
       title: 'Get Status Page',
       description:
-        'Returns the full configuration of a status page by slug, including the ordered list of groups, the monitors inside each group, and active incidents. Works for unpublished pages too.',
+        'Returns one status page by slug: its settings, its ordered groups with the monitors in each, and its active incidents. Works for unpublished pages too. Read it before updateStatusPage. Find slugs with listStatusPages.',
       inputSchema: {
         slug: z.string().describe('The status page slug (the URL-safe identifier)'),
       },
@@ -125,7 +125,7 @@ export function registerStatusPageTools(ctx: ToolContext): void {
     {
       title: 'Create Status Page',
       description:
-        'Creates a new (empty) status page with the given title and slug. After creating, call updateStatusPage to set the description, theme, groups, and monitors. Slug must be lowercase letters, digits, and dashes only.',
+        'Creates an empty status page from a title and a slug (lowercase letters, digits and dashes only). It has no groups or monitors yet: add them, and the description and theme, with updateStatusPage.',
       inputSchema: {
         title: z.string().describe('Display title of the status page'),
         slug: z
@@ -159,7 +159,7 @@ export function registerStatusPageTools(ctx: ToolContext): void {
     {
       title: 'Update Status Page',
       description:
-        "Updates an existing status page. config holds only the settings to change; everything else keeps its stored value. publicGroupList, when given, replaces all of the page's groups (a group not in it is deleted; include a group's id to keep it rather than recreate it); omit it to keep the groups as they are. Each group has a name and a monitorList of [{id}]. Use getStatusPage first to read current state before modifying.",
+        "Updates an existing status page. config holds only the settings to change; the rest keep their stored values. publicGroupList, when passed, replaces all of the page's groups: a group left out is deleted, and a group is kept rather than recreated only if you include its id. Omit it to leave the groups as they are. Read the current state with getStatusPage first.",
       inputSchema: {
         slug: z.string().describe('The status page slug (immutable identifier)'),
         config: z
@@ -234,7 +234,8 @@ export function registerStatusPageTools(ctx: ToolContext): void {
     'deleteStatusPage',
     {
       title: 'Delete Status Page',
-      description: 'Permanently deletes a status page by slug. The status page URL will no longer be accessible.',
+      description:
+        'Permanently deletes a status page; its public URL stops working. The monitors shown on it are not affected. Find the slug with listStatusPages.',
       inputSchema: {
         slug: z.string().describe('The status page slug to delete'),
       },

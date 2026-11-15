@@ -292,11 +292,10 @@ describe('maxHeartbeats aliases (limit / count)', () => {
   // beat, and then accepted as an alias. Now it is refused, and the refusal says what to pass.
   it.each(['limit', 'count'])('refuses `%s` and names maxHeartbeats', async (name) => {
     const client = await connect();
-    for (const tool of ['getHeartbeats', 'listHeartbeats']) {
-      const args = tool === 'getHeartbeats' ? { monitorID: 105, [name]: 3 } : { [name]: 3 };
-      const result = await client.callTool({ name: tool, arguments: args });
+    for (const args of [{ monitorID: 105, [name]: 3 }, { [name]: 3 }]) {
+      const result = await client.callTool({ name: 'listHeartbeats', arguments: args });
 
-      expect(result.isError, tool).toBe(true);
+      expect(result.isError, JSON.stringify(args)).toBe(true);
       expect(JSON.stringify(result.content)).toContain(`Did you mean 'maxHeartbeats' for '${name}'?`);
     }
     expect(getHeartbeatsForMonitor).not.toHaveBeenCalled();
@@ -304,13 +303,13 @@ describe('maxHeartbeats aliases (limit / count)', () => {
 
   it('honours maxHeartbeats', async () => {
     const client = await connect();
-    await client.callTool({ name: 'getHeartbeats', arguments: { monitorID: 105, maxHeartbeats: 7 } });
+    await client.callTool({ name: 'listHeartbeats', arguments: { monitorID: 105, maxHeartbeats: 7 } });
     expect(getHeartbeatsForMonitor).toHaveBeenCalledWith(105, 7);
   });
 
   it('still defaults to one beat when nothing is given', async () => {
     const client = await connect();
-    await client.callTool({ name: 'getHeartbeats', arguments: { monitorID: 105 } });
+    await client.callTool({ name: 'listHeartbeats', arguments: { monitorID: 105 } });
     expect(getHeartbeatsForMonitor).toHaveBeenCalledWith(105, 1);
   });
 
@@ -320,10 +319,29 @@ describe('maxHeartbeats aliases (limit / count)', () => {
       .mockResolvedValue([] as never);
     const client = await connect();
 
-    await client.callTool({ name: 'getHeartbeats', arguments: { monitorID: 105, important: true, maxHeartbeats: 5 } });
+    await client.callTool({
+      name: 'listHeartbeats',
+      arguments: { monitorID: 105, important: true, maxHeartbeats: 5 },
+    });
 
     expect(fetchImportant).toHaveBeenCalledWith(105, 5);
     expect(getHeartbeatsForMonitor).not.toHaveBeenCalled();
+  });
+
+  it('refuses important:true without a monitorID, since the event feed is per monitor', async () => {
+    const client = await connect();
+    const result = await client.callTool({ name: 'listHeartbeats', arguments: { important: true } });
+
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain('pass monitorID');
+  });
+
+  it("keys a single monitor's beats by its ID, the same shape as the all-monitors result", async () => {
+    const client = await connect();
+    const result = await client.callTool({ name: 'listHeartbeats', arguments: { monitorID: 105 } });
+
+    expect(Object.keys((result.structuredContent as { heartbeats: object }).heartbeats)).toEqual(['105']);
+    expect(result.structuredContent).toMatchObject({ monitorCount: 1 });
   });
 });
 
@@ -372,11 +390,11 @@ describe('important heartbeats go through the same redaction as the cached path'
   it('scrubs a credential the event message quotes', async () => {
     const client = await connect();
     const result = await client.callTool({
-      name: 'getHeartbeats',
+      name: 'listHeartbeats',
       arguments: { monitorID: 105, important: true },
     });
 
-    const beats = (result.structuredContent as { heartbeats: { msg: string }[] }).heartbeats;
+    const beats = (result.structuredContent as { heartbeats: Record<string, { msg: string }[]> }).heartbeats['105']!;
     expect(beats[0].msg).toBe('connect ECONNREFUSED http://***:***@internal.local:8080');
     // The text block is stringified separately and no output schema touches it.
     expect(JSON.stringify(result.content)).not.toContain('s3cret');
@@ -385,7 +403,7 @@ describe('important heartbeats go through the same redaction as the cached path'
   it('drops the passthrough response column from the event feed too', async () => {
     const client = await connect();
     const result = await client.callTool({
-      name: 'getHeartbeats',
+      name: 'listHeartbeats',
       arguments: { monitorID: 105, important: true },
     });
 
@@ -395,11 +413,11 @@ describe('important heartbeats go through the same redaction as the cached path'
   it('still returns the real value when includeSecrets is set', async () => {
     const client = await connect();
     const result = await client.callTool({
-      name: 'getHeartbeats',
+      name: 'listHeartbeats',
       arguments: { monitorID: 105, important: true, includeSecrets: true },
     });
 
-    const beats = (result.structuredContent as { heartbeats: { msg: string }[] }).heartbeats;
+    const beats = (result.structuredContent as { heartbeats: Record<string, { msg: string }[]> }).heartbeats['105']!;
     expect(beats[0].msg).toContain('admin:s3cret@internal.local');
   });
 });

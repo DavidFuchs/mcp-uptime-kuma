@@ -68,8 +68,8 @@ describe('tools/list schema dialect', () => {
     expect(handler).toBeDefined();
 
     const { tools } = await handler!({ method: 'tools/list', params: {} }, {});
-    const addNotification = tools.find((tool) => tool.name === 'addNotification');
-    const config = (addNotification?.inputSchema?.properties as Record<string, Record<string, unknown>> | undefined)
+    const createNotification = tools.find((tool) => tool.name === 'createNotification');
+    const config = (createNotification?.inputSchema?.properties as Record<string, Record<string, unknown>> | undefined)
       ?.config;
 
     expect(config?.additionalProperties).toBe(true);

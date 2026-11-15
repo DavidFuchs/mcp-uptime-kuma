@@ -5,16 +5,16 @@ import { UptimeKumaClient } from '../../src/uptime-kuma-client.js';
 
 /**
  * Integration tests for maintenance window operations.
- * Covers: getMaintenanceWindows, createMaintenance, updateMaintenance,
- *         pauseMaintenance, resumeMaintenance, deleteMaintenance
+ * Covers: listMaintenanceWindows, createMaintenance, updateMaintenance,
+ *         setMaintenanceActive, deleteMaintenance
  *
  * Issue coverage:
  * - #37: dateRange allows null in recurring maintenance windows
  */
 
 async function listWindows(client: Client): Promise<any[]> {
-  const result = (await client.callTool({ name: 'getMaintenanceWindows', arguments: {} })) as CallToolResult;
-  const parsed = JSON.parse(extractText(result, 'getMaintenanceWindows'));
+  const result = (await client.callTool({ name: 'listMaintenanceWindows', arguments: {} })) as CallToolResult;
+  const parsed = JSON.parse(extractText(result, 'listMaintenanceWindows'));
   // May be wrapped in { maintenanceWindows: [...] } or be a direct array
   const windows = Array.isArray(parsed) ? parsed : parsed.maintenanceWindows;
   if (!Array.isArray(windows)) throw new Error('Expected array of maintenance windows');
@@ -46,14 +46,14 @@ const sameIDs = (a: number[], b: number[]) =>
 
 export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
   {
-    name: 'getMaintenanceWindows returns array',
+    name: 'listMaintenanceWindows returns array',
     fn: async ({ client }) => {
       const windows = await listWindows(client);
-      console.log(`  ✓ getMaintenanceWindows: ${windows.length} windows`);
+      console.log(`  ✓ listMaintenanceWindows: ${windows.length} windows`);
     },
   },
   {
-    name: 'createMaintenance → getMaintenanceWindows → deleteMaintenance lifecycle',
+    name: 'createMaintenance → listMaintenanceWindows → deleteMaintenance lifecycle',
     fn: async ({ client }) => {
       // Create a single-strategy maintenance window (description is required by Kuma DB)
       const startDate = new Date(Date.now() + 86400000).toISOString();
@@ -114,7 +114,7 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
       const maintenanceID = extractID(createResult, 'createMaintenance', 'maintenanceID');
 
       try {
-        // The critical test: getMaintenanceWindows must handle dateRange: [null]
+        // The critical test: listMaintenanceWindows must handle dateRange: [null]
         // without a schema validation error (-32602)
         const recurring = await findWindow(client, maintenanceID);
 
@@ -225,21 +225,21 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
 
         // Resume (start the manual window), then pause it again
         const resumeResult = (await client.callTool({
-          name: 'resumeMaintenance',
-          arguments: { maintenanceID },
+          name: 'setMaintenanceActive',
+          arguments: { maintenanceID, active: true },
         })) as CallToolResult;
-        extractText(resumeResult, 'resumeMaintenance');
+        extractText(resumeResult, 'setMaintenanceActive');
         if ((await findWindow(client, maintenanceID)).active !== true)
-          throw new Error('Window not active after resumeMaintenance');
+          throw new Error('Window not active after setMaintenanceActive { active: true }');
 
         const pauseResult = (await client.callTool({
-          name: 'pauseMaintenance',
-          arguments: { maintenanceID },
+          name: 'setMaintenanceActive',
+          arguments: { maintenanceID, active: false },
         })) as CallToolResult;
-        extractText(pauseResult, 'pauseMaintenance');
+        extractText(pauseResult, 'setMaintenanceActive');
         if ((await findWindow(client, maintenanceID)).active !== false)
-          throw new Error('Window still active after pauseMaintenance');
-        console.log('  ✓ resumeMaintenance / pauseMaintenance');
+          throw new Error('Window still active after setMaintenanceActive { active: false }');
+        console.log('  ✓ setMaintenanceActive on / off');
 
         // Detach everything
         const detachResult = (await client.callTool({
@@ -286,7 +286,7 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
         });
         maintenanceID = created.maintenanceID!;
 
-        // A cron window used to fail getMaintenanceWindows' output schema, breaking the listing.
+        // A cron window used to fail listMaintenanceWindows' output schema, breaking the listing.
         const listed = await findWindow(client, maintenanceID);
         if (listed.strategy !== 'cron') throw new Error(`Listed with strategy ${listed.strategy}`);
 
@@ -342,8 +342,8 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
       const missingID = 999999;
       const calls: Array<[string, Record<string, unknown>]> = [
         ['updateMaintenance', { maintenanceID: missingID, title: 'x' }],
-        ['pauseMaintenance', { maintenanceID: missingID }],
-        ['resumeMaintenance', { maintenanceID: missingID }],
+        ['setMaintenanceActive', { maintenanceID: missingID, active: false }],
+        ['setMaintenanceActive', { maintenanceID: missingID, active: true }],
         // Uptime Kuma itself answers ok: true here.
         ['deleteMaintenance', { maintenanceID: missingID }],
       ];
@@ -355,7 +355,7 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
           throw new Error(`${name} on a missing window should fail with "not found", got: ${text}`);
         }
       }
-      console.log('  ✓ update / pause / resume / delete refuse a missing window');
+      console.log('  ✓ update / set active / delete refuse a missing window');
     },
   },
 ];

@@ -3,7 +3,7 @@ import { type TestFn, extractText, extractID } from './helpers.js';
 
 /**
  * Integration tests for Docker host operations.
- * Covers: listDockerHosts, addDockerHost, updateDockerHost, deleteDockerHost, testDockerHost
+ * Covers: listDockerHosts, createDockerHost, updateDockerHost, deleteDockerHost, testDockerHost
  */
 
 export const dockerHostTests: Array<{ name: string; fn: TestFn }> = [
@@ -18,18 +18,18 @@ export const dockerHostTests: Array<{ name: string; fn: TestFn }> = [
     },
   },
   {
-    name: 'addDockerHost → listDockerHosts → deleteDockerHost lifecycle',
+    name: 'createDockerHost → listDockerHosts → deleteDockerHost lifecycle',
     fn: async ({ client }) => {
       // Create a docker host (TCP type pointing to a dummy address — we're testing CRUD, not connectivity)
       const addResult = (await client.callTool({
-        name: 'addDockerHost',
+        name: 'createDockerHost',
         arguments: {
           name: 'int-test-docker-host',
           dockerType: 'tcp',
           dockerDaemon: 'http://localhost:9999',
         },
       })) as CallToolResult;
-      const dockerHostID = extractID(addResult, 'addDockerHost', 'id');
+      const dockerHostID = extractID(addResult, 'createDockerHost', 'id');
 
       try {
         // Verify it appears in the list
@@ -41,7 +41,7 @@ export const dockerHostTests: Array<{ name: string; fn: TestFn }> = [
           throw new Error(`Expected name "int-test-docker-host", got "${found.name}"`);
         }
 
-        console.log(`  ✓ addDockerHost/listDockerHosts lifecycle: ID ${dockerHostID}`);
+        console.log(`  ✓ createDockerHost/listDockerHosts lifecycle: ID ${dockerHostID}`);
       } finally {
         // Cleanup
         await client.callTool({ name: 'deleteDockerHost', arguments: { dockerHostID } });

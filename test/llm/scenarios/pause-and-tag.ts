@@ -18,7 +18,7 @@ export default defineScenario({
       type: 'http',
       url: 'https://example.com',
     });
-    await call(ctx, 'addTag', { name: TAG, color: '#2563eb' });
+    await call(ctx, 'createTag', { name: TAG, color: '#2563eb' });
     return { billing, marketing };
   },
   prompt: `Pause the billing API monitor and tag it "${TAG}".`,
