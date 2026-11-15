@@ -11,7 +11,8 @@ export function registerTagTools(ctx: ToolContext): void {
     'listTags',
     {
       title: 'List Tags',
-      description: 'Returns all tags defined in Uptime Kuma (name, color, and ID).',
+      description:
+        'Returns every tag defined in Uptime Kuma with its ID, name and color. To see which monitors carry a tag, filter listMonitors or getMonitorSummary by tag name.',
       inputSchema: {},
       outputSchema: {
         tags: z
@@ -43,10 +44,11 @@ export function registerTagTools(ctx: ToolContext): void {
   );
 
   server.registerTool(
-    'addTag',
+    'createTag',
     {
-      title: 'Add Tag',
-      description: 'Creates a new tag that can be assigned to monitors.',
+      title: 'Create Tag',
+      description:
+        'Creates a tag with a name and a color. Tags are attached to monitors with the tags argument of createMonitor / updateMonitor, which also creates a tag that does not exist yet, so this is only needed to define a tag ahead of use. Names are not unique: check listTags first to avoid a duplicate. To rename or recolor a tag use updateTag; to remove one, deleteTag.',
       inputSchema: {
         name: z.string().describe('Tag name'),
         color: z.string().describe('Tag color as a hex string (e.g. "#ff0000") or CSS color name'),
@@ -74,11 +76,59 @@ export function registerTagTools(ctx: ToolContext): void {
   );
 
   server.registerTool(
+    'updateTag',
+    {
+      title: 'Update Tag',
+      description:
+        'Renames or recolors an existing tag. Pass name, color or both; whichever you omit keeps its current value. The change shows on every monitor that carries the tag. Find the ID with listTags; to add a tag use createTag.',
+      inputSchema: {
+        tagID: requiredId('The ID of the tag to update'),
+        name: z.string().optional().describe('New tag name. Omit to keep the current one.'),
+        color: z
+          .string()
+          .optional()
+          .describe('New tag color as a hex string (e.g. "#ff0000") or CSS color name. Omit to keep the current one.'),
+      },
+      outputSchema: {
+        ok: z.boolean(),
+        tag: z.object({ id: z.number(), name: z.string(), color: z.string() }).optional(),
+        msg: z.string().optional(),
+      },
+    },
+    async ({ tagID, name, color }) => {
+      await authenticateClient();
+
+      try {
+        if (name === undefined && color === undefined) {
+          throw new Error('nothing to change — pass name, color, or both');
+        }
+
+        // Uptime Kuma's editTag writes both columns from what it is sent, so an omitted field
+        // has to be filled in from the stored tag rather than left to be blanked.
+        const existing = (await client.getTagList()).find((t) => t.id === tagID);
+        if (!existing) {
+          throw new Error(`Tag ${tagID} not found — call listTags to see available IDs`);
+        }
+
+        const response = await client.editTag(tagID, name ?? existing.name, color ?? existing.color);
+        const tag = response.tag ?? { id: tagID, name: name ?? existing.name, color: color ?? existing.color };
+        return {
+          content: [{ type: 'text', text: `Tag ${tagID} updated: "${tag.name}" (${tag.color})` }],
+          structuredContent: { ok: response.ok, tag, msg: response.msg },
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new McpError(ErrorCode.InternalError, `Failed to update tag: ${errorMessage}`);
+      }
+    }
+  );
+
+  server.registerTool(
     'deleteTag',
     {
       title: 'Delete Tag',
       description:
-        'Permanently deletes a tag. It will be removed from all monitors that use it. Use listTags to find the tag ID.',
+        'Permanently deletes a tag and removes it from every monitor that carries it. An ID that does not exist still reports success. To rename or recolor a tag instead, use updateTag. Find the ID with listTags.',
       inputSchema: {
         tagID: requiredId('The ID of the tag to delete'),
       },

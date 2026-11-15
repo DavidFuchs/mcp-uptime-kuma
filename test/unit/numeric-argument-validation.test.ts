@@ -172,7 +172,7 @@ describe('numeric arguments reject junk instead of coercing it', () => {
       ['updateMonitor', 'timeout', 4.8, 4.8],
       ['updateMonitor', 'timeout', '4.8', 4.8],
       ['updateMonitor', 'parent', null, null],
-      ['getHeartbeats', 'maxHeartbeats', '10', 10],
+      ['listHeartbeats', 'maxHeartbeats', '10', 10],
       ['listMonitors', 'parentId', '3', 3],
       ['listMonitors', 'parentId', null, null],
     ];

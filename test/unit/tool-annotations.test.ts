@@ -41,7 +41,7 @@ describe('tool annotations', () => {
     expect(changing).toEqual([...WRITE_TOOLS].filter((n) => !CHANGE_NOTHING_TOOLS.has(n)).sort());
   });
 
-  it('marks deletes and updates destructive, and creates, pauses and resumes not', async () => {
+  it('marks deletes and updates destructive, and creates and sets not', async () => {
     const tools = await listTools();
     const destructive = (name: string) => tools.find((t) => t.name === name)?.annotations?.destructiveHint;
     for (const name of [
@@ -53,18 +53,24 @@ describe('tool annotations', () => {
     ]) {
       expect(destructive(name), name).toBe(true);
     }
-    for (const name of ['createMonitor', 'addNotification', 'addTag', 'pauseMonitor', 'resumeMaintenance']) {
+    for (const name of [
+      'createMonitor',
+      'createNotification',
+      'createTag',
+      'setMonitorActive',
+      'setMaintenanceActive',
+    ]) {
       expect(destructive(name), name).toBe(false);
     }
   });
 
-  it('marks updates, pauses and resumes idempotent, and creates and deletes not', async () => {
+  it('marks updates and sets idempotent, and creates and deletes not', async () => {
     const tools = await listTools();
     const idempotent = (name: string) => tools.find((t) => t.name === name)?.annotations?.idempotentHint;
-    for (const name of ['updateMonitor', 'pauseMonitor', 'resumeMonitor', 'pauseMaintenance']) {
+    for (const name of ['updateMonitor', 'setMonitorActive', 'setMaintenanceActive']) {
       expect(idempotent(name), name).toBe(true);
     }
-    for (const name of ['createMonitor', 'addTag', 'deleteMonitor']) {
+    for (const name of ['createMonitor', 'createTag', 'deleteMonitor']) {
       expect(idempotent(name), name).toBe(false);
     }
   });

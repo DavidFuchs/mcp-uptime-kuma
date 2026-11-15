@@ -249,7 +249,7 @@ describe('rehydrateSecrets - the read-edit-write loop', () => {
   });
 
   it('reports every marker as missing when there is no stored object (the create path)', () => {
-    // createMonitor / addNotification have nothing to restore from, so a marker there must
+    // createMonitor / createNotification have nothing to restore from, so a marker there must
     // be refused rather than saved as the credential.
     const incoming = { name: 'Cloned', smtpPassword: SECRET_MARKER, smtpHost: 'smtp.example.com' };
     const { preserved, missing } = rehydrateSecrets(incoming, undefined);

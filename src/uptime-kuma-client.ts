@@ -1415,6 +1415,29 @@ export class UptimeKumaClient {
   }
 
   /**
+   * Rename and/or recolor a tag. Uptime Kuma writes both fields from what it is sent, so both
+   * are required here; the updateTag tool fills in the one the caller left out.
+   *
+   * @param tagID - The ID of the tag to change
+   * @param name - Tag name
+   * @param color - Tag color (hex string, e.g. '#ff0000')
+   * @returns Promise resolving to the saved tag object
+   */
+  async editTag(
+    tagID: number,
+    name: string,
+    color: string
+  ): Promise<ApiResponse & { tag?: { id: number; name: string; color: string } }> {
+    const response = await this.request<{ tag?: { id: number; name: string; color: string } }>(
+      'editTag',
+      [{ id: tagID, name, color }],
+      'Failed to update tag'
+    );
+    this.safeLog('info', `Successfully updated tag ${tagID}`);
+    return response;
+  }
+
+  /**
    * Delete a tag
    *
    * @param tagID - The ID of the tag to delete

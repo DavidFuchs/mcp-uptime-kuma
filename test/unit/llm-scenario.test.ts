@@ -103,7 +103,7 @@ describe('sweep', () => {
           { id: 6, name: 'prod' },
         ],
       },
-      getMaintenanceWindows: {
+      listMaintenanceWindows: {
         maintenanceWindows: [
           { id: 7, title: `${PREFIX}DB` },
           { id: 8, title: 'real' },

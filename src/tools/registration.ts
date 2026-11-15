@@ -15,20 +15,20 @@ import { MONITOR_TYPE_FIELD_NAMES, looseFieldName } from '../monitors/fields.js'
  * nor WRITE_TOOLS, so that decision cannot be skipped.
  *
  * testDockerHost changes nothing but makes Uptime Kuma connect to an address of the caller's
- * choosing, and getMonitorTypeFields only serves the write tools, so neither is here.
+ * choosing, and getMonitorTypeFields, listNotificationTypes and getNotificationTypeFields only
+ * serve the write tools, so none of them is here.
  */
 export const READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
   'getMonitor',
   'listMonitors',
   'listMonitorTypes',
   'getMonitorSummary',
-  'getHeartbeats',
   'listHeartbeats',
   'getSettings',
   'listNotifications',
   'listDockerHosts',
   'listTags',
-  'getMaintenanceWindows',
+  'listMaintenanceWindows',
   'listStatusPages',
   'getStatusPage',
 ]);
@@ -39,29 +39,35 @@ export const WRITE_TOOLS: ReadonlySet<string> = new Set([
   'createMonitor',
   'updateMonitor',
   'deleteMonitor',
-  'pauseMonitor',
-  'resumeMonitor',
-  'addNotification',
+  'setMonitorActive',
+  'listNotificationTypes',
+  'getNotificationTypeFields',
+  'createNotification',
   'updateNotification',
   'deleteNotification',
-  'addDockerHost',
+  'createDockerHost',
   'updateDockerHost',
   'deleteDockerHost',
   'testDockerHost',
-  'addTag',
+  'createTag',
+  'updateTag',
   'deleteTag',
   'createMaintenance',
   'updateMaintenance',
   'deleteMaintenance',
-  'pauseMaintenance',
-  'resumeMaintenance',
+  'setMaintenanceActive',
   'createStatusPage',
   'updateStatusPage',
   'deleteStatusPage',
 ]);
 
 /** In WRITE_TOOLS, so absent from read-only mode, but a call changes nothing. */
-export const CHANGE_NOTHING_TOOLS: ReadonlySet<string> = new Set(['getMonitorTypeFields', 'testDockerHost']);
+export const CHANGE_NOTHING_TOOLS: ReadonlySet<string> = new Set([
+  'getMonitorTypeFields',
+  'listNotificationTypes',
+  'getNotificationTypeFields',
+  'testDockerHost',
+]);
 
 /**
  * The behaviour hints advertised for a tool, which clients use to decide what may run without
@@ -76,16 +82,17 @@ export function toolAnnotations(name: string): {
   idempotentHint?: boolean;
   openWorldHint: boolean;
 } {
-  // Two tools change nothing yet stay out of read-only mode, for the reasons given on
+  // A few tools change nothing yet stay out of read-only mode, for the reasons given on
   // READ_ONLY_TOOLS. The hint describes what a call does, so they carry it all the same.
   if (READ_ONLY_TOOLS.has(name) || CHANGE_NOTHING_TOOLS.has(name)) {
     return { readOnlyHint: true, openWorldHint: false };
   }
   // Deleting removes; updating replaces what was stored, a status page's groups included.
   const destructive = name.startsWith('delete') || name.startsWith('update');
-  // Repeating an update, pause or resume with the same arguments leaves the same state.
-  // A second create makes a second object, and a second delete fails.
-  const idempotent = name.startsWith('update') || name.startsWith('pause') || name.startsWith('resume');
+  // Repeating an update or a set (setMonitorActive, setMaintenanceActive) with the same
+  // arguments leaves the same state. A second create makes a second object, and a second
+  // delete fails.
+  const idempotent = name.startsWith('update') || name.startsWith('set');
   return { readOnlyHint: false, destructiveHint: destructive, idempotentHint: idempotent, openWorldHint: false };
 }
 

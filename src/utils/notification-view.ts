@@ -4,7 +4,7 @@
  * Uptime Kuma's notification table has no type column: the provider type and every
  * provider-specific setting live in `config`, a JSON string. Returned as-is, an agent has to
  * know to parse a string inside the response to learn what kind of channel it is. This lifts
- * `type` to the top level and returns `config` as an object, the same shape addNotification and
+ * `type` to the top level and returns `config` as an object, the same shape createNotification and
  * updateNotification take.
  *
  * Builds a new object: rows from getNotificationList() are references into the client's cache.

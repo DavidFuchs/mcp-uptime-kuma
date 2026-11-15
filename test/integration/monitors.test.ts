@@ -5,7 +5,7 @@ import { type TestFn, extractText, extractID } from './helpers.js';
  * Integration tests for monitor CRUD and lifecycle operations.
  * Covers: createMonitor, getMonitor, updateMonitor, deleteMonitor,
  *         listMonitors, listMonitorTypes, getMonitorSummary,
- *         pauseMonitor, resumeMonitor
+ *         setMonitorActive
  *
  * Issue coverage:
  * - #42: Docker monitor docker_container/docker_host fields
@@ -164,7 +164,7 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
     },
   },
   {
-    name: 'pauseMonitor and resumeMonitor',
+    name: 'setMonitorActive pauses and resumes',
     fn: async ({ client }) => {
       // Create a monitor to pause/resume
       const createResult = (await client.callTool({
@@ -181,10 +181,10 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
       try {
         // Pause
         const pauseResult = (await client.callTool({
-          name: 'pauseMonitor',
-          arguments: { monitorID },
+          name: 'setMonitorActive',
+          arguments: { monitorID, active: false },
         })) as CallToolResult;
-        extractText(pauseResult, 'pauseMonitor');
+        extractText(pauseResult, 'setMonitorActive');
 
         await new Promise((resolve) => setTimeout(resolve, 1000));
 
@@ -198,10 +198,10 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
 
         // Resume
         const resumeResult = (await client.callTool({
-          name: 'resumeMonitor',
-          arguments: { monitorID },
+          name: 'setMonitorActive',
+          arguments: { monitorID, active: true },
         })) as CallToolResult;
-        extractText(resumeResult, 'resumeMonitor');
+        extractText(resumeResult, 'setMonitorActive');
 
         await new Promise((resolve) => setTimeout(resolve, 1000));
 
@@ -213,7 +213,7 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
         const resumed = JSON.parse(extractText(getResult2, 'getMonitor'));
         if (resumed.active !== true) throw new Error('Monitor not resumed');
 
-        console.log(`  ✓ pauseMonitor/resumeMonitor lifecycle`);
+        console.log(`  ✓ setMonitorActive pause/resume lifecycle`);
       } finally {
         await client.callTool({ name: 'deleteMonitor', arguments: { monitorID } });
       }

@@ -16,7 +16,7 @@ export function registerMonitorReadTools(ctx: ToolContext): void {
     {
       title: 'Get Monitor',
       description:
-        'Retrieves configuration details for a specific monitor by ID (URL, check interval, notification settings, etc.). Use this when you need to examine or modify settings for a specific monitor. For current status, use getMonitorSummary instead. By default returns only common fields plus runtime data (uptime, avgPing); set includeTypeSpecificFields to true to include type-specific fields (e.g., url for HTTP, hostname/port for TCP).',
+        "Returns one monitor's configuration by ID (check interval, notifications, tags, parent group) with its uptime and average ping. Type-specific fields such as url, hostname and port are returned only with includeTypeSpecificFields. Read it before updateMonitor. For current status use getMonitorSummary; for check history, listHeartbeats. Find IDs with listMonitors.",
       inputSchema: {
         monitorID: requiredId('The ID of the monitor to retrieve'),
         includeTypeSpecificFields: z
@@ -66,7 +66,7 @@ export function registerMonitorReadTools(ctx: ToolContext): void {
     {
       title: 'List Monitors',
       description:
-        'Retrieves configuration details for all monitors (URLs, check intervals, notification settings, etc.). Use this when you need to examine or modify monitor settings. For status checks ("how is everything doing?", "what\'s down?"), use getMonitorSummary instead. By default returns only common fields plus runtime data (uptime, avgPing); set includeTypeSpecificFields to true to include type-specific fields (e.g., url for HTTP, hostname/port for TCP). Supports filtering by keywords, type, active/maintenance status, tags, and parent group.',
+        'Returns the configuration of every monitor, or of those matching the filters (keywords, type, active, maintenance, tags, parent group). Use it to find monitor IDs or compare settings; for current UP/DOWN status use getMonitorSummary instead. Type-specific fields such as url, hostname and port are returned only with includeTypeSpecificFields.',
       inputSchema: {
         includeTypeSpecificFields: z
           .boolean()
@@ -174,7 +174,7 @@ export function registerMonitorReadTools(ctx: ToolContext): void {
     {
       title: 'List Monitor Types',
       description:
-        'Returns every monitor type Uptime Kuma supports, with what each one checks. Use it to choose the type for createMonitor — there are dedicated types for game servers, MQTT, RADIUS, SNMP, SMTP, gRPC, Docker containers and more — and to find valid values for type filters in other tools.',
+        'Returns every monitor type Uptime Kuma supports and what each one checks. Use it to choose the type for createMonitor (there are dedicated types for game servers, MQTT, SNMP, gRPC, Docker containers and more) and for the valid values of type filters. For the fields a type takes, call getMonitorTypeFields.',
       inputSchema: {},
       outputSchema: {
         types: z
@@ -210,7 +210,7 @@ export function registerMonitorReadTools(ctx: ToolContext): void {
     {
       title: 'Get Monitor Summary',
       description:
-        'START HERE for status overview questions. Retrieves current status for all monitors showing UP/DOWN/PENDING/MAINTENANCE states with the most recent heartbeat message. Use this when asked "how is everything doing?", "what\'s down?", "what\'s up?", or for any general status overview. Returns essential information (ID, name, pathName, active state, maintenance state, status, message, lastBeatTime, type, tags). Supports filtering by keywords, type, active/maintenance status, tags, parent group, and current status. Check lastBeatTime before trusting the status of a push monitor — one that has stopped beating keeps reporting its last known status. lastBeatTime is UTC with no zone marker, so measure staleness against the current UTC time.',
+        'START HERE for status questions ("what\'s down?", "how is everything doing?"). Returns the current status of every monitor (UP, DOWN, PENDING or MAINTENANCE) with its latest heartbeat message, lastBeatTime, type and tags. Filters: keywords, type, status, active, maintenance, tags, parent group. A push monitor that has stopped beating keeps its last status, so check lastBeatTime, which is UTC with no zone marker. For configuration use listMonitors; for history, listHeartbeats.',
       inputSchema: {
         keywords: z
           .string()

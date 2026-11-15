@@ -28,7 +28,7 @@ export default defineScenario({
   prompt:
     'The network upgrade maintenance will run late: make it end at midnight instead of 23:00, and also cover the VPN monitor.',
   async check(ctx, seed) {
-    const { maintenanceWindows = [] } = await call(ctx, 'getMaintenanceWindows');
+    const { maintenanceWindows = [] } = await call(ctx, 'listMaintenanceWindows');
     const w = (maintenanceWindows as any[]).find((x) => x.id === seed.maintenanceID);
     if (!w) return [expectThat('maintenance still exists', false)];
     const [start, end] = (w.dateRange ?? []).map((d: unknown) => String(d ?? ''));

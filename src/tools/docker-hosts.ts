@@ -15,7 +15,7 @@ export function registerDockerHostTools(ctx: ToolContext): void {
     {
       title: 'List Docker Hosts',
       description:
-        'Returns all docker daemon connections configured in Uptime Kuma. These are referenced by docker container monitors via docker_host.',
+        'Returns the Docker daemon connections configured in Uptime Kuma. A docker monitor refers to one by ID in its docker_host field. Credentials embedded in a dockerDaemon URL read "***" unless includeSecrets is set.',
       inputSchema: {
         includeSecrets: includeSecretsParam,
       },
@@ -48,11 +48,11 @@ export function registerDockerHostTools(ctx: ToolContext): void {
   );
 
   server.registerTool(
-    'addDockerHost',
+    'createDockerHost',
     {
-      title: 'Add Docker Host',
+      title: 'Create Docker Host',
       description:
-        'Creates a new docker daemon connection. For a unix socket use dockerType="socket" and dockerDaemon="/var/run/docker.sock". For a TCP proxy (e.g. tecnativa/docker-socket-proxy) use dockerType="tcp" and dockerDaemon="http://host:2375". Consider calling testDockerHost first to verify reachability.',
+        'Creates a Docker daemon connection; docker monitors take the returned ID in their docker_host field. Pass dockerType "socket" with a socket path, or "tcp" with a URL such as http://host:2375 (for example a docker-socket-proxy). The connection is saved without being checked, so call testDockerHost first. To change one use updateDockerHost.',
       inputSchema: {
         name: z.string().describe('Human-readable name for this docker host'),
         dockerType: z.enum(['socket', 'tcp']).describe('"socket" for a unix socket path, "tcp" for an HTTP/HTTPS URL'),
@@ -89,7 +89,7 @@ export function registerDockerHostTools(ctx: ToolContext): void {
     {
       title: 'Update Docker Host',
       description:
-        'Updates an existing docker daemon connection. Use listDockerHosts to find the docker host ID. Only the fields you pass are changed — the others are preserved.',
+        'Updates an existing Docker daemon connection. Only the fields you pass change. Credentials in a dockerDaemon URL sent back as "***" keep their stored value. Check a new address with testDockerHost first. Find the ID with listDockerHosts.',
       inputSchema: {
         dockerHostID: requiredId('The ID of the docker host to update'),
         name: z.string().optional().describe('New human-readable name'),
@@ -167,7 +167,7 @@ export function registerDockerHostTools(ctx: ToolContext): void {
     {
       title: 'Delete Docker Host',
       description:
-        'Permanently deletes a docker daemon connection. Any monitors referencing it will have their docker_host cleared by Uptime Kuma (the monitors themselves are not deleted).',
+        'Permanently deletes a Docker daemon connection. Monitors that referenced it are kept, but their docker_host is cleared, so they stop working until given another. Find the ID with listDockerHosts.',
       inputSchema: {
         dockerHostID: requiredId('The ID of the docker host to delete'),
       },
@@ -197,7 +197,7 @@ export function registerDockerHostTools(ctx: ToolContext): void {
     {
       title: 'Test Docker Host',
       description:
-        'Tests connectivity to a docker daemon without persisting it. On success the message includes the number of containers. Use this before addDockerHost to avoid saving a broken configuration.',
+        'Tests whether Uptime Kuma can reach a Docker daemon, without saving anything. On success the message gives the number of containers. Use it before createDockerHost or updateDockerHost.',
       inputSchema: {
         name: z.string().describe('Display name (used only in the test request)'),
         dockerType: z.enum(['socket', 'tcp']).describe('"socket" for a unix socket path, "tcp" for an HTTP/HTTPS URL'),

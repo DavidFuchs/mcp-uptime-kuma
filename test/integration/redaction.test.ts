@@ -28,7 +28,7 @@ export const redactionTests: Array<{ name: string; fn: TestFn }> = [
     fn: async ({ client }) => {
       let notificationID: number | undefined;
       try {
-        const created = await call(client, 'addNotification', {
+        const created = await call(client, 'createNotification', {
           name: 'zz-redaction-delete-me',
           type: 'smtp',
           config: {
@@ -42,7 +42,7 @@ export const redactionTests: Array<{ name: string; fn: TestFn }> = [
           },
         });
         notificationID = (created as any).structuredContent?.id;
-        if (!notificationID) throw new Error('addNotification returned no id');
+        if (!notificationID) throw new Error('createNotification returned no id');
 
         const listed = extractText(await call(client, 'listNotifications', {}), 'listNotifications');
         if (listed.includes(SMTP_PASSWORD)) {
@@ -72,12 +72,12 @@ export const redactionTests: Array<{ name: string; fn: TestFn }> = [
   {
     name: 'updateNotification does not clobber a secret it never showed the caller',
     fn: async ({ client }) => {
-      // This is the case the maintainer flagged on #59. addNotification REPLACES the row,
+      // This is the case the maintainer flagged on #59. Uptime Kuma REPLACES the row,
       // so a caller that reads a redacted config, renames the channel and writes it back
       // would persist "***" as the SMTP password.
       let notificationID: number | undefined;
       try {
-        const created = await call(client, 'addNotification', {
+        const created = await call(client, 'createNotification', {
           name: 'zz-clobber-delete-me',
           type: 'smtp',
           config: {
@@ -91,7 +91,7 @@ export const redactionTests: Array<{ name: string; fn: TestFn }> = [
           },
         });
         notificationID = (created as any).structuredContent?.id;
-        if (!notificationID) throw new Error('addNotification returned no id');
+        if (!notificationID) throw new Error('createNotification returned no id');
 
         // Exactly what an agent would send after a redacted read.
         await call(client, 'updateNotification', {
@@ -222,27 +222,27 @@ export const redactionTests: Array<{ name: string; fn: TestFn }> = [
       // Accepting it would persist "***" as a credential that looks set and cannot work.
       let created: number | undefined;
       try {
-        const result = await call(client, 'addNotification', {
+        const result = await call(client, 'createNotification', {
           name: 'zz-marker-on-create-delete-me',
           type: 'smtp',
           config: { type: 'smtp', smtpHost: 'smtp.example.invalid', smtpPassword: MARKER },
         });
         created = (result as any).structuredContent?.id;
         if (!result.isError && created) {
-          throw new Error('addNotification accepted the redaction marker as a password');
+          throw new Error('createNotification accepted the redaction marker as a password');
         }
         const text = (result.content as any[])?.find((c: any) => c.type === 'text')?.text ?? '';
         if (!String(text).includes('smtpPassword')) {
           throw new Error(`error should name the offending field, got: ${text}`);
         }
-        console.log('  ✓ addNotification refuses the marker and names the field');
+        console.log('  ✓ createNotification refuses the marker and names the field');
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         if (/accepted the redaction marker/.test(message)) throw err;
         if (!message.includes('smtpPassword')) {
           throw new Error(`error should name the offending field, got: ${message}`, { cause: err });
         }
-        console.log('  ✓ addNotification refuses the marker and names the field');
+        console.log('  ✓ createNotification refuses the marker and names the field');
       } finally {
         if (created) await call(client, 'deleteNotification', { notificationID: created });
       }

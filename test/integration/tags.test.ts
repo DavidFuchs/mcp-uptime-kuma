@@ -3,7 +3,7 @@ import { type TestFn, extractText, extractID } from './helpers.js';
 
 /**
  * Integration tests for tag operations and monitor-tag binding.
- * Covers: listTags, addTag, deleteTag, and tag attachment via createMonitor/updateMonitor
+ * Covers: listTags, createTag, updateTag, deleteTag, and tag attachment via createMonitor/updateMonitor
  *
  * Issue coverage:
  * - #41: Tags cannot be attached to monitors (createMonitor errors, updateMonitor silently drops)
@@ -25,17 +25,17 @@ export const tagTests: Array<{ name: string; fn: TestFn }> = [
       const tags = JSON.parse(text);
       if (!Array.isArray(tags)) throw new Error('Expected array');
       // The test instance should have at least one tag (created by prior runs
-      // or the addTag test below).  If the instance is fresh, create one so
+      // or the createTag test below).  If the instance is fresh, create one so
       // subsequent runs have something to verify.
       if (tags.length === 0) {
         // Fresh instance — create a persistent tag so the test is meaningful
         // on subsequent runs.  On a fresh instance this test still passes
         // (it can't fail for a truly empty server), but documents the intent.
-        await client.callTool({ name: 'addTag', arguments: { name: 'seed-tag', color: '#999999' } });
+        await client.callTool({ name: 'createTag', arguments: { name: 'seed-tag', color: '#999999' } });
         const retry = (await client.callTool({ name: 'listTags', arguments: {} })) as CallToolResult;
         const retryTags = JSON.parse(extractText(retry, 'listTags'));
         if (retryTags.length === 0) {
-          throw new Error('listTags returned [] even after addTag — issue #46 still present');
+          throw new Error('listTags returned [] even after createTag — issue #46 still present');
         }
         console.log(`  ✓ #46: listTags works after seeding (${retryTags.length} tags)`);
       } else {
@@ -44,19 +44,37 @@ export const tagTests: Array<{ name: string; fn: TestFn }> = [
     },
   },
   {
-    name: 'addTag → listTags → deleteTag lifecycle',
+    name: 'createTag → listTags → deleteTag lifecycle',
     fn: async ({ client }) => {
       // Create a tag
       const addResult = (await client.callTool({
-        name: 'addTag',
+        name: 'createTag',
         arguments: { name: 'integration-test-tag', color: '#123456' },
       })) as CallToolResult;
-      const tagID = extractID(addResult, 'addTag', 'tagID');
+      const tagID = extractID(addResult, 'createTag', 'tagID');
 
       try {
         // The tag cache may be stale since listTags reads from cache.
-        // Verify the tag was created via addTag response (which is authoritative).
-        console.log(`  ✓ addTag/listTags: tag ID ${tagID} created`);
+        // Verify the tag was created via createTag response (which is authoritative).
+        console.log(`  ✓ createTag/listTags: tag ID ${tagID} created`);
+
+        // updateTag with only a name must keep the color: Uptime Kuma's editTag writes both.
+        const renamed = (await client.callTool({
+          name: 'updateTag',
+          arguments: { tagID, name: 'integration-test-tag-renamed' },
+        })) as CallToolResult;
+        extractText(renamed, 'updateTag');
+        const listed = JSON.parse(
+          extractText((await client.callTool({ name: 'listTags', arguments: {} })) as CallToolResult, 'listTags')
+        ) as Array<{ id: number; name: string; color: string }>;
+        const tag = listed.find((t) => t.id === tagID);
+        if (tag?.name !== 'integration-test-tag-renamed') {
+          throw new Error(`updateTag did not rename the tag (got ${JSON.stringify(tag)})`);
+        }
+        if (tag.color !== '#123456') {
+          throw new Error(`updateTag changed the color it was not given (got ${JSON.stringify(tag.color)})`);
+        }
+        console.log(`  ✓ updateTag: renamed tag ID ${tagID} and kept its color`);
       } finally {
         // Delete
         await client.callTool({ name: 'deleteTag', arguments: { tagID } });
@@ -65,14 +83,14 @@ export const tagTests: Array<{ name: string; fn: TestFn }> = [
     },
   },
   {
-    name: '#45/#46: listTags returns non-empty array after addTag (active fetch, object parsing)',
+    name: '#45/#46: listTags returns non-empty array after createTag (active fetch, object parsing)',
     fn: async ({ client }) => {
       // Create a tag so we know at least one exists
       const addResult = (await client.callTool({
-        name: 'addTag',
+        name: 'createTag',
         arguments: { name: 'issue45-46-test', color: '#abcdef' },
       })) as CallToolResult;
-      const tagID = extractID(addResult, 'addTag', 'tagID');
+      const tagID = extractID(addResult, 'createTag', 'tagID');
 
       try {
         // listTags must return a non-empty array containing the new tag.
@@ -108,11 +126,11 @@ export const tagTests: Array<{ name: string; fn: TestFn }> = [
     name: '#41: createMonitor with tags attaches them (not SQLite error)',
     fn: async ({ client }) => {
       // First create a tag to use
-      const addTagResult = (await client.callTool({
-        name: 'addTag',
+      const createTagResult = (await client.callTool({
+        name: 'createTag',
         arguments: { name: 'issue41-create', color: '#dc2626' },
       })) as CallToolResult;
-      extractText(addTagResult, 'addTag');
+      extractText(createTagResult, 'createTag');
 
       let monitorID: number | undefined;
       try {
@@ -167,11 +185,11 @@ export const tagTests: Array<{ name: string; fn: TestFn }> = [
     name: '#41: updateMonitor with tags attaches them (not silently dropped)',
     fn: async ({ client }) => {
       // Create a tag
-      const addTagResult = (await client.callTool({
-        name: 'addTag',
+      const createTagResult = (await client.callTool({
+        name: 'createTag',
         arguments: { name: 'issue41-update', color: '#2563eb' },
       })) as CallToolResult;
-      extractText(addTagResult, 'addTag');
+      extractText(createTagResult, 'createTag');
 
       let monitorID: number | undefined;
       try {

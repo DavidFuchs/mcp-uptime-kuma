@@ -40,87 +40,73 @@ import {
 export function registerMonitorWriteTools(ctx: ToolContext): void {
   const { server, client, authenticateClient, kumaUrl } = ctx;
 
-  // Register pauseMonitor tool
+  // One tool for pausing and resuming: they were pauseMonitor and resumeMonitor, which took the
+  // same argument and differed only in direction.
   server.registerTool(
-    'pauseMonitor',
+    'setMonitorActive',
     {
-      title: 'Pause Monitor',
+      title: 'Set Monitor Active',
       description:
-        'Pauses a monitor, stopping it from performing checks. The monitor will remain in the system but will not send notifications or collect data until resumed.',
+        'Pauses (active: false) or resumes (active: true) a monitor. A paused monitor stops checking, recording heartbeats and alerting; its configuration and history are kept, and resuming restarts checks at once. Setting the state it already has changes nothing. For planned downtime on a schedule use createMaintenance instead; setMaintenanceActive acts on a maintenance window, not a monitor. Find the ID with listMonitors.',
       inputSchema: {
-        monitorID: requiredId('The ID of the monitor to pause'),
+        monitorID: requiredId('The ID of the monitor to pause or resume'),
+        active: z.boolean().describe('false pauses the monitor, true resumes it'),
       },
       outputSchema: {
         ok: z.boolean(),
+        monitorID: z.number(),
+        active: z.boolean(),
         msg: z.string().optional(),
       },
     },
-    async ({ monitorID }) => {
+    async ({ monitorID, active }) => {
       await authenticateClient();
 
       try {
-        const response = await client.pauseMonitor(monitorID);
+        // Uptime Kuma answers a pause of a missing monitor with ok: true and a resume with a raw
+        // "Cannot read properties of null". Check first so both say "not found".
+        if (!client.getMonitor(monitorID)) {
+          throw new Error(`Monitor ${monitorID} not found — call listMonitors to see available IDs`);
+        }
+
+        const response = active ? await client.resumeMonitor(monitorID) : await client.pauseMonitor(monitorID);
 
         return {
-          content: [
-            {
-              type: 'text',
-              text: response.msg || `Monitor ${monitorID} paused successfully`,
-            },
-          ],
-          structuredContent: {
-            ok: response.ok,
-            msg: response.msg,
-          },
+          content: [{ type: 'text', text: `Monitor ${monitorID} ${active ? 'resumed' : 'paused'}.` }],
+          structuredContent: { ok: response.ok, monitorID, active, msg: response.msg },
         };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        throw new McpError(ErrorCode.InternalError, `Failed to pause monitor: ${errorMessage}`);
+        throw new McpError(
+          ErrorCode.InternalError,
+          `Failed to ${active ? 'resume' : 'pause'} monitor: ${errorMessage}`
+        );
       }
     }
   );
 
-  // Register resumeMonitor tool
-  server.registerTool(
-    'resumeMonitor',
-    {
-      title: 'Resume Monitor',
-      description: 'Resumes a paused monitor, restarting all checks. Use this to re-enable monitoring after pausing.',
-      inputSchema: {
-        monitorID: requiredId('The ID of the monitor to resume'),
-      },
-      outputSchema: {
-        ok: z.boolean(),
-        msg: z.string().optional(),
-      },
-    },
-    async ({ monitorID }) => {
-      await authenticateClient();
-
-      try {
-        const response = await client.resumeMonitor(monitorID);
-
-        return {
-          content: [
-            {
-              type: 'text',
-              text: response.msg || `Monitor ${monitorID} resumed successfully`,
-            },
-          ],
-          structuredContent: {
-            ok: response.ok,
-            msg: response.msg,
-          },
-        };
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        throw new McpError(ErrorCode.InternalError, `Failed to resume monitor: ${errorMessage}`);
-      }
-    }
-  );
+  // What the type-specific fields declared at the top level mean, in full. createMonitor and
+  // updateMonitor are loaded into every session, so they advertise a few words per field;
+  // getMonitorTypeFields serves these, one type at a time.
+  const TOP_LEVEL_FIELD_DOCS: Record<string, string> = {
+    url: 'URL to monitor (required for http, keyword and json-query)',
+    hostname: 'Hostname or IP address to check (required for port, ping and dns, and most non-HTTP types)',
+    port: 'Port number (required for port)',
+    domainExpiryNotification:
+      'Notify before the domain registration expires (most types with a url or hostname). Needs Uptime Kuma 2.1 or later.',
+    dns_resolve_type: 'DNS record type to query, for dns and globalping (default: A)',
+    databaseConnectionString:
+      'Connection string for mysql, postgres, mongodb, redis, sqlserver and oracledb monitors (required for those types). For oracledb the login goes in basic_auth_user and basic_auth_pass. A credential: read tools return it as "***" unless includeSecrets is set.',
+    databaseQuery:
+      'Query for database monitors. SQL for mysql, postgres and sqlserver (default: SELECT 1) and oracledb (default: SELECT 1 FROM DUAL); a JSON command object for mongodb (default: {"ping": 1}).',
+    databasePassword:
+      'Password for mysql monitors, if not inline in the connection string. Stored by Uptime Kuma as radiusPassword. A credential: read tools return it as "***".',
+    radiusPassword:
+      'The RADIUS password (required for radius). Also the column databasePassword and typeFields.snmpCommunity are stored in — prefer those names for mysql and snmp.',
+  };
 
   // Hoisted out of the registration so getMonitorTypeFields can read the descriptions of the
-  // fields declared here (url, hostname, port, …) instead of keeping a second copy of them.
+  // other fields declared here (keyword, method, …) instead of keeping a second copy of them.
   const createMonitorShape = {
     name: z.string().describe('Display name for the monitor'),
     type: z
@@ -138,7 +124,7 @@ export function registerMonitorWriteTools(ctx: ToolContext): void {
       .nullable()
       .optional()
       .describe(
-        "Request timeout in SECONDS. Omit for the web form's default: 48, or 10 for ping, 5 for snmp and 1 for kafka-producer, at most 0.8 x interval. Avoid 0: Uptime Kuma's runtime fallback for a stored 0 computes interval * 1000 * 0.8 and then multiplies by 1000 again, yielding a ~13 hour timeout, so the monitor can never report DOWN against a host that accepts the connection and never answers. Push and group monitors do not use it; a 0 stored on one of those is harmless."
+        "Request timeout in seconds. Omit for the type's default, which getMonitorTypeFields gives. Avoid 0: Uptime Kuma turns a stored 0 into a timeout of about 13 hours, so the monitor never reports DOWN."
       ),
     jsonPath: z
       .string()
@@ -157,21 +143,12 @@ export function registerMonitorWriteTools(ctx: ToolContext): void {
       .min(8)
       .optional()
       .describe('Push token for push monitors — the secret in the ping URL. Omit and one is generated and returned.'),
-    url: z
-      .string()
-      .optional()
-      .describe(
-        'URL to monitor (required for http, keyword and json-query; other types that need it are listed by getMonitorTypeFields)'
-      ),
+    url: z.string().optional().describe('URL to check (http, keyword, json-query and other URL-based types)'),
     hostname: z
       .string()
       .optional()
-      .describe(
-        'Hostname or IP address to check (required for port, ping and dns, and most non-HTTP types — see getMonitorTypeFields)'
-      ),
-    port: numeric(z.number())
-      .optional()
-      .describe('Port number (required for port; see getMonitorTypeFields for other types)'),
+      .describe('Hostname or IP address to check (port, ping, dns and most non-HTTP types)'),
+    port: numeric(z.number()).optional().describe('Port number (port, and other types that take one)'),
     interval: numeric(z.number().min(1))
       .optional()
       .describe('Check interval in seconds (default: 60, or 300 for ntp; min: 1)'),
@@ -209,9 +186,7 @@ export function registerMonitorWriteTools(ctx: ToolContext): void {
     domainExpiryNotification: z
       .boolean()
       .optional()
-      .describe(
-        'Notify before the domain registration expires (most types with a url or hostname; see getMonitorTypeFields). Needs Uptime Kuma 2.1 or later.'
-      ),
+      .describe('Notify before the domain registration expires. Needs Uptime Kuma 2.1 or later.'),
     parent: numeric(z.number()).nullable().optional().describe('Parent group monitor ID'),
     docker_container: z.string().optional().describe('Docker container name (required for docker type)'),
     docker_host: numeric(z.number())
@@ -224,33 +199,17 @@ export function registerMonitorWriteTools(ctx: ToolContext): void {
     dns_resolve_type: z
       .enum(ALL_DNS_RECORD_TYPES)
       .optional()
-      .describe(
-        'DNS record type to query, for dns and globalping (default: A). Which types each supports: getMonitorTypeFields'
-      ),
+      .describe('DNS record type to query (dns and globalping; default: A)'),
     databaseConnectionString: z
       .string()
       .optional()
-      .describe(
-        'Connection string for mysql, postgres, mongodb, redis, sqlserver and oracledb monitors (required for those types). For oracledb the login goes in basic_auth_user and basic_auth_pass. A credential: read tools return it as "***" unless includeSecrets is set.'
-      ),
-    databaseQuery: z
-      .string()
-      .optional()
-      .describe(
-        'Query for database monitors. SQL for mysql, postgres and sqlserver (default: SELECT 1) and oracledb (default: SELECT 1 FROM DUAL); a JSON command object for mongodb (default: {"ping": 1}).'
-      ),
+      .describe('Connection string for the database monitor types. A credential.'),
+    databaseQuery: z.string().optional().describe("Query a database monitor runs. Omit for the type's default."),
     databasePassword: z
       .string()
       .optional()
-      .describe(
-        'Password for mysql monitors, if not inline in the connection string. Stored by Uptime Kuma as radiusPassword. A credential: read tools return it as "***".'
-      ),
-    radiusPassword: z
-      .string()
-      .optional()
-      .describe(
-        'The RADIUS password (required for radius). Also the column databasePassword and typeFields.snmpCommunity are stored in — prefer those names for mysql and snmp.'
-      ),
+      .describe('Password for mysql monitors, if not in the connection string. A credential.'),
+    radiusPassword: z.string().optional().describe('The RADIUS password (radius). A credential.'),
     typeFields: z.record(z.string(), z.unknown()).optional().describe(TYPE_FIELDS_DESCRIPTION),
   };
 
@@ -297,7 +256,8 @@ export function registerMonitorWriteTools(ctx: ToolContext): void {
     const schema = inTypeFields
       ? (TYPE_SPECIFIC_MONITOR_FIELD_SCHEMAS as Record<string, z.ZodTypeAny>)[name]
       : (createMonitorShape as Record<string, z.ZodTypeAny>)[name];
-    const description = (MONITOR_FIELD_DOCS as Record<string, string>)[name] ?? schema?.description ?? '';
+    const description =
+      (MONITOR_FIELD_DOCS as Record<string, string>)[name] ?? TOP_LEVEL_FIELD_DOCS[name] ?? schema?.description ?? '';
     // Type and allowed values, without the description the entry already carries.
     let accepts: Record<string, unknown> = {};
     try {
@@ -330,7 +290,7 @@ export function registerMonitorWriteTools(ctx: ToolContext): void {
     {
       title: 'Get Monitor Type Fields',
       description:
-        'Describes the fields one monitor type uses: which are required, which are optional, what each means and accepts, and the defaults applied when they are omitted. Call this before createMonitor, or before updateMonitor changes a type or sets type-specific fields: most of them go in the typeFields argument of those tools, which is not described there.',
+        'Describes the fields one monitor type takes: which are required, which are optional, what each means and accepts, its default, and whether it is passed at the top level or inside typeFields. Call it before createMonitor, and before updateMonitor changes a type or a type-specific field: those tools do not describe these fields. Type names come from listMonitorTypes.',
       inputSchema: {
         type: z.string().describe('The monitor type, e.g. http, mqtt, snmp. Use listMonitorTypes for all options.'),
       },
@@ -397,7 +357,7 @@ export function registerMonitorWriteTools(ctx: ToolContext): void {
     {
       title: 'Create Monitor',
       description:
-        'Creates a new monitor in Uptime Kuma. Requires at minimum a name and type. Use listMonitorTypes to see supported types; prefer one made for the service (e.g. gamedig for a game server) over a port check. For HTTP monitors include url; for TCP/port monitors include hostname and port; for ping and dns include hostname; for json-query include url, jsonPath, jsonPathOperator and expectedValue; for database types (mysql, postgres, mongodb, redis, sqlserver, oracledb) include databaseConnectionString. For any other type, and for anything type-specific such as HTTP authentication, call getMonitorTypeFields first: it lists the required and optional fields of the type, what each means, and whether it is passed at the top level or inside typeFields. A create without the required fields of its type is refused rather than saved as a monitor that fails every check. For an HTTP monitor behind authentication pass the credentials in typeFields (basic_auth_user and basic_auth_pass, or bearer_token) and authMethod is set to match. Never pass "***" for a credential. A push monitor is given a generated push token (Uptime Kuma only generates one in its own web UI) and the resulting ping URL is returned. Omitted settings get the web form\'s defaults: interval 60 (300 for ntp), retryInterval equal to interval, and a per-type timeout.',
+        "Creates a new monitor from a name, a type and the fields that type requires. Choose the type with listMonitorTypes, preferring one made for the service over a generic port check, then call getMonitorTypeFields for its required and optional fields, their defaults and where each is passed. A create that lacks a required field is refused rather than saved as a monitor that fails every check. A push monitor's generated token and ping URL are returned. To change an existing monitor use updateMonitor.",
       inputSchema: createMonitorShape,
       outputSchema: {
         ok: z.boolean(),
@@ -529,7 +489,7 @@ export function registerMonitorWriteTools(ctx: ToolContext): void {
     {
       title: 'Update Monitor',
       description:
-        'Updates an existing monitor configuration. You must include the monitorID. Only the fields you provide will be changed (the server merges your changes with the existing config). Use getMonitor first to get the current config. Passing a different type converts the monitor in place, keeping its ID and history: the new type must have the fields it needs, passed here or already stored (e.g. url for http, hostname for ping), and a monitor becoming push is given a push token if it has none. Type-specific fields go in typeFields; call getMonitorTypeFields for their names and meanings. Credentials read back as "***"; sending "***" keeps the stored value.',
+        'Updates an existing monitor. Only the fields you pass change; the rest keep their stored values. Passing a different type converts the monitor in place, keeping its ID and history, and needs the new type\'s required fields, passed here or already stored. Type-specific fields go in typeFields: call getMonitorTypeFields for them. A credential sent back as "***" keeps its stored value. Read the current configuration with getMonitor; to only stop or restart checks use setMonitorActive.',
       inputSchema: {
         monitorID: requiredId('The ID of the monitor to update'),
         // `parent` was declared on createMonitor but not here, so an existing monitor could
@@ -547,7 +507,7 @@ export function registerMonitorWriteTools(ctx: ToolContext): void {
           .string()
           .optional()
           .describe(
-            'Change the monitor type in place (e.g. ping -> http), keeping its ID, history and notifications. Pass the fields the new type needs in the same call (e.g. url for http). A group cannot be converted. Use listMonitorTypes for all options.'
+            "New monitor type: converts the monitor in place. Pass the new type's required fields in the same call. A group cannot be converted."
           ),
         resendInterval: numeric(z.number())
           .optional()
@@ -556,7 +516,7 @@ export function registerMonitorWriteTools(ctx: ToolContext): void {
           .nullable()
           .optional()
           .describe(
-            "Request timeout in SECONDS. Avoid 0 — Uptime Kuma's runtime fallback for a stored 0 yields a ~13 hour timeout, so the monitor can never report DOWN against a black-holed endpoint."
+            'Request timeout in seconds. Avoid 0: Uptime Kuma turns a stored 0 into a timeout of about 13 hours, so the monitor never reports DOWN.'
           ),
         jsonPath: z
           .string()
@@ -611,9 +571,7 @@ export function registerMonitorWriteTools(ctx: ToolContext): void {
         domainExpiryNotification: z
           .boolean()
           .optional()
-          .describe(
-            'Notify before the domain registration expires (most types with a url or hostname; see getMonitorTypeFields). Needs Uptime Kuma 2.1 or later.'
-          ),
+          .describe('Notify before the domain registration expires. Needs Uptime Kuma 2.1 or later.'),
         active: z.boolean().optional().describe('Whether the monitor is active'),
         docker_container: z.string().optional().describe('Docker container name (required for docker type)'),
         docker_host: numeric(z.number())
@@ -623,33 +581,20 @@ export function registerMonitorWriteTools(ctx: ToolContext): void {
         dns_resolve_type: z
           .enum(ALL_DNS_RECORD_TYPES)
           .optional()
-          .describe(
-            'DNS record type to query, for dns and globalping. Which types each supports: getMonitorTypeFields'
-          ),
+          .describe('DNS record type to query (dns and globalping)'),
         databaseConnectionString: z
           .string()
           .optional()
-          .describe(
-            'Connection string for mysql, postgres, mongodb, redis, sqlserver and oracledb monitors. A credential: read tools return "***", and sending "***" back keeps the stored value.'
-          ),
-        databaseQuery: z
-          .string()
-          .optional()
-          .describe(
-            'Query for database monitors. SQL for mysql, postgres, sqlserver and oracledb; a JSON command object for mongodb.'
-          ),
+          .describe('Connection string for the database monitor types. Sending "***" back keeps the stored value.'),
+        databaseQuery: z.string().optional().describe('Query a database monitor runs'),
         databasePassword: z
           .string()
           .optional()
-          .describe(
-            'Password for mysql monitors, stored by Uptime Kuma as radiusPassword. Sending "***" back keeps the stored value.'
-          ),
+          .describe('Password for mysql monitors. Sending "***" back keeps the stored value.'),
         radiusPassword: z
           .string()
           .optional()
-          .describe(
-            'The RADIUS password (required for radius). Also the column databasePassword and typeFields.snmpCommunity are stored in — prefer those names for mysql and snmp.'
-          ),
+          .describe('The RADIUS password (radius). Sending "***" back keeps the stored value.'),
         typeFields: z.record(z.string(), z.unknown()).optional().describe(TYPE_FIELDS_DESCRIPTION),
       },
       outputSchema: {
@@ -792,7 +737,8 @@ export function registerMonitorWriteTools(ctx: ToolContext): void {
     'deleteMonitor',
     {
       title: 'Delete Monitor',
-      description: 'Permanently deletes a monitor and all its heartbeat history. This action cannot be undone.',
+      description:
+        'Permanently deletes a monitor and all its heartbeat history. This cannot be undone. Deleting a group does not delete the monitors in it: they move to the top level. To stop checks but keep the monitor and its history, use setMonitorActive. Find the ID with listMonitors.',
       inputSchema: {
         monitorID: requiredId('The ID of the monitor to delete'),
       },

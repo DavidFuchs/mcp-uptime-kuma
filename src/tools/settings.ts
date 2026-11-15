@@ -14,7 +14,7 @@ export function registerSettingsTools(ctx: ToolContext): void {
     {
       title: 'Get Settings',
       description:
-        'Retrieves the current Uptime Kuma server settings, such as timezone, primary base URL and data retention. Uptime Kuma only returns settings that have been saved, so a setting missing from the result (for example primaryBaseURL) has never been set.',
+        'Returns the Uptime Kuma server settings, such as timezone, primary base URL and data retention. Only settings that have been saved are returned, so a missing key (for example primaryBaseURL) has never been set. Credentials read "***" unless includeSecrets is set. Settings are read-only through this server.',
       inputSchema: {
         includeSecrets: includeSecretsParam,
       },
