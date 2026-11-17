@@ -31,7 +31,7 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
       .array(z.string())
       .optional()
       .describe(
-        '[start, end] as local wall-clock times in the window\'s timezone, e.g. ["2026-10-08T10:00", "2026-10-08T12:00"] — the format Uptime Kuma\'s own UI stores. Required for single; optional bounds for recurring strategies; ignored for manual.'
+        '[start, end] as local times in the window\'s timezone, e.g. ["2026-10-08T10:00", "2026-10-08T12:00"]. Required for single; optional bounds for recurring strategies; ignored for manual.'
       ),
     timeRange: z
       .array(

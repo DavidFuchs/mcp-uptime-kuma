@@ -58,7 +58,7 @@
       {
         "name": "dateRange",
         "type": "array",
-        "desc": "[start, end] as local wall-clock times in the window's timezone, e.g. [\"2026-10-08T10:00\", \"2026-10-08T12:00\"] — the format Uptime Kuma's own UI stores. Required for single; optional bounds for recurring strategies; ignored for manual.",
+        "desc": "[start, end] as local times in the window's timezone, e.g. [\"2026-10-08T10:00\", \"2026-10-08T12:00\"]. Required for single; optional bounds for recurring strategies; ignored for manual.",
         "items": {
           "type": "string"
         },
@@ -362,7 +362,7 @@
       {
         "name": "typeFields",
         "type": "object",
-        "desc": "Fields specific to the monitor type, e.g. {\"mqttTopic\": \"sensors/#\"} for mqtt or {\"bearer_token\": \"…\"} for an HTTP monitor behind authentication. Call getMonitorTypeFields with the type for the names, meanings and allowed values — they are validated, and an unknown name is refused. getMonitor returns these fields at the top level of the monitor; to change one, pass it here.",
+        "desc": "Type-specific fields, e.g. {\"mqttTopic\": \"sensors/#\"} for mqtt or {\"bearer_token\": \"…\"} for HTTP with auth. getMonitorTypeFields names them for a type; an unknown name is refused. getMonitor returns them at the top level.",
         "optional": true
       }
     ],
@@ -546,13 +546,13 @@
       {
         "name": "includeTypeSpecificFields",
         "type": "boolean",
-        "desc": "Include type-specific fields (url, hostname, port, etc.) in addition to common fields. Default: false. When false, only returns MonitorBase fields plus uptime/avgPing.",
+        "desc": "Also return type-specific fields such as url, hostname and port (default: false)",
         "optional": true
       },
       {
         "name": "includeSecrets",
         "type": "boolean",
-        "desc": "Return credentials in full instead of \"***\". Off by default: this output is persisted in conversation transcripts and logs. Can also be enabled globally with UPTIME_KUMA_INCLUDE_SECRETS=true.",
+        "desc": "Return credentials in full instead of \"***\"; they then stay in the transcript. Default: false, or UPTIME_KUMA_INCLUDE_SECRETS.",
         "optional": true
       }
     ],
@@ -568,43 +568,43 @@
       {
         "name": "keywords",
         "type": "string",
-        "desc": "Space-separated keywords to filter monitors by pathName (case-insensitive fuzzy match). All keywords must match for a monitor to be included.",
+        "desc": "Space-separated keywords matched against the monitor's pathName, case-insensitively; all must match",
         "optional": true
       },
       {
         "name": "type",
         "type": "string",
-        "desc": "Filter by monitor type(s). Comma-separated for multiple types. Use listMonitorTypes tool to see all available types.",
+        "desc": "Monitor type(s), comma-separated. listMonitorTypes lists them.",
         "optional": true
       },
       {
         "name": "active",
         "type": "boolean",
-        "desc": "Filter by active status. true=only active monitors, false=only inactive monitors.",
+        "desc": "true: only active monitors; false: only paused ones",
         "optional": true
       },
       {
         "name": "maintenance",
         "type": "boolean",
-        "desc": "Filter by maintenance status. true=only monitors in maintenance, false=only monitors not in maintenance.",
+        "desc": "true: only monitors in maintenance; false: only those not in maintenance",
         "optional": true
       },
       {
         "name": "tags",
         "type": "string",
-        "desc": "Filter by tag name and optional value. Comma-separated for multiple tags. Format: \"tagName\" or \"tagName=value\". Monitor must have all specified tags. Case-insensitive. Examples: \"production\", \"env=staging\", \"production,region=us-east\"",
+        "desc": "Tags a monitor must all have, comma-separated, each \"name\" or \"name=value\", case-insensitive. E.g. \"production,env=staging\"",
         "optional": true
       },
       {
         "name": "parentId",
         "type": "integer",
-        "desc": "Filter to the DIRECT children of this group monitor. Pass null for top-level monitors (those with no parent). Not recursive — use the group's own childrenIDs to walk deeper.",
+        "desc": "Only the direct children of this group monitor (not recursive); null for top-level monitors",
         "optional": true
       },
       {
         "name": "status",
         "type": "string",
-        "desc": "Filter by current heartbeat status, by number or name. Comma-separated for multiple statuses. 0=down, 1=up, 2=pending, 3=maintenance. Examples: \"down\", \"0\", \"down,pending\". Any other value is an error.",
+        "desc": "Current status, comma-separated, by name or number: down (0), up (1), pending (2), maintenance (3). E.g. \"down,pending\"",
         "optional": true
       }
     ],
@@ -650,7 +650,7 @@
       {
         "name": "includeSecrets",
         "type": "boolean",
-        "desc": "Return credentials in full instead of \"***\". Off by default: this output is persisted in conversation transcripts and logs. Can also be enabled globally with UPTIME_KUMA_INCLUDE_SECRETS=true.",
+        "desc": "Return credentials in full instead of \"***\"; they then stay in the transcript. Default: false, or UPTIME_KUMA_INCLUDE_SECRETS.",
         "optional": true
       }
     ],
@@ -681,7 +681,7 @@
       {
         "name": "includeSecrets",
         "type": "boolean",
-        "desc": "Return credentials in full instead of \"***\". Off by default: this output is persisted in conversation transcripts and logs. Can also be enabled globally with UPTIME_KUMA_INCLUDE_SECRETS=true.",
+        "desc": "Return credentials in full instead of \"***\"; they then stay in the transcript. Default: false, or UPTIME_KUMA_INCLUDE_SECRETS.",
         "optional": true
       }
     ],
@@ -715,7 +715,7 @@
       {
         "name": "includeSecrets",
         "type": "boolean",
-        "desc": "Return credentials in full instead of \"***\". Off by default: this output is persisted in conversation transcripts and logs. Can also be enabled globally with UPTIME_KUMA_INCLUDE_SECRETS=true.",
+        "desc": "Return credentials in full instead of \"***\"; they then stay in the transcript. Default: false, or UPTIME_KUMA_INCLUDE_SECRETS.",
         "optional": true
       }
     ],
@@ -739,49 +739,49 @@
       {
         "name": "includeTypeSpecificFields",
         "type": "boolean",
-        "desc": "Include type-specific fields (url, hostname, port, etc.) in addition to common fields. Default: false. When false, only returns MonitorBase fields plus uptime/avgPing.",
+        "desc": "Also return type-specific fields such as url, hostname and port (default: false)",
         "optional": true
       },
       {
         "name": "keywords",
         "type": "string",
-        "desc": "Space-separated keywords to filter monitors by pathName (case-insensitive fuzzy match). All keywords must match for a monitor to be included.",
+        "desc": "Space-separated keywords matched against the monitor's pathName, case-insensitively; all must match",
         "optional": true
       },
       {
         "name": "type",
         "type": "string",
-        "desc": "Filter by monitor type(s). Comma-separated for multiple types. Use listMonitorTypes tool to see all available types.",
+        "desc": "Monitor type(s), comma-separated. listMonitorTypes lists them.",
         "optional": true
       },
       {
         "name": "active",
         "type": "boolean",
-        "desc": "Filter by active status. true=only active monitors, false=only inactive monitors.",
+        "desc": "true: only active monitors; false: only paused ones",
         "optional": true
       },
       {
         "name": "maintenance",
         "type": "boolean",
-        "desc": "Filter by maintenance status. true=only monitors in maintenance, false=only monitors not in maintenance.",
+        "desc": "true: only monitors in maintenance; false: only those not in maintenance",
         "optional": true
       },
       {
         "name": "tags",
         "type": "string",
-        "desc": "Filter by tag name and optional value. Comma-separated for multiple tags. Format: \"tagName\" or \"tagName=value\". Monitor must have all specified tags. Case-insensitive. Examples: \"production\", \"env=staging\", \"production,region=us-east\"",
+        "desc": "Tags a monitor must all have, comma-separated, each \"name\" or \"name=value\", case-insensitive. E.g. \"production,env=staging\"",
         "optional": true
       },
       {
         "name": "parentId",
         "type": "integer",
-        "desc": "Filter to the DIRECT children of this group monitor. Pass null for top-level monitors (those with no parent). Not recursive — use the group's own childrenIDs to walk deeper.",
+        "desc": "Only the direct children of this group monitor (not recursive); null for top-level monitors",
         "optional": true
       },
       {
         "name": "includeSecrets",
         "type": "boolean",
-        "desc": "Return credentials in full instead of \"***\". Off by default: this output is persisted in conversation transcripts and logs. Can also be enabled globally with UPTIME_KUMA_INCLUDE_SECRETS=true.",
+        "desc": "Return credentials in full instead of \"***\"; they then stay in the transcript. Default: false, or UPTIME_KUMA_INCLUDE_SECRETS.",
         "optional": true
       }
     ],
@@ -805,7 +805,7 @@
       {
         "name": "includeSecrets",
         "type": "boolean",
-        "desc": "Return credentials in full instead of \"***\". Off by default: this output is persisted in conversation transcripts and logs. Can also be enabled globally with UPTIME_KUMA_INCLUDE_SECRETS=true.",
+        "desc": "Return credentials in full instead of \"***\"; they then stay in the transcript. Default: false, or UPTIME_KUMA_INCLUDE_SECRETS.",
         "optional": true
       }
     ],
@@ -973,7 +973,7 @@
       {
         "name": "dateRange",
         "type": "array",
-        "desc": "[start, end] as local wall-clock times in the window's timezone, e.g. [\"2026-10-08T10:00\", \"2026-10-08T12:00\"] — the format Uptime Kuma's own UI stores. Required for single; optional bounds for recurring strategies; ignored for manual.",
+        "desc": "[start, end] as local times in the window's timezone, e.g. [\"2026-10-08T10:00\", \"2026-10-08T12:00\"]. Required for single; optional bounds for recurring strategies; ignored for manual.",
         "items": {
           "type": "string"
         },
@@ -1286,7 +1286,7 @@
       {
         "name": "typeFields",
         "type": "object",
-        "desc": "Fields specific to the monitor type, e.g. {\"mqttTopic\": \"sensors/#\"} for mqtt or {\"bearer_token\": \"…\"} for an HTTP monitor behind authentication. Call getMonitorTypeFields with the type for the names, meanings and allowed values — they are validated, and an unknown name is refused. getMonitor returns these fields at the top level of the monitor; to change one, pass it here.",
+        "desc": "Type-specific fields, e.g. {\"mqttTopic\": \"sensors/#\"} for mqtt or {\"bearer_token\": \"…\"} for HTTP with auth. getMonitorTypeFields names them for a type; an unknown name is refused. getMonitor returns them at the top level.",
         "optional": true
       }
     ],
@@ -1344,7 +1344,7 @@
   },
   {
     "name": "updateSettings",
-    "description": "Changes Uptime Kuma server settings: timezone, primary base URL, entry page, data retention, certificate and domain expiry warning days, search engine indexing, update checks, reverse-proxy trust, NSCD, the Chrome path, API and Prometheus access, the Steam and Globalping credentials, and whether login is required. Pass only what should change; every other setting keeps its stored value. Returns the settings as saved. Turning login off (disableAuth: true) needs the admin password in currentPassword and leaves the dashboard open to anyone who can reach it; turning it back on logs out every other session. Read the current values with getSettings.",
+    "description": "Changes Uptime Kuma server settings. Pass only what should change; every other setting keeps its stored value. Returns the settings as saved. Turning login off (disableAuth: true) needs currentPassword and leaves the dashboard open to anyone who can reach it. Read the current values with getSettings.",
     "arguments": [
       {
         "name": "serverTimezone",
@@ -1457,7 +1457,7 @@
       {
         "name": "includeSecrets",
         "type": "boolean",
-        "desc": "Return credentials in full instead of \"***\". Off by default: this output is persisted in conversation transcripts and logs. Can also be enabled globally with UPTIME_KUMA_INCLUDE_SECRETS=true.",
+        "desc": "Return credentials in full instead of \"***\"; they then stay in the transcript. Default: false, or UPTIME_KUMA_INCLUDE_SECRETS.",
         "optional": true
       }
     ],

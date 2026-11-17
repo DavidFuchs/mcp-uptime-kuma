@@ -15,6 +15,7 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for [U
 [Configuration](#configuration-reference) ·
 [Authentication](#authentication-methods) ·
 [Read-Only Mode](#read-only-mode) ·
+[Tool Sets](#choosing-tool-sets) ·
 [Securing HTTP](#securing-the-http-endpoint) ·
 [Credential Redaction](#credential-redaction) ·
 [Troubleshooting](#troubleshooting)
@@ -42,6 +43,8 @@ Once it's connected, you manage Uptime Kuma by asking your AI assistant in plain
   API keys, and writing `***` back keeps the stored value. See [Credential Redaction](#credential-redaction).
 - **Read-only mode.** One setting removes every tool that creates, changes or deletes. See
   [Read-Only Mode](#read-only-mode).
+- **Load only what you use.** Choose tool sets (monitors, maintenance, …) to keep the tool
+  list small in the conversation. See [Choosing Tool Sets](#choosing-tool-sets).
 - **Annotated tools.** Every tool says whether it only reads, and whether it deletes or
   replaces, so your client can run reads unattended and ask before the rest.
 - **Run it locally or share it.** Use stdio through `npx`, or streamable HTTP in Docker with
@@ -577,6 +580,7 @@ need more than a line.
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `UPTIME_KUMA_READ_ONLY` | `false` | `true` registers only the tools that read. See [Read-Only Mode](#read-only-mode). |
+| `UPTIME_KUMA_TOOLSETS` | all | Comma-separated tool sets to register, e.g. `monitors,heartbeats`. See [Choosing Tool Sets](#choosing-tool-sets). |
 | `UPTIME_KUMA_INCLUDE_SECRETS` | `false` | `true` returns passwords, tokens and API keys in tool output instead of `***`. See [Credential Redaction](#credential-redaction). |
 
 **HTTP endpoint** (`-t streamable-http` only)
@@ -668,6 +672,38 @@ the conversation. Twelve tools remain: the `get…` and `list…` tools, minus
 serve the write tools. This limits what the MCP server
 offers; it does not change what the Uptime Kuma account itself is allowed to do.
 
+## Choosing Tool Sets
+
+Every registered tool's definition is sent to the model at the start of each conversation, so
+all 37 take up roughly 13k tokens before you ask anything. To register only the areas you use,
+set `UPTIME_KUMA_TOOLSETS` to a comma-separated list:
+
+```
+UPTIME_KUMA_TOOLSETS=monitors,heartbeats
+```
+
+| Tool set | Tools |
+|---|---|
+| `monitors` | `getMonitorSummary`, `getMonitor`, `listMonitors`, `listMonitorTypes`, `getMonitorTypeFields`, `createMonitor`, `updateMonitor`, `deleteMonitor`, `setMonitorActive` |
+| `heartbeats` | `listHeartbeats` |
+| `notifications` | `listNotifications`, `listNotificationTypes`, `getNotificationTypeFields`, `createNotification`, `updateNotification`, `deleteNotification` |
+| `tags` | `listTags`, `createTag`, `updateTag`, `deleteTag` |
+| `maintenance` | `listMaintenanceWindows`, `createMaintenanceWindow`, `updateMaintenanceWindow`, `deleteMaintenanceWindow`, `setMaintenanceWindowActive` |
+| `status-pages` | `listStatusPages`, `getStatusPage`, `createStatusPage`, `updateStatusPage`, `deleteStatusPage` |
+| `docker-hosts` | `listDockerHosts`, `createDockerHost`, `updateDockerHost`, `deleteDockerHost`, `testDockerHost` |
+| `settings` | `getSettings`, `updateSettings` |
+
+Unset, empty or `all` registers every tool set. An unknown name stops the server at startup
+with the list of valid ones, rather than quietly running with fewer tools.
+
+It combines with [read-only mode](#read-only-mode): `UPTIME_KUMA_READ_ONLY=true` with
+`UPTIME_KUMA_TOOLSETS=monitors,heartbeats` leaves five tools, about 2k tokens, which is enough
+for "what's down?" and "how has this been doing?".
+
+Most other tool sets refer to monitors by ID (maintenance windows, status pages, tags and
+notifications are attached to monitors), so include `monitors` with them unless you already
+know the IDs.
+
 ## Securing the HTTP Endpoint
 
 Applies to `-t streamable-http` only. Anyone who can reach `/mcp` has full read/write control
@@ -751,6 +787,9 @@ container.
 
 **The assistant can't create or change anything.** Check whether `UPTIME_KUMA_READ_ONLY` is
 set. If it is, the write tools aren't registered at all.
+
+**The assistant says a tool doesn't exist.** Check `UPTIME_KUMA_TOOLSETS`: only the tools in the
+listed tool sets are registered.
 
 ## Contributing
 

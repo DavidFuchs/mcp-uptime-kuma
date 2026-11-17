@@ -147,7 +147,7 @@ mcp-uptime-kuma/
 
 ## Development Tips
 
-- Tools live in `src/tools/`, one file per area. To add one, register it in the matching file and add its name to `READ_ONLY_TOOLS` or `WRITE_TOOLS` in `src/tools/registration.ts` (a test fails if it is in neither). Then run `npm run build && npm run docker-catalog:tools` to update the Docker MCP Catalog's tool list (CI fails if it is stale)
+- Tools live in `src/tools/`, one file per area. To add one, register it in the matching file and add its name to `READ_ONLY_TOOLS` or `WRITE_TOOLS` and to one of the `TOOLSETS` in `src/tools/registration.ts` (tests fail if it is missing from either). Then run `npm run build && npm run docker-catalog:tools` to update the Docker MCP Catalog's tool list (CI fails if it is stale)
 - The Uptime Kuma client in `src/uptime-kuma-client.ts` handles the WebSocket connection and retrieves monitor and heartbeat data
 - Use `npm run dev` or `npm run dev:http` for development with hot reload
 

@@ -73,6 +73,13 @@
           "format": "boolean",
           "isSecret": false,
           "name": "UPTIME_KUMA_READ_ONLY"
+        },
+        {
+          "description": "Comma-separated tool sets to register (monitors, heartbeats, notifications, tags, maintenance, status-pages, docker-hosts, settings); unset registers all",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false,
+          "name": "UPTIME_KUMA_TOOLSETS"
         }
       ]
     },
@@ -156,6 +163,13 @@
           "format": "boolean",
           "isSecret": false,
           "name": "UPTIME_KUMA_READ_ONLY"
+        },
+        {
+          "description": "Comma-separated tool sets to register (monitors, heartbeats, notifications, tags, maintenance, status-pages, docker-hosts, settings); unset registers all",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false,
+          "name": "UPTIME_KUMA_TOOLSETS"
         },
         {
           "description": "Shared secret clients must send as \"Authorization: Bearer <token>\"; requests without it are rejected",

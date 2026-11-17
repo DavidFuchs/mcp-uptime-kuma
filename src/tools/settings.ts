@@ -91,7 +91,7 @@ export function registerSettingsTools(ctx: ToolContext): void {
     {
       title: 'Update Settings',
       description:
-        'Changes Uptime Kuma server settings: timezone, primary base URL, entry page, data retention, certificate and domain expiry warning days, search engine indexing, update checks, reverse-proxy trust, NSCD, the Chrome path, API and Prometheus access, the Steam and Globalping credentials, and whether login is required. Pass only what should change; every other setting keeps its stored value. Returns the settings as saved. Turning login off (disableAuth: true) needs the admin password in currentPassword and leaves the dashboard open to anyone who can reach it; turning it back on logs out every other session. Read the current values with getSettings.',
+        'Changes Uptime Kuma server settings. Pass only what should change; every other setting keeps its stored value. Returns the settings as saved. Turning login off (disableAuth: true) needs currentPassword and leaves the dashboard open to anyone who can reach it. Read the current values with getSettings.',
       inputSchema: {
         serverTimezone: z
           .string()

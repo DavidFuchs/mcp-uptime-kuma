@@ -62,6 +62,84 @@ export const WRITE_TOOLS: ReadonlySet<string> = new Set([
   'deleteStatusPage',
 ]);
 
+/**
+ * The groups UPTIME_KUMA_TOOLSETS chooses from, one per area of Uptime Kuma. Every tool is in
+ * exactly one (a test fails otherwise), so a tool added later has to be placed in one.
+ */
+export const TOOLSETS = {
+  monitors: [
+    'getMonitorSummary',
+    'getMonitor',
+    'listMonitors',
+    'listMonitorTypes',
+    'getMonitorTypeFields',
+    'createMonitor',
+    'updateMonitor',
+    'deleteMonitor',
+    'setMonitorActive',
+  ],
+  heartbeats: ['listHeartbeats'],
+  notifications: [
+    'listNotifications',
+    'listNotificationTypes',
+    'getNotificationTypeFields',
+    'createNotification',
+    'updateNotification',
+    'deleteNotification',
+  ],
+  tags: ['listTags', 'createTag', 'updateTag', 'deleteTag'],
+  maintenance: [
+    'listMaintenanceWindows',
+    'createMaintenanceWindow',
+    'updateMaintenanceWindow',
+    'deleteMaintenanceWindow',
+    'setMaintenanceWindowActive',
+  ],
+  'status-pages': ['listStatusPages', 'getStatusPage', 'createStatusPage', 'updateStatusPage', 'deleteStatusPage'],
+  'docker-hosts': ['listDockerHosts', 'createDockerHost', 'updateDockerHost', 'deleteDockerHost', 'testDockerHost'],
+  settings: ['getSettings', 'updateSettings'],
+} as const satisfies Record<string, readonly string[]>;
+
+export type ToolsetName = keyof typeof TOOLSETS;
+
+/**
+ * Parses UPTIME_KUMA_TOOLSETS: a comma-separated list of TOOLSETS names. Unset, empty or "all"
+ * means every toolset (undefined). An unknown name throws, naming the valid ones, so a typo
+ * fails at startup instead of silently leaving tools out.
+ */
+export function parseToolsets(value: string | undefined): ToolsetName[] | undefined {
+  const names = (value ?? '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  if (names.length === 0 || names.includes('all')) return undefined;
+  const unknown = names.filter((n) => !(n in TOOLSETS));
+  if (unknown.length > 0) {
+    throw new Error(
+      `UPTIME_KUMA_TOOLSETS: unknown toolset ${unknown.map((n) => `"${n}"`).join(', ')}. ` +
+        `Valid toolsets: ${Object.keys(TOOLSETS).join(', ')}, or "all".`
+    );
+  }
+  return [...new Set(names)] as ToolsetName[];
+}
+
+/** What decides which tools get registered. */
+export interface ToolSelection {
+  /** UPTIME_KUMA_READ_ONLY: only the tools in READ_ONLY_TOOLS. */
+  readOnly?: boolean;
+  /** UPTIME_KUMA_TOOLSETS: only the tools in these toolsets. Undefined means all of them. */
+  toolsets?: readonly ToolsetName[];
+}
+
+/** Whether a tool is registered under this selection. */
+export function isToolEnabled(name: string, selection: ToolSelection): boolean {
+  if (selection.readOnly && !READ_ONLY_TOOLS.has(name)) return false;
+  if (selection.toolsets && !selection.toolsets.some((t) => (TOOLSETS[t] as readonly string[]).includes(name))) {
+    return false;
+  }
+  return true;
+}
+
 /** In WRITE_TOOLS, so absent from read-only mode, but a call changes nothing. */
 export const CHANGE_NOTHING_TOOLS: ReadonlySet<string> = new Set([
   'getMonitorTypeFields',
@@ -180,10 +258,10 @@ function normalizeSchemaMap(value: unknown): unknown {
 
 /**
  * Wraps the server's tool registration, before any tool is registered: leaves the write tools
- * out in read-only mode, adds each tool's annotations, makes its input schema strict, and
+ * out that read-only mode or UPTIME_KUMA_TOOLSETS exclude, adds each tool's annotations, makes its input schema strict, and
  * normalizes the JSON Schema that tools/list advertises.
  */
-export function installToolRegistration(server: McpServer, readOnly: boolean): void {
+export function installToolRegistration(server: McpServer, selection: ToolSelection): void {
   // Reject unknown keys instead of silently stripping them.
   //
   // registerTool is normally handed a raw Zod *shape*, which the SDK turns into a plain
@@ -209,7 +287,8 @@ export function installToolRegistration(server: McpServer, readOnly: boolean): v
     cb: unknown
   ) => {
     // Read-only mode: a tool that is not registered cannot be called, listed, or cost context.
-    if (readOnly && !READ_ONLY_TOOLS.has(name)) return undefined;
+    // So do UPTIME_KUMA_TOOLSETS: a toolset left out costs nothing.
+    if (!isToolEnabled(name, selection)) return undefined;
     config = { annotations: toolAnnotations(name), ...config };
     const shape = config?.inputSchema as Record<string, unknown> | undefined;
     // Only upgrade raw shapes; anything already a Zod schema is left alone.

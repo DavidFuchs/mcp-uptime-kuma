@@ -10,6 +10,38 @@ import { MONITOR_TYPES } from '../monitors/fields.js';
 export function registerMonitorReadTools(ctx: ToolContext): void {
   const { server, client, authenticateClient, wantsSecrets, includeSecretsParam } = ctx;
 
+  // One copy of the arguments listMonitors and getMonitorSummary share, so the two filters
+  // cannot drift apart again (#65) and the text is not paid for twice in a different wording.
+  const includeTypeSpecificFields = z
+    .boolean()
+    .optional()
+    .describe('Also return type-specific fields such as url, hostname and port (default: false)');
+  const monitorFilters = {
+    keywords: z
+      .string()
+      .optional()
+      .describe("Space-separated keywords matched against the monitor's pathName, case-insensitively; all must match"),
+    type: z.string().optional().describe('Monitor type(s), comma-separated. listMonitorTypes lists them.'),
+    active: z.boolean().optional().describe('true: only active monitors; false: only paused ones'),
+    maintenance: z
+      .boolean()
+      .optional()
+      .describe('true: only monitors in maintenance; false: only those not in maintenance'),
+    tags: z
+      .string()
+      .optional()
+      .describe(
+        'Tags a monitor must all have, comma-separated, each "name" or "name=value", case-insensitive. E.g. "production,env=staging"'
+      ),
+    // Issue #65: there was no way to list a group's members, so callers passing `parentId`
+    // got the entire monitor list back, which reads as a broken filter. getMonitorSummary needs
+    // it too: "what's down in this group?" is a status question.
+    parentId: numeric(z.number().int())
+      .nullable()
+      .optional()
+      .describe('Only the direct children of this group monitor (not recursive); null for top-level monitors'),
+  };
+
   // Register getMonitor tool
   server.registerTool(
     'getMonitor',
@@ -19,12 +51,7 @@ export function registerMonitorReadTools(ctx: ToolContext): void {
         "Returns one monitor's configuration by ID (check interval, notifications, tags, parent group) with its uptime and average ping. Type-specific fields such as url, hostname and port are returned only with includeTypeSpecificFields. Read it before updateMonitor. For current status use getMonitorSummary; for check history, listHeartbeats. Find IDs with listMonitors.",
       inputSchema: {
         monitorID: requiredId('The ID of the monitor to retrieve'),
-        includeTypeSpecificFields: z
-          .boolean()
-          .optional()
-          .describe(
-            'Include type-specific fields (url, hostname, port, etc.) in addition to common fields. Default: false. When false, only returns MonitorBase fields plus uptime/avgPing.'
-          ),
+        includeTypeSpecificFields,
         includeSecrets: includeSecretsParam,
       },
       outputSchema: {
@@ -68,48 +95,8 @@ export function registerMonitorReadTools(ctx: ToolContext): void {
       description:
         'Returns the configuration of every monitor, or of those matching the filters (keywords, type, active, maintenance, tags, parent group). Use it to find monitor IDs or compare settings; for current UP/DOWN status use getMonitorSummary instead. Type-specific fields such as url, hostname and port are returned only with includeTypeSpecificFields.',
       inputSchema: {
-        includeTypeSpecificFields: z
-          .boolean()
-          .optional()
-          .describe(
-            'Include type-specific fields (url, hostname, port, etc.) in addition to common fields. Default: false. When false, only returns MonitorBase fields plus uptime/avgPing.'
-          ),
-        keywords: z
-          .string()
-          .optional()
-          .describe(
-            'Space-separated keywords to filter monitors by pathName (case-insensitive fuzzy match). All keywords must match for a monitor to be included.'
-          ),
-        type: z
-          .string()
-          .optional()
-          .describe(
-            'Filter by monitor type(s). Comma-separated for multiple types. Use listMonitorTypes tool to see all available types.'
-          ),
-        active: z
-          .boolean()
-          .optional()
-          .describe('Filter by active status. true=only active monitors, false=only inactive monitors.'),
-        maintenance: z
-          .boolean()
-          .optional()
-          .describe(
-            'Filter by maintenance status. true=only monitors in maintenance, false=only monitors not in maintenance.'
-          ),
-        tags: z
-          .string()
-          .optional()
-          .describe(
-            'Filter by tag name and optional value. Comma-separated for multiple tags. Format: "tagName" or "tagName=value". Monitor must have all specified tags. Case-insensitive. Examples: "production", "env=staging", "production,region=us-east"'
-          ),
-        // Issue #65: there was no way to list a group's members, so callers passing
-        // `parentId` got the entire monitor list back, which reads as a broken filter.
-        parentId: numeric(z.number().int())
-          .nullable()
-          .optional()
-          .describe(
-            "Filter to the DIRECT children of this group monitor. Pass null for top-level monitors (those with no parent). Not recursive — use the group's own childrenIDs to walk deeper."
-          ),
+        includeTypeSpecificFields,
+        ...monitorFilters,
         includeSecrets: includeSecretsParam,
       },
       outputSchema: {
@@ -212,48 +199,12 @@ export function registerMonitorReadTools(ctx: ToolContext): void {
       description:
         'START HERE for status questions ("what\'s down?", "how is everything doing?"). Returns the current status of every monitor (UP, DOWN, PENDING or MAINTENANCE) with its latest heartbeat message, lastBeatTime, type and tags. Filters: keywords, type, status, active, maintenance, tags, parent group. A push monitor that has stopped beating keeps its last status, so check lastBeatTime, which is UTC with no zone marker. For configuration use listMonitors; for history, listHeartbeats.',
       inputSchema: {
-        keywords: z
-          .string()
-          .optional()
-          .describe(
-            'Space-separated keywords to filter monitors by pathName (case-insensitive fuzzy match). All keywords must match for a monitor to be included.'
-          ),
-        type: z
-          .string()
-          .optional()
-          .describe(
-            'Filter by monitor type(s). Comma-separated for multiple types. Use listMonitorTypes tool to see all available types.'
-          ),
-        active: z
-          .boolean()
-          .optional()
-          .describe('Filter by active status. true=only active monitors, false=only inactive monitors.'),
-        maintenance: z
-          .boolean()
-          .optional()
-          .describe(
-            'Filter by maintenance status. true=only monitors in maintenance, false=only monitors not in maintenance.'
-          ),
-        tags: z
-          .string()
-          .optional()
-          .describe(
-            'Filter by tag name and optional value. Comma-separated for multiple tags. Format: "tagName" or "tagName=value". Monitor must have all specified tags. Case-insensitive. Examples: "production", "env=staging", "production,region=us-east"'
-          ),
-        // "What's down in this group?" is a status question, so it arrives here rather than at
-        // listMonitors — but the #65 parent filter only reached listMonitors, leaving the tool
-        // the instructions send callers to FIRST unable to answer it.
-        parentId: numeric(z.number().int())
-          .nullable()
-          .optional()
-          .describe(
-            "Filter to the DIRECT children of this group monitor. Pass null for top-level monitors (those with no parent). Not recursive — use the group's own childrenIDs to walk deeper."
-          ),
+        ...monitorFilters,
         status: z
           .string()
           .optional()
           .describe(
-            'Filter by current heartbeat status, by number or name. Comma-separated for multiple statuses. 0=down, 1=up, 2=pending, 3=maintenance. Examples: "down", "0", "down,pending". Any other value is an error.'
+            'Current status, comma-separated, by name or number: down (0), up (1), pending (2), maintenance (3). E.g. "down,pending"'
           ),
       },
       outputSchema: {

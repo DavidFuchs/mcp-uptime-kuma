@@ -24,4 +24,9 @@ export interface UptimeKumaConfig {
    * UPTIME_KUMA_READ_ONLY. Optional and defaults to false.
    */
   readOnly?: boolean;
+  /**
+   * Register only the tools in these toolsets (see TOOLSETS in tools/registration.ts). Parsed
+   * from UPTIME_KUMA_TOOLSETS. Undefined means every toolset. Combines with readOnly.
+   */
+  toolsets?: readonly string[];
 }
