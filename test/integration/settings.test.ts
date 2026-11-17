@@ -93,4 +93,32 @@ export const settingsTests: Array<{ name: string; fn: TestFn }> = [
       console.log(`  ✓ updateSettings: keepDataPeriodDays ${original} → ${target} → ${original}, others kept`);
     },
   },
+  {
+    name: 'updateSettings sets a credential, redacts it, and keeps it on "***"',
+    fn: async ({ client }) => {
+      type Result = CallToolResult & { structuredContent: { settings: Record<string, unknown> } };
+      const read = async (includeSecrets: boolean) =>
+        ((await client.callTool({ name: 'getSettings', arguments: { includeSecrets } })) as Result).structuredContent
+          .settings;
+      const call = async (args: Record<string, unknown>) => {
+        const result = (await client.callTool({ name: 'updateSettings', arguments: args })) as Result;
+        if (result.isError) throw new Error(`updateSettings failed: ${extractText(result, 'updateSettings')}`);
+        return result;
+      };
+
+      const token = 'integration-test-token-123';
+      try {
+        const set = await call({ globalpingApiToken: token });
+        if (JSON.stringify(set).includes(token)) throw new Error('updateSettings returned the token unredacted');
+        if ((await read(true)).globalpingApiToken !== token) throw new Error('token was not stored');
+        if ((await read(false)).globalpingApiToken !== '***') throw new Error('getSettings did not redact the token');
+
+        await call({ globalpingApiToken: '***', checkUpdate: false });
+        if ((await read(true)).globalpingApiToken !== token) throw new Error('"***" overwrote the stored token');
+      } finally {
+        await call({ globalpingApiToken: '', checkUpdate: true });
+      }
+      console.log('  ✓ updateSettings: credential stored, redacted, kept on "***", cleared');
+    },
+  },
 ];

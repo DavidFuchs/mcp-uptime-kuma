@@ -3,8 +3,11 @@ import { z } from 'zod';
 
 import type { ToolContext } from './context.js';
 import { SettingsSchema } from '../types/index.js';
-import { redactSecrets } from '../redact.js';
+import { redactSecrets, SECRET_MARKER } from '../redact.js';
 import { numeric } from './schema.js';
+
+/** The settings that hold credentials. */
+const SECRET_SETTINGS = ['steamAPIKey', 'globalpingApiToken'] as const;
 
 /**
  * What the web UI fills in for a setting that has never been saved (Settings.vue loadSettings),
@@ -82,17 +85,13 @@ export function registerSettingsTools(ctx: ToolContext): void {
     }
   );
 
-  // Only settings that change how Uptime Kuma monitors, reports and keeps data are offered.
-  // Left out on purpose: disableAuth (switching authentication off needs the admin password,
-  // and on logs every session out), chromeExecutable (a path Uptime Kuma runs, unchecked),
-  // steamAPIKey and globalpingApiToken (credentials), and apiEnabled and prometheusApiEnabled
-  // (each opens an endpoint to the network).
+  // Every setting the web UI's settings pages save through setSettings.
   server.registerTool(
     'updateSettings',
     {
       title: 'Update Settings',
       description:
-        'Changes Uptime Kuma server settings: timezone, primary base URL, entry page, data retention, certificate and domain expiry warning days, search engine indexing, update checks, reverse-proxy trust and NSCD. Pass only what should change; every other setting keeps its stored value. Returns the settings as saved. Authentication, API access, credentials and the Chrome path cannot be changed here. Read the current values with getSettings.',
+        'Changes Uptime Kuma server settings: timezone, primary base URL, entry page, data retention, certificate and domain expiry warning days, search engine indexing, update checks, reverse-proxy trust, NSCD, the Chrome path, API and Prometheus access, the Steam and Globalping credentials, and whether login is required. Pass only what should change; every other setting keeps its stored value. Returns the settings as saved. Turning login off (disableAuth: true) needs the admin password in currentPassword and leaves the dashboard open to anyone who can reach it; turning it back on logs out every other session. Read the current values with getSettings.',
       inputSchema: {
         serverTimezone: z
           .string()
@@ -131,6 +130,41 @@ export function registerSettingsTools(ctx: ToolContext): void {
           .optional()
           .describe('Trust X-Forwarded-* headers. Set only when Uptime Kuma sits behind a reverse proxy.'),
         nscd: z.boolean().optional().describe('Cache DNS lookups with NSCD (Docker images only)'),
+        chromeExecutable: z
+          .string()
+          .optional()
+          .describe(
+            'Path of the Chrome or Chromium binary real-browser monitors run, e.g. "/usr/bin/chromium". "" auto-detects. Changing it restarts the browser.'
+          ),
+        apiEnabled: z.boolean().optional().describe('The "API" switch in Settings > General'),
+        prometheusApiEnabled: z
+          .boolean()
+          .optional()
+          .describe('Collect Prometheus metrics. Changing it starts or stops the collection.'),
+        steamAPIKey: z
+          .string()
+          .optional()
+          .describe(
+            'Steam Web API key, used by Steam game server monitors. A credential: "***" (what read tools return) keeps the stored key, "" clears it.'
+          ),
+        globalpingApiToken: z
+          .string()
+          .optional()
+          .describe(
+            'Globalping API token, used by globalping monitors. A credential: "***" (what read tools return) keeps the stored token, "" clears it.'
+          ),
+        disableAuth: z
+          .boolean()
+          .optional()
+          .describe(
+            'true turns login off: anyone who can reach Uptime Kuma gets full control. Needs currentPassword. false turns login back on and logs out every other session.'
+          ),
+        currentPassword: z
+          .string()
+          .optional()
+          .describe(
+            'The admin password. Required only to turn login off (disableAuth: true) while it is on; never stored or returned.'
+          ),
         includeSecrets: includeSecretsParam,
       },
       outputSchema: {
@@ -140,7 +174,7 @@ export function registerSettingsTools(ctx: ToolContext): void {
         msg: z.string().optional(),
       },
     },
-    async ({ includeSecrets, ...changes }) => {
+    async ({ includeSecrets, currentPassword, ...changes }) => {
       await authenticateClient();
 
       try {
@@ -148,6 +182,12 @@ export function registerSettingsTools(ctx: ToolContext): void {
         if (Object.keys(updates).length === 0) {
           throw new Error('nothing to change — pass at least one setting');
         }
+
+        // "***" is what the read tools show for a credential; sending it back keeps the stored
+        // one. Uptime Kuma leaves a key it is not sent untouched, and the client never reads
+        // steamAPIKey back, so dropping it from the update is all that is needed.
+        const keptSecrets = SECRET_SETTINGS.filter((key) => updates[key] === SECRET_MARKER);
+        for (const key of keptSecrets) delete updates[key];
 
         if (typeof updates.entryPage === 'string' && updates.entryPage !== 'dashboard') {
           const slug = updates.entryPage.startsWith('statusPage-')
@@ -168,11 +208,23 @@ export function registerSettingsTools(ctx: ToolContext): void {
         const stored = current.data as Record<string, unknown>;
 
         // Uptime Kuma's handler reads an absent key as a change (see client.setSettings), so the
-        // whole stored object goes back, with the UI's defaults for anything never saved.
-        const merged = { ...SETTINGS_UI_DEFAULTS, ...stored, ...updates };
+        // whole stored object goes back, with the UI's defaults for anything never saved. Every
+        // secret is dropped from it unless this call sets it, so a stored credential is never
+        // written back from a copy.
+        const merged: Record<string, unknown> = { ...SETTINGS_UI_DEFAULTS, ...stored };
+        for (const key of SECRET_SETTINGS) delete merged[key];
+        Object.assign(merged, updates);
         const changed = Object.keys(updates).filter(
-          (key) => JSON.stringify(stored[key]) !== JSON.stringify(updates[key])
+          (key) =>
+            // steamAPIKey is never read back, so setting it always counts as a change.
+            !(key in stored) || JSON.stringify(stored[key]) !== JSON.stringify(updates[key])
         );
+
+        if (updates.disableAuth === true && stored.disableAuth !== true && !currentPassword) {
+          throw new Error(
+            'turning login off needs the admin password in currentPassword. Confirm with the user first: with login off, anyone who can reach Uptime Kuma has full control.'
+          );
+        }
 
         if (changed.length === 0) {
           const settings = wantsSecrets(includeSecrets) ? stored : redactSecrets(stored);
@@ -184,7 +236,7 @@ export function registerSettingsTools(ctx: ToolContext): void {
           };
         }
 
-        const response = await client.setSettings(merged);
+        const response = await client.setSettings(merged, currentPassword);
 
         const saved = (await client.getSettings()).data ?? merged;
         const settings = wantsSecrets(includeSecrets) ? saved : redactSecrets(saved);

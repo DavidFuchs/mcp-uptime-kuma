@@ -74,6 +74,8 @@ describe('updateSettings tool', () => {
       entryPage: 'statusPage-main',
       nscd: false,
       disableAuth: true,
+      apiEnabled: false,
+      prometheusApiEnabled: false,
       chromeExecutable: '/usr/bin/chromium',
       keepDataPeriodDays: 90,
       tlsExpiryNotifyDays: [7, 14, 21],
@@ -166,15 +168,74 @@ describe('updateSettings tool', () => {
     expect(save).not.toHaveBeenCalled();
   });
 
-  it.each(['disableAuth', 'chromeExecutable', 'steamAPIKey', 'apiEnabled', 'prometheusApiEnabled'])(
-    'does not accept %s',
-    async (key) => {
-      const result = await update({ [key]: key === 'disableAuth' || key.endsWith('Enabled') ? true : 'x' });
+  it.each([
+    ['chromeExecutable', '/usr/bin/google-chrome'],
+    ['apiEnabled', true],
+    ['prometheusApiEnabled', true],
+    ['steamAPIKey', 'NEWKEY'],
+    ['globalpingApiToken', 'NEWTOKEN'],
+  ])('sets %s', async (key, value) => {
+    const result = await update({ [key]: value });
+
+    expect(result.isError).toBeFalsy();
+    expect(save.mock.calls[0][0]).toMatchObject({ [key]: value });
+    expect(result.structuredContent.changed).toEqual([key]);
+  });
+
+  it('keeps a stored credential when "***" is sent back, and never writes it from the copy', async () => {
+    stored.globalpingApiToken = 'STORED';
+    const kept = await update({ globalpingApiToken: '***' });
+
+    expect(kept.isError).toBeFalsy();
+    expect(save).not.toHaveBeenCalled();
+
+    await update({ checkUpdate: false });
+    expect(save.mock.calls[0][0]).not.toHaveProperty('globalpingApiToken');
+  });
+
+  it('does not report a returned credential in the text unless includeSecrets is set', async () => {
+    const result = await update({ steamAPIKey: 'NEWKEY' });
+
+    expect(result.content[0].text).not.toContain('NEWKEY');
+  });
+
+  describe('disableAuth', () => {
+    beforeEach(() => {
+      stored.disableAuth = false;
+    });
+
+    it('refuses to turn login off without currentPassword', async () => {
+      const result = await update({ disableAuth: true });
 
       expect(result.isError).toBe(true);
+      expect(result.content[0].text).toMatch(/currentPassword/);
       expect(save).not.toHaveBeenCalled();
-    }
-  );
+    });
+
+    it('turns login off with currentPassword and passes it to Uptime Kuma', async () => {
+      const result = await update({ disableAuth: true, currentPassword: 'hunter2' });
+
+      expect(result.isError).toBeFalsy();
+      expect(save).toHaveBeenCalledWith(expect.objectContaining({ disableAuth: true }), 'hunter2');
+      expect(JSON.stringify(result)).not.toContain('hunter2');
+    });
+
+    it('turns login back on without a password', async () => {
+      stored.disableAuth = true;
+      const result = await update({ disableAuth: false });
+
+      expect(result.isError).toBeFalsy();
+      expect(save.mock.calls[0][0]).toMatchObject({ disableAuth: false });
+    });
+  });
+
+  it('returns settings keys it does not declare', async () => {
+    stored.someFutureSetting = 'x';
+    const result = await update({ checkUpdate: false });
+
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent.settings.someFutureSetting).toBe('x');
+  });
 
   it('accepts an empty primaryBaseURL to clear it', async () => {
     stored.primaryBaseURL = 'https://old.example.com';

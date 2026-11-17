@@ -1344,7 +1344,7 @@
   },
   {
     "name": "updateSettings",
-    "description": "Changes Uptime Kuma server settings: timezone, primary base URL, entry page, data retention, certificate and domain expiry warning days, search engine indexing, update checks, reverse-proxy trust and NSCD. Pass only what should change; every other setting keeps its stored value. Returns the settings as saved. Authentication, API access, credentials and the Chrome path cannot be changed here. Read the current values with getSettings.",
+    "description": "Changes Uptime Kuma server settings: timezone, primary base URL, entry page, data retention, certificate and domain expiry warning days, search engine indexing, update checks, reverse-proxy trust, NSCD, the Chrome path, API and Prometheus access, the Steam and Globalping credentials, and whether login is required. Pass only what should change; every other setting keeps its stored value. Returns the settings as saved. Turning login off (disableAuth: true) needs the admin password in currentPassword and leaves the dashboard open to anyone who can reach it; turning it back on logs out every other session. Read the current values with getSettings.",
     "arguments": [
       {
         "name": "serverTimezone",
@@ -1410,6 +1410,48 @@
         "name": "nscd",
         "type": "boolean",
         "desc": "Cache DNS lookups with NSCD (Docker images only)",
+        "optional": true
+      },
+      {
+        "name": "chromeExecutable",
+        "type": "string",
+        "desc": "Path of the Chrome or Chromium binary real-browser monitors run, e.g. \"/usr/bin/chromium\". \"\" auto-detects. Changing it restarts the browser.",
+        "optional": true
+      },
+      {
+        "name": "apiEnabled",
+        "type": "boolean",
+        "desc": "The \"API\" switch in Settings > General",
+        "optional": true
+      },
+      {
+        "name": "prometheusApiEnabled",
+        "type": "boolean",
+        "desc": "Collect Prometheus metrics. Changing it starts or stops the collection.",
+        "optional": true
+      },
+      {
+        "name": "steamAPIKey",
+        "type": "string",
+        "desc": "Steam Web API key, used by Steam game server monitors. A credential: \"***\" (what read tools return) keeps the stored key, \"\" clears it.",
+        "optional": true
+      },
+      {
+        "name": "globalpingApiToken",
+        "type": "string",
+        "desc": "Globalping API token, used by globalping monitors. A credential: \"***\" (what read tools return) keeps the stored token, \"\" clears it.",
+        "optional": true
+      },
+      {
+        "name": "disableAuth",
+        "type": "boolean",
+        "desc": "true turns login off: anyone who can reach Uptime Kuma gets full control. Needs currentPassword. false turns login back on and logs out every other session.",
+        "optional": true
+      },
+      {
+        "name": "currentPassword",
+        "type": "string",
+        "desc": "The admin password. Required only to turn login off (disableAuth: true) while it is on; never stored or returned.",
         "optional": true
       },
       {

@@ -511,7 +511,7 @@ because the image speaks stdio by default:
 | Tool | Purpose |
 |------|---------|
 | `getSettings` | Get Uptime Kuma server settings, such as timezone, primary base URL, and data retention. |
-| `updateSettings` | Change server settings: timezone, primary base URL, entry page, data retention, expiry warning days, search engine indexing, update checks, reverse-proxy trust and NSCD. Settings you don't pass keep their values. Authentication, API access, credentials and the Chrome path are deliberately not changeable. |
+| `updateSettings` | Change server settings: timezone, primary base URL, entry page, data retention, expiry warning days, search engine indexing, update checks, reverse-proxy trust, NSCD, the Chrome path, API and Prometheus access, the Steam and Globalping credentials, and whether login is required. Settings you don't pass keep their values; sending `"***"` back for a credential keeps it. Turning login off needs the admin password. |
 
 ### Type-specific monitor fields
 
