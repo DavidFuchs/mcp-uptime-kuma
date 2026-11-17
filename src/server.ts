@@ -60,8 +60,8 @@ export async function createServer(
         - Use 'createNotification' / 'updateNotification' / 'deleteNotification' to manage notification channels.
         - Call 'getNotificationTypeFields' before creating a notification channel: type and field names are case-sensitive. 'listNotificationTypes' lists the types.
         - Use 'createTag' / 'updateTag' / 'deleteTag' to manage tags.
-        - Use 'createMaintenance' / 'updateMaintenance' / 'deleteMaintenance' to manage maintenance windows. Pass monitorIDs — a window with no monitors suppresses nothing.
-        - Use 'setMaintenanceActive' to switch a maintenance window off and on.
+        - Use 'createMaintenanceWindow' / 'updateMaintenanceWindow' / 'deleteMaintenanceWindow' to manage maintenance windows. Pass monitorIDs — a window with no monitors suppresses nothing.
+        - Use 'setMaintenanceWindowActive' to switch a maintenance window off and on.
         - Use 'createDockerHost' / 'updateDockerHost' / 'deleteDockerHost' to manage docker daemon connections.
         - Use 'testDockerHost' to verify a docker daemon is reachable before saving.
         - Use 'createStatusPage' / 'updateStatusPage' / 'deleteStatusPage' to manage status pages. Creating returns an empty page — follow up with updateStatusPage to set groups and monitors.

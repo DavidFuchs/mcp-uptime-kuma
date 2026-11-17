@@ -127,7 +127,7 @@ describe('sweep', () => {
     expect(deletes).toEqual([
       { name: 'deleteMonitor', arguments: { monitorID: 1 } },
       { name: 'deleteTag', arguments: { tagID: 5 } },
-      { name: 'deleteMaintenance', arguments: { maintenanceID: 7 } },
+      { name: 'deleteMaintenanceWindow', arguments: { maintenanceID: 7 } },
       { name: 'deleteNotification', arguments: { notificationID: 9 } },
       { name: 'deleteStatusPage', arguments: { slug: `${PREFIX}page` } },
     ]);

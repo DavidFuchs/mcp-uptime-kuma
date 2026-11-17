@@ -15,7 +15,7 @@ export default defineScenario({
       hostname: 'vpn.example.com',
       port: 443,
     });
-    const { maintenanceID } = await call(ctx, 'createMaintenance', {
+    const { maintenanceID } = await call(ctx, 'createMaintenanceWindow', {
       title: TITLE,
       description: 'Core switch swap',
       strategy: 'single',

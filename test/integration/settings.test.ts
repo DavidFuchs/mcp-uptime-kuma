@@ -35,7 +35,7 @@ export const settingsTests: Array<{ name: string; fn: TestFn }> = [
         'updateTag',
         'deleteTag',
         'listMaintenanceWindows',
-        'createMaintenance',
+        'createMaintenanceWindow',
         'listStatusPages',
       ];
 

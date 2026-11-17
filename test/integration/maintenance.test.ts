@@ -5,8 +5,8 @@ import { UptimeKumaClient } from '../../src/uptime-kuma-client.js';
 
 /**
  * Integration tests for maintenance window operations.
- * Covers: listMaintenanceWindows, createMaintenance, updateMaintenance,
- *         setMaintenanceActive, deleteMaintenance
+ * Covers: listMaintenanceWindows, createMaintenanceWindow, updateMaintenanceWindow,
+ *         setMaintenanceWindowActive, deleteMaintenanceWindow
  *
  * Issue coverage:
  * - #37: dateRange allows null in recurring maintenance windows
@@ -29,8 +29,11 @@ async function findWindow(client: Client, maintenanceID: number): Promise<any> {
 
 /** Deletes a window and fails loudly if that did not work, so a test cannot leak one. */
 async function deleteWindow(client: Client, maintenanceID: number): Promise<void> {
-  const result = (await client.callTool({ name: 'deleteMaintenance', arguments: { maintenanceID } })) as CallToolResult;
-  extractText(result, 'deleteMaintenance');
+  const result = (await client.callTool({
+    name: 'deleteMaintenanceWindow',
+    arguments: { maintenanceID },
+  })) as CallToolResult;
+  extractText(result, 'deleteMaintenanceWindow');
 }
 
 async function createPushMonitor(client: Client, name: string): Promise<number> {
@@ -53,13 +56,13 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
     },
   },
   {
-    name: 'createMaintenance → listMaintenanceWindows → deleteMaintenance lifecycle',
+    name: 'createMaintenanceWindow → listMaintenanceWindows → deleteMaintenanceWindow lifecycle',
     fn: async ({ client }) => {
       // Create a single-strategy maintenance window (description is required by Kuma DB)
       const startDate = new Date(Date.now() + 86400000).toISOString();
       const endDate = new Date(Date.now() + 90000000).toISOString();
       const createResult = (await client.callTool({
-        name: 'createMaintenance',
+        name: 'createMaintenanceWindow',
         arguments: {
           title: 'Integration Test - Single Window',
           description: 'Test maintenance window for integration tests',
@@ -72,19 +75,19 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
           active: true,
         },
       })) as CallToolResult;
-      const maintenanceID = extractID(createResult, 'createMaintenance', 'maintenanceID');
+      const maintenanceID = extractID(createResult, 'createMaintenanceWindow', 'maintenanceID');
 
       try {
         const found = await findWindow(client, maintenanceID);
         if (found.title !== 'Integration Test - Single Window') throw new Error(`Unexpected title ${found.title}`);
-        console.log(`  ✓ createMaintenance lifecycle: ID ${maintenanceID}`);
+        console.log(`  ✓ createMaintenanceWindow lifecycle: ID ${maintenanceID}`);
       } finally {
         await deleteWindow(client, maintenanceID);
-        console.log(`  ✓ deleteMaintenance: cleaned up ID ${maintenanceID}`);
+        console.log(`  ✓ deleteMaintenanceWindow: cleaned up ID ${maintenanceID}`);
       }
 
       if ((await listWindows(client)).some((w) => w.id === maintenanceID)) {
-        throw new Error(`Maintenance window ${maintenanceID} still listed after deleteMaintenance`);
+        throw new Error(`Maintenance window ${maintenanceID} still listed after deleteMaintenanceWindow`);
       }
     },
   },
@@ -94,7 +97,7 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
       // Create a recurring-interval maintenance window
       // Uptime Kuma returns dateRange: [null] for these
       const createResult = (await client.callTool({
-        name: 'createMaintenance',
+        name: 'createMaintenanceWindow',
         arguments: {
           title: 'Integration Test - Issue 37 Recurring',
           description: 'Test recurring maintenance for issue 37',
@@ -111,7 +114,7 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
           active: true,
         },
       })) as CallToolResult;
-      const maintenanceID = extractID(createResult, 'createMaintenance', 'maintenanceID');
+      const maintenanceID = extractID(createResult, 'createMaintenanceWindow', 'maintenanceID');
 
       try {
         // The critical test: listMaintenanceWindows must handle dateRange: [null]
@@ -134,10 +137,10 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
       // "Cannot read properties of undefined (reading '0')", and without dateRange but with
       // active it failed on "NOT NULL constraint failed: maintenance.active".
       const createResult = (await client.callTool({
-        name: 'createMaintenance',
+        name: 'createMaintenanceWindow',
         arguments: { title: 'Integration Test - Manual Minimal', strategy: 'manual' },
       })) as CallToolResult;
-      const maintenanceID = extractID(createResult, 'createMaintenance', 'maintenanceID');
+      const maintenanceID = extractID(createResult, 'createMaintenanceWindow', 'maintenanceID');
 
       try {
         const found = await findWindow(client, maintenanceID);
@@ -152,7 +155,7 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
     name: 'timezone is stored, not silently replaced by the server timezone',
     fn: async ({ client }) => {
       const createResult = (await client.callTool({
-        name: 'createMaintenance',
+        name: 'createMaintenanceWindow',
         arguments: {
           title: 'Integration Test - Timezone',
           strategy: 'single',
@@ -160,7 +163,7 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
           dateRange: ['2030-01-05T10:00', '2030-01-05T12:00'],
         },
       })) as CallToolResult;
-      const maintenanceID = extractID(createResult, 'createMaintenance', 'maintenanceID');
+      const maintenanceID = extractID(createResult, 'createMaintenanceWindow', 'maintenanceID');
 
       try {
         const found = await findWindow(client, maintenanceID);
@@ -184,7 +187,7 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
       try {
         // Create covering A and B
         const createResult = (await client.callTool({
-          name: 'createMaintenance',
+          name: 'createMaintenanceWindow',
           arguments: {
             title: 'Integration Test - With Monitors',
             strategy: 'manual',
@@ -192,25 +195,25 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
             monitorIDs: [monitorA, monitorB],
           },
         })) as CallToolResult;
-        maintenanceID = extractID(createResult, 'createMaintenance', 'maintenanceID');
-        extractText(createResult, 'createMaintenance');
+        maintenanceID = extractID(createResult, 'createMaintenanceWindow', 'maintenanceID');
+        extractText(createResult, 'createMaintenanceWindow');
 
         let found = await findWindow(client, maintenanceID);
         if (!sameIDs(found.monitorIDs, [monitorA, monitorB])) {
           throw new Error(`Expected monitors [${monitorA}, ${monitorB}], got ${JSON.stringify(found.monitorIDs)}`);
         }
-        console.log(`  ✓ createMaintenance with monitorIDs: ${JSON.stringify(found.monitorIDs)}`);
+        console.log(`  ✓ createMaintenanceWindow with monitorIDs: ${JSON.stringify(found.monitorIDs)}`);
 
         // Update a field and swap B for C in one call
         const updateResult = (await client.callTool({
-          name: 'updateMaintenance',
+          name: 'updateMaintenanceWindow',
           arguments: {
             maintenanceID,
             title: 'Integration Test - With Monitors (edited)',
             monitorIDs: [monitorA, monitorC],
           },
         })) as CallToolResult;
-        extractText(updateResult, 'updateMaintenance');
+        extractText(updateResult, 'updateMaintenanceWindow');
 
         found = await findWindow(client, maintenanceID);
         if (found.title !== 'Integration Test - With Monitors (edited)')
@@ -221,35 +224,35 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
         if (!sameIDs(found.monitorIDs, [monitorA, monitorC])) {
           throw new Error(`Expected monitors [${monitorA}, ${monitorC}], got ${JSON.stringify(found.monitorIDs)}`);
         }
-        console.log('  ✓ updateMaintenance: title and monitor list replaced, other fields kept');
+        console.log('  ✓ updateMaintenanceWindow: title and monitor list replaced, other fields kept');
 
         // Resume (start the manual window), then pause it again
         const resumeResult = (await client.callTool({
-          name: 'setMaintenanceActive',
+          name: 'setMaintenanceWindowActive',
           arguments: { maintenanceID, active: true },
         })) as CallToolResult;
-        extractText(resumeResult, 'setMaintenanceActive');
+        extractText(resumeResult, 'setMaintenanceWindowActive');
         if ((await findWindow(client, maintenanceID)).active !== true)
-          throw new Error('Window not active after setMaintenanceActive { active: true }');
+          throw new Error('Window not active after setMaintenanceWindowActive { active: true }');
 
         const pauseResult = (await client.callTool({
-          name: 'setMaintenanceActive',
+          name: 'setMaintenanceWindowActive',
           arguments: { maintenanceID, active: false },
         })) as CallToolResult;
-        extractText(pauseResult, 'setMaintenanceActive');
+        extractText(pauseResult, 'setMaintenanceWindowActive');
         if ((await findWindow(client, maintenanceID)).active !== false)
-          throw new Error('Window still active after setMaintenanceActive { active: false }');
-        console.log('  ✓ setMaintenanceActive on / off');
+          throw new Error('Window still active after setMaintenanceWindowActive { active: false }');
+        console.log('  ✓ setMaintenanceWindowActive on / off');
 
         // Detach everything
         const detachResult = (await client.callTool({
-          name: 'updateMaintenance',
+          name: 'updateMaintenanceWindow',
           arguments: { maintenanceID, monitorIDs: [] },
         })) as CallToolResult;
-        extractText(detachResult, 'updateMaintenance');
+        extractText(detachResult, 'updateMaintenanceWindow');
         if ((await findWindow(client, maintenanceID)).monitorIDs.length !== 0)
           throw new Error('monitorIDs: [] did not detach');
-        console.log('  ✓ updateMaintenance monitorIDs: [] detaches all');
+        console.log('  ✓ updateMaintenanceWindow monitorIDs: [] detaches all');
       } finally {
         if (maintenanceID !== undefined) await deleteWindow(client, maintenanceID);
         for (const monitorID of [monitorA, monitorB, monitorC]) {
@@ -259,9 +262,9 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
     },
   },
   {
-    name: 'updateMaintenance keeps the schedule of a cron window',
+    name: 'updateMaintenanceWindow keeps the schedule of a cron window',
     fn: async ({ client, config }) => {
-      // createMaintenance cannot make a cron window, so create one the way Kuma's own UI does.
+      // createMaintenanceWindow cannot make a cron window, so create one the way Kuma's own UI does.
       const kuma = new UptimeKumaClient(config.url);
       await kuma.connect();
       let maintenanceID: number | undefined;
@@ -291,10 +294,10 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
         if (listed.strategy !== 'cron') throw new Error(`Listed with strategy ${listed.strategy}`);
 
         const result = (await client.callTool({
-          name: 'updateMaintenance',
+          name: 'updateMaintenanceWindow',
           arguments: { maintenanceID, title: 'Integration Test - Cron (edited)' },
         })) as CallToolResult;
-        extractText(result, 'updateMaintenance');
+        extractText(result, 'updateMaintenanceWindow');
 
         const stored = await kuma.fetchMaintenance(maintenanceID);
         if (stored.title !== 'Integration Test - Cron (edited)') throw new Error(`Title not updated: ${stored.title}`);
@@ -302,7 +305,7 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
         if (stored.cron !== '30 3 * * *') throw new Error(`cron not kept: ${JSON.stringify(stored.cron)}`);
         if (stored.durationMinutes !== 45)
           throw new Error(`durationMinutes not kept: ${JSON.stringify(stored.durationMinutes)}`);
-        console.log('  ✓ updateMaintenance on a cron window keeps cron and durationMinutes');
+        console.log('  ✓ updateMaintenanceWindow on a cron window keeps cron and durationMinutes');
       } finally {
         if (maintenanceID !== undefined) await kuma.deleteMaintenance(maintenanceID);
         kuma.disconnect();
@@ -310,10 +313,10 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
     },
   },
   {
-    name: 'createMaintenance accepts the cron strategy',
+    name: 'createMaintenanceWindow accepts the cron strategy',
     fn: async ({ client }) => {
       const result = (await client.callTool({
-        name: 'createMaintenance',
+        name: 'createMaintenanceWindow',
         arguments: {
           title: 'Integration Test - Cron Create',
           strategy: 'cron',
@@ -321,9 +324,9 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
           durationMinutes: 45,
         },
       })) as CallToolResult;
-      const maintenanceID = extractID(result, 'createMaintenance', 'maintenanceID');
+      const maintenanceID = extractID(result, 'createMaintenanceWindow', 'maintenanceID');
       try {
-        extractText(result, 'createMaintenance');
+        extractText(result, 'createMaintenanceWindow');
         const found = await findWindow(client, maintenanceID);
         if (found.cron !== '30 3 * * *' || found.durationMinutes !== 45) {
           throw new Error(
@@ -333,7 +336,7 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
       } finally {
         await deleteWindow(client, maintenanceID);
       }
-      console.log('  ✓ createMaintenance with strategy cron');
+      console.log('  ✓ createMaintenanceWindow with strategy cron');
     },
   },
   {
@@ -341,11 +344,11 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
     fn: async ({ client }) => {
       const missingID = 999999;
       const calls: Array<[string, Record<string, unknown>]> = [
-        ['updateMaintenance', { maintenanceID: missingID, title: 'x' }],
-        ['setMaintenanceActive', { maintenanceID: missingID, active: false }],
-        ['setMaintenanceActive', { maintenanceID: missingID, active: true }],
+        ['updateMaintenanceWindow', { maintenanceID: missingID, title: 'x' }],
+        ['setMaintenanceWindowActive', { maintenanceID: missingID, active: false }],
+        ['setMaintenanceWindowActive', { maintenanceID: missingID, active: true }],
         // Uptime Kuma itself answers ok: true here.
-        ['deleteMaintenance', { maintenanceID: missingID }],
+        ['deleteMaintenanceWindow', { maintenanceID: missingID }],
       ];
 
       for (const [name, args] of calls) {

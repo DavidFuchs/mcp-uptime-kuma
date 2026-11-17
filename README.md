@@ -481,10 +481,10 @@ because the image speaks stdio by default:
 | Tool | Purpose |
 |------|---------|
 | `listMaintenanceWindows` | List all maintenance windows, with the monitors each one covers. |
-| `createMaintenance` | Schedule a new maintenance window and attach the monitors it suppresses. |
-| `updateMaintenance` | Change a maintenance window's schedule, details, or monitor list. |
-| `setMaintenanceActive` | Switch a maintenance window off (ends a manual window) or back on (starts one). |
-| `deleteMaintenance` | Permanently delete a maintenance window. |
+| `createMaintenanceWindow` | Schedule a new maintenance window and attach the monitors it suppresses. |
+| `updateMaintenanceWindow` | Change a maintenance window's schedule, details, or monitor list. |
+| `setMaintenanceWindowActive` | Switch a maintenance window off (ends a manual window) or back on (starts one). |
+| `deleteMaintenanceWindow` | Permanently delete a maintenance window. |
 
 ### Status Pages
 
