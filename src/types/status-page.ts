@@ -21,3 +21,26 @@ export const StatusPageSchema = z
   .passthrough();
 
 export type StatusPage = z.infer<typeof StatusPageSchema>;
+
+/** The styles Uptime Kuma offers for an incident banner; editIncident turns any other into "warning". */
+export const INCIDENT_STYLES = ['info', 'warning', 'danger', 'primary', 'light', 'dark'] as const;
+
+/**
+ * A status page incident, as Uptime Kuma's Incident.toPublicJSON() returns it. A pinned, active
+ * incident is shown on the page; resolving one clears both.
+ */
+export const IncidentSchema = z
+  .object({
+    id: z.number(),
+    title: z.string(),
+    content: z.string().describe('Markdown, as the status page renders it'),
+    style: z.string().describe(`Banner style: ${INCIDENT_STYLES.join(', ')}`),
+    pin: z.boolean().describe('Shown on the status page while also active'),
+    active: z.boolean().describe('false once resolved'),
+    createdDate: z.string().nullable().optional().describe('UTC, as Uptime Kuma stores it'),
+    lastUpdatedDate: z.string().nullable().optional().describe('UTC, as Uptime Kuma stores it'),
+    status_page_id: z.number().optional(),
+  })
+  .passthrough();
+
+export type Incident = z.infer<typeof IncidentSchema>;

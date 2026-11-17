@@ -16,6 +16,7 @@ import type {
   Notification,
   Maintenance,
   StatusPage,
+  Incident,
   DockerHost,
 } from './types/index.js';
 import { normaliseMsg } from './utils/normalize-msg.js';
@@ -1771,6 +1772,103 @@ export class UptimeKumaClient {
     const response = await this.request('deleteStatusPage', [slug], `Failed to delete status page ${slug}`);
     this.safeLog('info', `Successfully deleted status page ${slug}`);
     delete this.statusPageListCache[slug];
+    return response;
+  }
+
+  // ─── Status page incidents ──────────────────────────────────────────────────
+
+  /**
+   * One page of a status page's incidents, newest first (Uptime Kuma's getIncidentHistory).
+   * Pages hold INCIDENT_PAGE_SIZE (10) incidents; pass the previous page's nextCursor for the
+   * next one.
+   */
+  async getIncidentHistory(
+    slug: string,
+    cursor?: string | null
+  ): Promise<ApiResponse & { incidents?: Incident[]; total?: number; nextCursor?: string | null; hasMore?: boolean }> {
+    return this.readBack('getIncidentHistory', [slug, cursor ?? null], `the incidents of status page ${slug}`);
+  }
+
+  /**
+   * Post a new incident (Uptime Kuma's postIncident with no id). Uptime Kuma pins it and marks
+   * it active, so it shows on the page at once. It does not check title or content itself.
+   */
+  async postIncident(
+    slug: string,
+    incident: { title: string; content: string; style: string }
+  ): Promise<ApiResponse & { incident?: Incident }> {
+    const response = await this.request<{ incident?: Incident }>(
+      'postIncident',
+      [slug, incident],
+      `Failed to post incident on status page ${slug}`
+    );
+    this.safeLog('info', `Posted incident ${response.incident?.id} on status page ${slug}`);
+    return response;
+  }
+
+  /**
+   * Edit an incident (Uptime Kuma's editIncident). Title, content and style are written from
+   * what is sent, so pass all three; pin is kept unless it is false.
+   */
+  async editIncident(
+    slug: string,
+    incidentID: number,
+    incident: { title: string; content: string; style: string; pin: boolean }
+  ): Promise<ApiResponse & { incident?: Incident }> {
+    const response = await this.request<{ incident?: Incident }>(
+      'editIncident',
+      [slug, incidentID, incident],
+      `Failed to edit incident ${incidentID}`
+    );
+    this.safeLog('info', `Edited incident ${incidentID} on status page ${slug}`);
+    return response;
+  }
+
+  /** Resolve an incident: Uptime Kuma marks it inactive and unpins it. */
+  async resolveIncident(slug: string, incidentID: number): Promise<ApiResponse & { incident?: Incident }> {
+    const response = await this.request<{ incident?: Incident }>(
+      'resolveIncident',
+      [slug, incidentID],
+      `Failed to resolve incident ${incidentID}`
+    );
+    this.safeLog('info', `Resolved incident ${incidentID} on status page ${slug}`);
+    return response;
+  }
+
+  /** Delete an incident permanently. */
+  async deleteIncident(slug: string, incidentID: number): Promise<ApiResponse> {
+    const response = await this.request(
+      'deleteIncident',
+      [slug, incidentID],
+      `Failed to delete incident ${incidentID}`
+    );
+    this.safeLog('info', `Deleted incident ${incidentID} from status page ${slug}`);
+    return response;
+  }
+
+  /**
+   * The status pages a maintenance window is shown on, as their IDs and titles (Uptime Kuma's
+   * getMaintenanceStatusPage).
+   */
+  getMaintenanceStatusPages(maintenanceID: number): Promise<Array<{ id: number; title: string }>> {
+    return this.readBack<{ statusPages?: Array<{ id: number; title: string }> }>(
+      'getMaintenanceStatusPage',
+      [maintenanceID],
+      `the status pages of maintenance window ${maintenanceID}`
+    ).then((response) => response.statusPages ?? []);
+  }
+
+  /**
+   * Set the status pages a maintenance window is shown on. A full replace, like
+   * setMonitorMaintenance: Uptime Kuma deletes every existing link first.
+   */
+  async setMaintenanceStatusPages(maintenanceID: number, statusPageIDs: number[]): Promise<ApiResponse> {
+    const response = await this.request(
+      'addMaintenanceStatusPage',
+      [maintenanceID, statusPageIDs.map((id) => ({ id }))],
+      `Failed to set status pages on maintenance window ${maintenanceID}`
+    );
+    this.safeLog('info', `Set ${statusPageIDs.length} status page(s) on maintenance window ${maintenanceID}`);
     return response;
   }
 

@@ -58,6 +58,8 @@ describe('maintenance tools', () => {
   let refreshMaintenanceList: ReturnType<typeof vi.spyOn>;
   let deleteMaintenanceWindow: ReturnType<typeof vi.spyOn>;
   let pauseMaintenance: ReturnType<typeof vi.spyOn>;
+  let setMaintenanceStatusPages: ReturnType<typeof vi.spyOn>;
+  let getMaintenanceStatusPages: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     vi.spyOn(UptimeKumaClient.prototype, 'ensureConnected').mockResolvedValue(undefined as never);
@@ -88,6 +90,21 @@ describe('maintenance tools', () => {
     pauseMaintenance = vi
       .spyOn(UptimeKumaClient.prototype, 'pauseMaintenance')
       .mockResolvedValue({ ok: true, msg: 'successPaused' } as never);
+    // What Uptime Kuma stores, so the read-back after a write sees what was written.
+    let linkedPages: Array<{ id: number; title: string }> = [];
+    vi.spyOn(UptimeKumaClient.prototype, 'getStatusPageList').mockReturnValue([
+      { id: 1, slug: 'main', title: 'Main' },
+      { id: 2, slug: 'internal', title: 'Internal' },
+    ] as never);
+    setMaintenanceStatusPages = vi
+      .spyOn(UptimeKumaClient.prototype, 'setMaintenanceStatusPages')
+      .mockImplementation((async (_id: number, ids: number[]) => {
+        linkedPages = ids.map((id) => ({ id, title: id === 1 ? 'Main' : 'Internal' }));
+        return { ok: true };
+      }) as never);
+    getMaintenanceStatusPages = vi
+      .spyOn(UptimeKumaClient.prototype, 'getMaintenanceStatusPages')
+      .mockImplementation((async () => linkedPages) as never);
   });
 
   afterEach(() => {
@@ -421,7 +438,97 @@ describe('maintenance tools', () => {
       expect((result.structuredContent as { maintenanceWindows: unknown[] }).maintenanceWindows[0]).toMatchObject({
         id: 4,
         monitorIDs: [3, 9],
+        statusPageSlugs: [],
       });
+    });
+
+    it('includes the status pages each window is shown on, by slug', async () => {
+      vi.spyOn(UptimeKumaClient.prototype, 'getMaintenanceList').mockReturnValue([{ ...STORED_WINDOW }] as never);
+      getMaintenanceStatusPages.mockResolvedValue([{ id: 2, title: 'Internal' }] as never);
+      const { client } = await connectServer();
+
+      const result = (await client.callTool({ name: 'listMaintenanceWindows', arguments: {} })) as CallToolResult;
+
+      expect((result.structuredContent as { maintenanceWindows: unknown[] }).maintenanceWindows[0]).toMatchObject({
+        statusPageSlugs: ['internal'],
+      });
+    });
+  });
+
+  describe('statusPageSlugs', () => {
+    it('shows a new window on the given status pages, by ID', async () => {
+      fetchMaintenance.mockResolvedValue({ id: 4, title: 'Deploy', strategy: 'manual', active: true } as never);
+      const { client } = await connectServer();
+
+      const result = (await client.callTool({
+        name: 'createMaintenanceWindow',
+        arguments: { title: 'Deploy', strategy: 'manual', statusPageSlugs: ['internal', 'main', 'main'] },
+      })) as CallToolResult;
+
+      expect(result.isError).toBeFalsy();
+      expect(setMaintenanceStatusPages).toHaveBeenCalledWith(4, [1, 2]);
+      expect(result.structuredContent).toMatchObject({ statusPageSlugs: ['internal', 'main'] });
+    });
+
+    // Seen in the integration run: a page created a moment ago is cached with its slug and
+    // title only, and sending its undefined ID made Uptime Kuma insert a NULL status_page_id.
+    it('reads the ID of a page the cache has without one', async () => {
+      fetchMaintenance.mockResolvedValue({ id: 4, title: 'Deploy', strategy: 'manual', active: true } as never);
+      vi.spyOn(UptimeKumaClient.prototype, 'getStatusPageList').mockReturnValue([
+        { slug: 'fresh', title: 'Fresh' },
+      ] as never);
+      const getConfig = vi
+        .spyOn(UptimeKumaClient.prototype, 'getStatusPageConfig')
+        .mockResolvedValue({ id: 7, slug: 'fresh', title: 'Fresh' } as never);
+      const { client } = await connectServer();
+
+      const result = (await client.callTool({
+        name: 'createMaintenanceWindow',
+        arguments: { title: 'Deploy', strategy: 'manual', statusPageSlugs: ['fresh'] },
+      })) as CallToolResult;
+
+      expect(getConfig).toHaveBeenCalledWith('fresh');
+      expect(setMaintenanceStatusPages).toHaveBeenCalledWith(4, [7]);
+      expect(result.isError).toBeFalsy();
+    });
+
+    it('refuses an unknown slug before creating anything', async () => {
+      const { client } = await connectServer();
+
+      const result = (await client.callTool({
+        name: 'createMaintenanceWindow',
+        arguments: { title: 'Deploy', strategy: 'manual', statusPageSlugs: ['nope'] },
+      })) as CallToolResult;
+
+      expect(result.isError).toBe(true);
+      expect((result.content as Array<{ text: string }>)[0].text).toMatch(/"nope".*listStatusPages/);
+      expect(createMaintenanceWindow).not.toHaveBeenCalled();
+    });
+
+    it('replaces the list on update, and [] removes the window from every page', async () => {
+      const { client } = await connectServer();
+
+      const result = (await client.callTool({
+        name: 'updateMaintenanceWindow',
+        arguments: { maintenanceID: 4, statusPageSlugs: [] },
+      })) as CallToolResult;
+
+      expect(result.isError).toBeFalsy();
+      expect(setMaintenanceStatusPages).toHaveBeenCalledWith(4, []);
+      expect(editMaintenance).not.toHaveBeenCalled();
+    });
+
+    it('reports a list that did not stick', async () => {
+      getMaintenanceStatusPages.mockResolvedValue([] as never);
+      const { client } = await connectServer();
+
+      const result = (await client.callTool({
+        name: 'updateMaintenanceWindow',
+        arguments: { maintenanceID: 4, statusPageSlugs: ['main'] },
+      })) as CallToolResult;
+
+      expect(result.isError).toBe(true);
+      expect((result.content as Array<{ text: string }>)[0].text).toContain('rather than the requested [main]');
     });
   });
 });

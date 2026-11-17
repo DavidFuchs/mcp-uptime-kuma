@@ -23,6 +23,7 @@ import { registerDockerHostTools } from './tools/docker-hosts.js';
 import { registerTagTools } from './tools/tags.js';
 import { registerMaintenanceTools } from './tools/maintenance.js';
 import { registerStatusPageTools } from './tools/status-pages.js';
+import { registerIncidentTools } from './tools/incidents.js';
 
 // The parts of this module that moved out, still importable from here.
 export { createKumaSession, type KumaSession, type KumaLogSink } from './kuma-session.js';
@@ -54,6 +55,7 @@ const INSTRUCTION_SECTIONS: Array<{ heading: string; lines: string[] }> = [
       `- Use 'listTags' to see available tags.`,
       `- Use 'listMaintenanceWindows' to see maintenance windows and the monitors each one covers.`,
       `- Use 'listStatusPages' to see status page configurations, or 'getStatusPage' for one page's full details (groups + monitors).`,
+      `- Use 'listIncidents' for a status page's incident history; 'getStatusPage' includes the incidents showing now.`,
       `- Use 'listDockerHosts' to see configured docker daemons (used by docker container monitors).`,
       `- Use 'getSettings' for server settings such as timezone and data retention.`,
     ],
@@ -72,6 +74,7 @@ const INSTRUCTION_SECTIONS: Array<{ heading: string; lines: string[] }> = [
       `- Use 'createDockerHost' / 'updateDockerHost' / 'deleteDockerHost' to manage docker daemon connections.`,
       `- Use 'testDockerHost' to verify a docker daemon is reachable before saving.`,
       `- Use 'createStatusPage' / 'updateStatusPage' / 'deleteStatusPage' to manage status pages. Creating returns an empty page — follow up with updateStatusPage to set groups and monitors.`,
+      `- Use 'createIncident' to post an incident banner on a status page, 'updateIncident' as it develops and 'resolveIncident' when it is over. 'deleteIncident' removes one from the history.`,
       `- Use 'updateSettings' to change server settings.`,
     ],
   },
@@ -206,6 +209,7 @@ export async function createServer(
   registerTagTools(ctx);
   registerMaintenanceTools(ctx);
   registerStatusPageTools(ctx);
+  registerIncidentTools(ctx);
 
   return { server, client, authenticateClient };
 }

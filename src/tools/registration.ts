@@ -31,6 +31,7 @@ export const READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
   'listMaintenanceWindows',
   'listStatusPages',
   'getStatusPage',
+  'listIncidents',
 ]);
 
 /** Every other tool. Left out of read-only mode. */
@@ -60,6 +61,10 @@ export const WRITE_TOOLS: ReadonlySet<string> = new Set([
   'createStatusPage',
   'updateStatusPage',
   'deleteStatusPage',
+  'createIncident',
+  'updateIncident',
+  'resolveIncident',
+  'deleteIncident',
 ]);
 
 /**
@@ -95,7 +100,18 @@ export const TOOLSETS = {
     'deleteMaintenanceWindow',
     'setMaintenanceWindowActive',
   ],
-  'status-pages': ['listStatusPages', 'getStatusPage', 'createStatusPage', 'updateStatusPage', 'deleteStatusPage'],
+  'status-pages': [
+    'listStatusPages',
+    'getStatusPage',
+    'createStatusPage',
+    'updateStatusPage',
+    'deleteStatusPage',
+    'listIncidents',
+    'createIncident',
+    'updateIncident',
+    'resolveIncident',
+    'deleteIncident',
+  ],
   'docker-hosts': ['listDockerHosts', 'createDockerHost', 'updateDockerHost', 'deleteDockerHost', 'testDockerHost'],
   settings: ['getSettings', 'updateSettings'],
 } as const satisfies Record<string, readonly string[]>;
@@ -171,7 +187,8 @@ export function toolAnnotations(name: string): {
   // Repeating an update or a set (setMonitorActive, setMaintenanceWindowActive) with the same
   // arguments leaves the same state. A second create makes a second object, and a second
   // delete fails.
-  const idempotent = name.startsWith('update') || name.startsWith('set');
+  // Resolving an incident twice leaves it resolved.
+  const idempotent = name.startsWith('update') || name.startsWith('set') || name.startsWith('resolve');
   return { readOnlyHint: false, destructiveHint: destructive, idempotentHint: idempotent, openWorldHint: false };
 }
 

@@ -33,7 +33,7 @@ Once it's connected, you manage Uptime Kuma by asking your AI assistant in plain
 
 ## Features
 
-- **Manage everything, not just read it.** 37 tools cover monitors of any type, notification
+- **Manage everything, not just read it.** 42 tools cover monitors of any type, notification
   channels, tags, maintenance windows, status pages, Docker hosts and server settings. See [Available Tools](#available-tools).
 - **Live data.** The server keeps a Socket.IO connection open to Uptime Kuma, so status and
   heartbeats are current without polling.
@@ -483,9 +483,9 @@ because the image speaks stdio by default:
 
 | Tool | Purpose |
 |------|---------|
-| `listMaintenanceWindows` | List all maintenance windows, with the monitors each one covers. |
-| `createMaintenanceWindow` | Schedule a new maintenance window and attach the monitors it suppresses. |
-| `updateMaintenanceWindow` | Change a maintenance window's schedule, details, or monitor list. |
+| `listMaintenanceWindows` | List all maintenance windows, with the monitors each one covers and the status pages that announce it. |
+| `createMaintenanceWindow` | Schedule a new maintenance window, attach the monitors it suppresses, and optionally show it on status pages. |
+| `updateMaintenanceWindow` | Change a maintenance window's schedule, details, monitor list, or the status pages it is shown on. |
 | `setMaintenanceWindowActive` | Switch a maintenance window off (ends a manual window) or back on (starts one). |
 | `deleteMaintenanceWindow` | Permanently delete a maintenance window. |
 
@@ -498,6 +498,11 @@ because the image speaks stdio by default:
 | `createStatusPage` | Create a new, empty status page with a title and slug. Follow up with `updateStatusPage` to add groups and monitors. |
 | `updateStatusPage` | Change a status page's settings (description, theme, published, custom domains, CSS, …) and, optionally, replace its groups and their monitors. |
 | `deleteStatusPage` | Permanently delete a status page; its URL stops working. |
+| `listIncidents` | List a status page's incidents, newest first and ten at a time, resolved ones included. |
+| `createIncident` | Post an incident banner (title, Markdown body, color) on a status page. It shows at once. |
+| `updateIncident` | Change an incident's title, body or color, or take it off the page without resolving it. Fields you don't pass keep their values. |
+| `resolveIncident` | Mark an incident as over: it leaves the page but stays in the history. |
+| `deleteIncident` | Permanently delete an incident, history included. |
 
 ### Docker Hosts
 
@@ -675,7 +680,7 @@ offers; it does not change what the Uptime Kuma account itself is allowed to do.
 ## Choosing Tool Sets
 
 Every registered tool's definition is sent to the model at the start of each conversation, so
-all 37 take up roughly 13k tokens before you ask anything. To register only the areas you use,
+all 42 take up roughly 15k tokens before you ask anything. To register only the areas you use,
 set `UPTIME_KUMA_TOOLSETS` to a comma-separated list:
 
 ```
@@ -689,7 +694,7 @@ UPTIME_KUMA_TOOLSETS=monitors,heartbeats
 | `notifications` | `listNotifications`, `listNotificationTypes`, `getNotificationTypeFields`, `createNotification`, `updateNotification`, `deleteNotification` |
 | `tags` | `listTags`, `createTag`, `updateTag`, `deleteTag` |
 | `maintenance` | `listMaintenanceWindows`, `createMaintenanceWindow`, `updateMaintenanceWindow`, `deleteMaintenanceWindow`, `setMaintenanceWindowActive` |
-| `status-pages` | `listStatusPages`, `getStatusPage`, `createStatusPage`, `updateStatusPage`, `deleteStatusPage` |
+| `status-pages` | `listStatusPages`, `getStatusPage`, `createStatusPage`, `updateStatusPage`, `deleteStatusPage`, `listIncidents`, `createIncident`, `updateIncident`, `resolveIncident`, `deleteIncident` |
 | `docker-hosts` | `listDockerHosts`, `createDockerHost`, `updateDockerHost`, `deleteDockerHost`, `testDockerHost` |
 | `settings` | `getSettings`, `updateSettings` |
 
