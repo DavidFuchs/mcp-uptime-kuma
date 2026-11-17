@@ -24,6 +24,7 @@ import { registerTagTools } from './tools/tags.js';
 import { registerMaintenanceTools } from './tools/maintenance.js';
 import { registerStatusPageTools } from './tools/status-pages.js';
 import { registerIncidentTools } from './tools/incidents.js';
+import { registerHistoryTools } from './tools/history.js';
 
 // The parts of this module that moved out, still importable from here.
 export { createKumaSession, type KumaSession, type KumaLogSink } from './kuma-session.js';
@@ -50,6 +51,7 @@ const INSTRUCTION_SECTIONS: Array<{ heading: string; lines: string[] }> = [
     lines: [
       `- START with 'getMonitorSummary' for status overview ("how is everything?", "what's down?").`,
       `- Use 'listHeartbeats' for historical data, with monitorID for one monitor (set maxHeartbeats to 5-10 unless the user asks for more).`,
+      `- Use 'getMonitorUptime' for uptime percentage and ping over a period ("uptime this week"), up to a year.`,
       `- Use 'listMonitors' when you need configuration details (URLs, intervals, notification settings).`,
       `- Use 'listNotifications' to see notification channels.`,
       `- Use 'listTags' to see available tags.`,
@@ -67,6 +69,7 @@ const INSTRUCTION_SECTIONS: Array<{ heading: string; lines: string[] }> = [
       `- Call 'getMonitorTypeFields' before creating or reconfiguring a monitor: it names the fields a type needs. Type-specific fields go in the typeFields argument.`,
       `- Use 'setMonitorActive' to temporarily stop/start checks.`,
       `- Use 'createNotification' / 'updateNotification' / 'deleteNotification' to manage notification channels.`,
+      `- Use 'testNotification' to send a real test message through a saved channel.`,
       `- Call 'getNotificationTypeFields' before creating a notification channel: type and field names are case-sensitive. 'listNotificationTypes' lists the types.`,
       `- Use 'createTag' / 'updateTag' / 'deleteTag' to manage tags.`,
       `- Use 'createMaintenanceWindow' / 'updateMaintenanceWindow' / 'deleteMaintenanceWindow' to manage maintenance windows. Pass monitorIDs — a window with no monitors suppresses nothing.`,
@@ -75,6 +78,7 @@ const INSTRUCTION_SECTIONS: Array<{ heading: string; lines: string[] }> = [
       `- Use 'testDockerHost' to verify a docker daemon is reachable before saving.`,
       `- Use 'createStatusPage' / 'updateStatusPage' / 'deleteStatusPage' to manage status pages. Creating returns an empty page — follow up with updateStatusPage to set groups and monitors.`,
       `- Use 'createIncident' to post an incident banner on a status page, 'updateIncident' as it develops and 'resolveIncident' when it is over. 'deleteIncident' removes one from the history.`,
+      `- Use 'clearMonitorEvents' / 'clearMonitorHeartbeats' to reset one monitor's history; 'clearAllStatistics' resets every monitor's, only when the user asks.`,
       `- Use 'updateSettings' to change server settings.`,
     ],
   },
@@ -202,6 +206,7 @@ export async function createServer(
   };
   registerMonitorReadTools(ctx);
   registerHeartbeatTools(ctx);
+  registerHistoryTools(ctx);
   registerSettingsTools(ctx);
   registerMonitorWriteTools(ctx);
   registerNotificationTools(ctx);

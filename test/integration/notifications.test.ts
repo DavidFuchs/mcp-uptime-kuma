@@ -64,4 +64,38 @@ export const notificationTests: Array<{ name: string; fn: TestFn }> = [
       }
     },
   },
+  {
+    name: 'testNotification makes Uptime Kuma try to deliver through the stored channel',
+    fn: async ({ client }) => {
+      // Nothing listens on port 1, so the provider's own connection error shows that Uptime Kuma
+      // really tried to send, using the stored webhook URL.
+      const created = (await client.callTool({
+        name: 'createNotification',
+        arguments: {
+          name: 'zz-test-notification-delete-me',
+          type: 'webhook',
+          isDefault: false,
+          config: { webhookURL: 'http://127.0.0.1:1/hook', webhookContentType: 'json' },
+        },
+      })) as CallToolResult;
+      extractText(created, 'createNotification');
+      const notificationID = (created.structuredContent as { id?: number } | undefined)?.id;
+      if (!notificationID) throw new Error('createNotification returned no id');
+
+      try {
+        const result = (await client.callTool({
+          name: 'testNotification',
+          arguments: { notificationID },
+        })) as CallToolResult;
+        const text = (result.content as Array<{ text?: string }>)[0]?.text ?? '';
+        if (!result.isError) throw new Error(`expected the delivery to fail, got: ${text}`);
+        if (!/ECONNREFUSED|connect|127.0.0.1/i.test(text)) {
+          throw new Error(`expected a connection error from the webhook, got: ${text}`);
+        }
+        console.log('  ✓ testNotification: Uptime Kuma tried the stored webhook and reported its error');
+      } finally {
+        await client.callTool({ name: 'deleteNotification', arguments: { notificationID } });
+      }
+    },
+  },
 ];

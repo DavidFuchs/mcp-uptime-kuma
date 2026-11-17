@@ -33,7 +33,7 @@ Once it's connected, you manage Uptime Kuma by asking your AI assistant in plain
 
 ## Features
 
-- **Manage everything, not just read it.** 42 tools cover monitors of any type, notification
+- **Manage everything, not just read it.** 47 tools cover monitors of any type, notification
   channels, tags, maintenance windows, status pages, Docker hosts and server settings. See [Available Tools](#available-tools).
 - **Live data.** The server keeps a Socket.IO connection open to Uptime Kuma, so status and
   heartbeats are current without polling.
@@ -458,6 +458,10 @@ because the image speaks stdio by default:
 | Tool | Purpose |
 |------|---------|
 | `listHeartbeats` | Get status check history for one monitor or for all of them. |
+| `getMonitorUptime` | Get a monitor's uptime percentage and ping over the last N hours (up to a year), with when checks failed. |
+| `clearMonitorEvents` | Empty a monitor's event list (its status changes). Heartbeats and uptime are kept. |
+| `clearMonitorHeartbeats` | Delete one monitor's heartbeats and uptime statistics, so its history starts again. |
+| `clearAllStatistics` | Delete every monitor's heartbeats and uptime statistics. Needs `confirm: true`. |
 
 ### Notifications
 
@@ -469,6 +473,7 @@ because the image speaks stdio by default:
 | `createNotification` | Create a new notification channel. |
 | `updateNotification` | Update an existing notification channel; only the fields you pass change. |
 | `deleteNotification` | Permanently delete a notification channel. |
+| `testNotification` | Send a real test message through a saved channel to check its settings work. |
 
 ### Tags
 
@@ -672,7 +677,7 @@ UPTIME_KUMA_READ_ONLY=true
 ```
 
 The write tools are then not registered at all, so they cannot be called and take up no room in
-the conversation. Twelve tools remain: the `get…` and `list…` tools, minus
+the conversation. Fourteen tools remain: the `get…` and `list…` tools, minus
 `getMonitorTypeFields`, `listNotificationTypes` and `getNotificationTypeFields`, which only
 serve the write tools. This limits what the MCP server
 offers; it does not change what the Uptime Kuma account itself is allowed to do.
@@ -680,7 +685,7 @@ offers; it does not change what the Uptime Kuma account itself is allowed to do.
 ## Choosing Tool Sets
 
 Every registered tool's definition is sent to the model at the start of each conversation, so
-all 42 take up roughly 15k tokens before you ask anything. To register only the areas you use,
+all 47 take up roughly 15k tokens before you ask anything. To register only the areas you use,
 set `UPTIME_KUMA_TOOLSETS` to a comma-separated list:
 
 ```
@@ -690,8 +695,8 @@ UPTIME_KUMA_TOOLSETS=monitors,heartbeats
 | Tool set | Tools |
 |---|---|
 | `monitors` | `getMonitorSummary`, `getMonitor`, `listMonitors`, `listMonitorTypes`, `getMonitorTypeFields`, `createMonitor`, `updateMonitor`, `deleteMonitor`, `setMonitorActive` |
-| `heartbeats` | `listHeartbeats` |
-| `notifications` | `listNotifications`, `listNotificationTypes`, `getNotificationTypeFields`, `createNotification`, `updateNotification`, `deleteNotification` |
+| `heartbeats` | `listHeartbeats`, `getMonitorUptime`, `clearMonitorEvents`, `clearMonitorHeartbeats`, `clearAllStatistics` |
+| `notifications` | `listNotifications`, `listNotificationTypes`, `getNotificationTypeFields`, `createNotification`, `updateNotification`, `deleteNotification`, `testNotification` |
 | `tags` | `listTags`, `createTag`, `updateTag`, `deleteTag` |
 | `maintenance` | `listMaintenanceWindows`, `createMaintenanceWindow`, `updateMaintenanceWindow`, `deleteMaintenanceWindow`, `setMaintenanceWindowActive` |
 | `status-pages` | `listStatusPages`, `getStatusPage`, `createStatusPage`, `updateStatusPage`, `deleteStatusPage`, `listIncidents`, `createIncident`, `updateIncident`, `resolveIncident`, `deleteIncident` |
@@ -702,7 +707,7 @@ Unset, empty or `all` registers every tool set. An unknown name stops the server
 with the list of valid ones, rather than quietly running with fewer tools.
 
 It combines with [read-only mode](#read-only-mode): `UPTIME_KUMA_READ_ONLY=true` with
-`UPTIME_KUMA_TOOLSETS=monitors,heartbeats` leaves five tools, about 2k tokens, which is enough
+`UPTIME_KUMA_TOOLSETS=monitors,heartbeats` leaves six tools, about 2.3k tokens, which is enough
 for "what's down?" and "how has this been doing?".
 
 Most other tool sets refer to monitors by ID (maintenance windows, status pages, tags and

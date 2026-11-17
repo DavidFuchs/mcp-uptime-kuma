@@ -40,3 +40,19 @@ export type Heartbeat = z.infer<typeof HeartbeatSchema>;
 export type HeartbeatList<T extends boolean = true> = T extends true
   ? { [monitorID: string]: Heartbeat[] }
   : { [monitorID: string]: Heartbeat | undefined };
+
+/**
+ * One bucket of Uptime Kuma's uptime statistics (UptimeCalculator.getDataArray): the checks
+ * that came up and down in a minute, an hour or a day, starting at `timestamp`.
+ */
+export interface UptimeBucket {
+  /** Start of the bucket, in Unix seconds. */
+  timestamp: number;
+  up: number;
+  down: number;
+  avgPing?: number | null;
+  minPing?: number | null;
+  maxPing?: number | null;
+  /** Checks during maintenance: counted neither up nor down. */
+  maintenance?: number;
+}
