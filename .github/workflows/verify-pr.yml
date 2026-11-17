@@ -24,13 +24,23 @@ jobs:
           exclude_file: ".github/config/exclude.txt" # gitignore style file for exclusions
 
   unit-tests:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest]
         # The oldest version package.json allows, and each LTS since. The Docker image ships 26.
         node-version: [22, 24, 26]
-    name: unit-tests (node ${{ matrix.node-version }})
+        # Contributors run the unit tests on Windows and macOS too, so a Unix-only assumption
+        # (a #!/bin/sh fake, a "/" in an expected path, a process group) fails here rather than
+        # on their machine. One Node version each is enough for that.
+        include:
+          - os: windows-latest
+            node-version: 22
+          - os: macos-latest
+            node-version: 22
+    # The Linux jobs keep their original names, which branch protection may require.
+    name: ${{ matrix.os == 'ubuntu-latest' && format('unit-tests (node {0})', matrix.node-version) || format('unit-tests ({0}, node {1})', matrix.os, matrix.node-version) }}
     steps:
       - uses: actions/checkout@v7
 
@@ -54,7 +64,7 @@ jobs:
 
       # Layout only, and only a check: `npm run format` is what rewrites files.
       - name: Check formatting
-        if: matrix.node-version == 22
+        if: matrix.node-version == 22 && matrix.os == 'ubuntu-latest'
         run: npm run format:check
 
       - name: Build
@@ -71,7 +81,7 @@ jobs:
       # Reported, not enforced: there is no threshold to fail on. The entry points run in
       # child processes during the tests, so they count as uncovered here.
       - name: Report coverage
-        if: matrix.node-version == 22
+        if: matrix.node-version == 22 && matrix.os == 'ubuntu-latest'
         run: |
           {
             echo '### Unit test coverage of src/'

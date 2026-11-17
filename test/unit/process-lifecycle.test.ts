@@ -69,7 +69,10 @@ describe('signal handling', () => {
     expect(process.listenerCount('SIGTERM')).toBe(before.term);
   });
 
-  it.each(['SIGTERM', 'SIGINT'] as const)(
+  // Windows has no signals to send: Node's kill('SIGTERM') / kill('SIGINT') on a child there
+  // terminates it outright, so no handler runs and there is no graceful shutdown to observe.
+  // Stopping on a signal is a Linux and macOS (and Docker) behaviour; CI checks it on both.
+  it.skipIf(process.platform === 'win32').each(['SIGTERM', 'SIGINT'] as const)(
     'the HTTP transport closes its listener on %s before exiting',
     async (signal) => {
       const port = await freePort();

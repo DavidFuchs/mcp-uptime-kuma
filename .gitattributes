@@ -1,0 +1,8 @@
+# Check text files out with LF line endings on every platform, whatever core.autocrlf says.
+#
+# The repository stores LF, and Prettier (`npm run format:check`, run in CI) requires it. With
+# core.autocrlf=true, the Git for Windows default, files were checked out as CRLF, so the format
+# check failed on every file on Windows. The bash test scripts also need LF to run at all.
+* text=auto eol=lf
+
+*.png binary
