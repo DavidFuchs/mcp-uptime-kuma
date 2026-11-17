@@ -470,6 +470,28 @@ describe('maintenance tools', () => {
       expect(result.structuredContent).toMatchObject({ statusPageSlugs: ['internal', 'main'] });
     });
 
+    // Seen in the integration run: a page created a moment ago is cached with its slug and
+    // title only, and sending its undefined ID made Uptime Kuma insert a NULL status_page_id.
+    it('reads the ID of a page the cache has without one', async () => {
+      fetchMaintenance.mockResolvedValue({ id: 4, title: 'Deploy', strategy: 'manual', active: true } as never);
+      vi.spyOn(UptimeKumaClient.prototype, 'getStatusPageList').mockReturnValue([
+        { slug: 'fresh', title: 'Fresh' },
+      ] as never);
+      const getConfig = vi
+        .spyOn(UptimeKumaClient.prototype, 'getStatusPageConfig')
+        .mockResolvedValue({ id: 7, slug: 'fresh', title: 'Fresh' } as never);
+      const { client } = await connectServer();
+
+      const result = (await client.callTool({
+        name: 'createMaintenanceWindow',
+        arguments: { title: 'Deploy', strategy: 'manual', statusPageSlugs: ['fresh'] },
+      })) as CallToolResult;
+
+      expect(getConfig).toHaveBeenCalledWith('fresh');
+      expect(setMaintenanceStatusPages).toHaveBeenCalledWith(4, [7]);
+      expect(result.isError).toBeFalsy();
+    });
+
     it('refuses an unknown slug before creating anything', async () => {
       const { client } = await connectServer();
 

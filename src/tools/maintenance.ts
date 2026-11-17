@@ -224,16 +224,34 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
     return null;
   };
 
-  /** Status page slugs to IDs. Throws on an unknown slug, before anything is written. */
-  const statusPageIDsFor = (slugs: string[]): number[] => {
+  /**
+   * Status page slugs to IDs. Throws on an unknown slug, before anything is written.
+   *
+   * The cached list can lack an ID: a page created through this server is cached at once with
+   * only its slug and title, its stored config (with the ID) following moments later, and a page
+   * created in the web UI since login is not cached at all. Those are read from Uptime Kuma.
+   */
+  const statusPageIDsFor = async (slugs: string[]): Promise<number[]> => {
     const pages = client.getStatusPageList();
-    const unknown = slugs.filter((s) => !pages.some((p) => p.slug === s));
+    const ids: number[] = [];
+    const unknown: string[] = [];
+    for (const slug of new Set(slugs)) {
+      let id = pages.find((p) => p.slug === slug)?.id as number | undefined;
+      if (typeof id !== 'number') {
+        id = await client.getStatusPageConfig(slug).then(
+          (config) => config.id as number | undefined,
+          () => undefined
+        );
+      }
+      if (typeof id === 'number') ids.push(id);
+      else unknown.push(slug);
+    }
     if (unknown.length > 0) {
       throw new Error(
         `No status page with slug ${unknown.map((s) => `"${s}"`).join(', ')} — call listStatusPages to see the slugs`
       );
     }
-    return [...new Set(slugs.map((s) => pages.find((p) => p.slug === s)!.id as number))].sort((a, b) => a - b);
+    return ids.sort((a, b) => a - b);
   };
 
   /** The slugs of the status pages a window is shown on. A page missing from the cache shows by title. */
@@ -361,7 +379,7 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
       await authenticateClient();
 
       try {
-        const statusPageIDs = statusPageSlugs ? statusPageIDsFor(statusPageSlugs) : undefined;
+        const statusPageIDs = statusPageSlugs ? await statusPageIDsFor(statusPageSlugs) : undefined;
         const response = await client.createMaintenance(toKumaMaintenance(input));
         const maintenanceID = response.maintenanceID;
         const structuredContent: Record<string, unknown> = { ok: response.ok, maintenanceID, msg: response.msg };
@@ -441,7 +459,7 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
         if (Object.keys(defined).length === 0 && monitorIDs === undefined && statusPageSlugs === undefined) {
           throw new Error('Nothing to update — pass at least one field to change, monitorIDs or statusPageSlugs.');
         }
-        const statusPageIDs = statusPageSlugs ? statusPageIDsFor(statusPageSlugs) : undefined;
+        const statusPageIDs = statusPageSlugs ? await statusPageIDsFor(statusPageSlugs) : undefined;
 
         await requireMaintenance(maintenanceID);
         const structuredContent: Record<string, unknown> = { ok: true, maintenanceID };
