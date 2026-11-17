@@ -597,6 +597,24 @@ export class UptimeKumaClient {
   }
 
   /**
+   * Save general settings (Uptime Kuma's setSettings).
+   *
+   * Uptime Kuma writes only the keys it is sent, but its handler reads several absent keys as a
+   * change: a missing nscd stops NSCD, a missing chromeExecutable resets Chrome, a missing
+   * entryPage clears the entry page, and a missing disableAuth while auth is off logs every
+   * client out. Callers therefore send the whole stored object with their changes merged in,
+   * as the web UI does.
+   *
+   * No current password is sent: it is only checked when switching authentication off, which
+   * this server never does.
+   */
+  async setSettings(data: Record<string, unknown>): Promise<ApiResponse> {
+    const response = await this.request('setSettings', [data, null], 'Failed to save settings');
+    this.safeLog('info', `Successfully saved settings: ${Object.keys(data).join(', ')}`);
+    return response;
+  }
+
+  /**
    * Pause a monitor
    *
    * @param monitorID - The ID of the monitor to pause

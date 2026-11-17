@@ -32,8 +32,8 @@ Once it's connected, you manage Uptime Kuma by asking your AI assistant in plain
 
 ## Features
 
-- **Manage everything, not just read it.** 36 tools cover monitors of any type, notification
-  channels, tags, maintenance windows, status pages and Docker hosts. See [Available Tools](#available-tools).
+- **Manage everything, not just read it.** 37 tools cover monitors of any type, notification
+  channels, tags, maintenance windows, status pages, Docker hosts and server settings. See [Available Tools](#available-tools).
 - **Live data.** The server keeps a Socket.IO connection open to Uptime Kuma, so status and
   heartbeats are current without polling.
 - **Context-friendly.** Summaries come first and full detail only when asked for. The roughly
@@ -511,6 +511,7 @@ because the image speaks stdio by default:
 | Tool | Purpose |
 |------|---------|
 | `getSettings` | Get Uptime Kuma server settings, such as timezone, primary base URL, and data retention. |
+| `updateSettings` | Change server settings: timezone, primary base URL, entry page, data retention, expiry warning days, search engine indexing, update checks, reverse-proxy trust and NSCD. Settings you don't pass keep their values. Authentication, API access, credentials and the Chrome path are deliberately not changeable. |
 
 ### Type-specific monitor fields
 
