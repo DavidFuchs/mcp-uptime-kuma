@@ -36,6 +36,7 @@ export const READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
   'listProxies',
   'listRemoteBrowsers',
   'listAPIKeys',
+  'getDatabaseInfo',
 ]);
 
 /** Every other tool. Left out of read-only mode. */
@@ -83,6 +84,7 @@ export const WRITE_TOOLS: ReadonlySet<string> = new Set([
   'createAPIKey',
   'setAPIKeyActive',
   'deleteAPIKey',
+  'shrinkDatabase',
 ]);
 
 /**
@@ -148,6 +150,7 @@ export const TOOLSETS = {
     'deleteRemoteBrowser',
   ],
   'api-keys': ['listAPIKeys', 'createAPIKey', 'setAPIKeyActive', 'deleteAPIKey'],
+  database: ['getDatabaseInfo', 'shrinkDatabase'],
 } as const satisfies Record<string, readonly string[]>;
 
 export type ToolsetName = keyof typeof TOOLSETS;
@@ -224,8 +227,9 @@ export function toolAnnotations(name: string): {
   // Repeating an update or a set (setMonitorActive, setMaintenanceWindowActive) with the same
   // arguments leaves the same state. A second create makes a second object, and a second
   // delete fails.
-  // Resolving an incident twice leaves it resolved.
-  const idempotent = name.startsWith('update') || name.startsWith('set') || name.startsWith('resolve');
+  // Resolving an incident twice leaves it resolved, and shrinking a shrunk database frees nothing.
+  const idempotent =
+    name.startsWith('update') || name.startsWith('set') || name.startsWith('resolve') || name.startsWith('shrink');
   // The one tool whose effect leaves Uptime Kuma: a test message is delivered to Slack, email
   // or wherever the channel points.
   const openWorld = name === 'testNotification';

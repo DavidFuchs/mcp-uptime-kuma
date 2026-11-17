@@ -22,6 +22,7 @@ import type {
   KumaProxy,
   RemoteBrowser,
   APIKey,
+  ServerInfo,
 } from './types/index.js';
 import { normaliseMsg } from './utils/normalize-msg.js';
 
@@ -38,6 +39,12 @@ const FETCH_MONITOR_TIMEOUT_MS = 10_000;
  * (restarting a monitor, reaching a docker daemon).
  */
 const ACK_TIMEOUT_MS = 30_000;
+
+/**
+ * How long shrinkDatabase waits. SQLite's VACUUM rewrites the whole file before Uptime Kuma
+ * answers, which on a database of several gigabytes takes minutes, not seconds.
+ */
+const SHRINK_TIMEOUT_MS = 10 * 60_000;
 
 /**
  * Every event Uptime Kuma pushes that a cache is filled from. Listed once so that the
@@ -59,6 +66,7 @@ const DATA_EVENTS = [
   'proxyList',
   'remoteBrowserList',
   'apiKeyList',
+  'info',
 ] as const;
 
 /** A proxy row as Uptime Kuma pushes it (snake_case, 0/1 flags), in the shape the tools return. */
@@ -267,6 +275,7 @@ export class UptimeKumaClient {
   private proxyListCache: KumaProxy[] = [];
   private remoteBrowserListCache: RemoteBrowser[] = [];
   private apiKeyListCache: APIKey[] = [];
+  private serverInfoCache: ServerInfo = {};
   private server?: { sendLoggingMessage: (params: { level: LoggingLevel; data: unknown }) => Promise<void> };
   private shouldLog: (level: LoggingLevel) => boolean;
   private loginCredentials: {
@@ -1156,6 +1165,11 @@ export class UptimeKumaClient {
       this.safeLog('debug', `Received apiKeyList with ${list.length} API keys`);
       this.apiKeyListCache = list.map((k) => ({ ...k, active: !!k.active }) as APIKey);
     });
+    // Sent on connect without the version and database type, and again in full after login,
+    // so each push is merged over the last rather than replacing it.
+    this.socket.on('info', (info: ServerInfo) => {
+      this.serverInfoCache = { ...this.serverInfoCache, ...info };
+    });
   }
 
   // ─── Monitor write operations ───────────────────────────────────────────────
@@ -1982,6 +1996,34 @@ export class UptimeKumaClient {
    */
   async testNotification(notification: Record<string, unknown>): Promise<ApiResponse> {
     return this.request('testNotification', [notification], 'Failed to send the test notification');
+  }
+
+  // ─── Database ────────────────────────────────────────────────────────────────
+
+  /** What Uptime Kuma last said about itself: version, database type, timezone. */
+  getServerInfo(): ServerInfo {
+    return this.serverInfoCache;
+  }
+
+  /** The size of the database file in bytes. Uptime Kuma answers 0 for anything but SQLite. */
+  async getDatabaseSize(): Promise<number> {
+    const response = await this.request<{ size?: number }>('getDatabaseSize', [], 'Failed to get the database size');
+    return Number(response.size ?? 0);
+  }
+
+  /**
+   * Run SQLite's VACUUM, which gives the space of deleted rows back to the file system. Uptime
+   * Kuma does nothing (and still answers ok) on MariaDB.
+   */
+  async shrinkDatabase(): Promise<ApiResponse> {
+    const response = await this.request('shrinkDatabase', [], 'Failed to shrink the database', {
+      ms: SHRINK_TIMEOUT_MS,
+      msg:
+        `No response from Uptime Kuma to "shrinkDatabase" within ${SHRINK_TIMEOUT_MS / 60_000} minutes. ` +
+        'It may still be running; check the size with getDatabaseInfo before trying again.',
+    });
+    this.safeLog('info', 'Shrank the database');
+    return response;
   }
 
   // ─── Proxies ─────────────────────────────────────────────────────────────────
