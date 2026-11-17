@@ -11,6 +11,7 @@ import { createServer } from './server.js';
 import { createHttpApp, type HttpApp } from './http-app.js';
 import { parseExtraHeaders } from './extra-headers.js';
 import { parsePort, listenUrl } from './http-listen.js';
+import { parseToolsets } from './tools/registration.js';
 import type { UptimeKumaConfig } from './types/index.js';
 
 /**
@@ -59,7 +60,17 @@ function validateEnvironment(): UptimeKumaConfig {
     );
   }
 
-  return { url, username, password, token, jwtToken, includeSecrets, readOnly, extraHeaders };
+  // Like malformed headers, an unknown toolset is fatal: running with fewer tools than asked
+  // for would only surface later as a tool the assistant cannot find.
+  let toolsets: string[] | undefined;
+  try {
+    toolsets = parseToolsets(process.env.UPTIME_KUMA_TOOLSETS);
+  } catch (error) {
+    console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+  }
+
+  return { url, username, password, token, jwtToken, includeSecrets, readOnly, toolsets, extraHeaders };
 }
 
 // Parse command-line arguments

@@ -12,7 +12,7 @@ import type { UptimeKumaConfig } from './types/index.js';
 import { INCLUDE_SECRETS_DESCRIPTION } from './redact.js';
 import { VERSION } from './version.js';
 import { createKumaSession, type KumaSession } from './kuma-session.js';
-import { installToolRegistration } from './tools/registration.js';
+import { installToolRegistration, isToolEnabled, parseToolsets, type ToolSelection } from './tools/registration.js';
 import type { ToolContext } from './tools/context.js';
 import { registerMonitorReadTools } from './tools/monitors-read.js';
 import { registerMonitorWriteTools } from './tools/monitors-write.js';
@@ -30,10 +30,88 @@ export {
   READ_ONLY_TOOLS,
   WRITE_TOOLS,
   CHANGE_NOTHING_TOOLS,
+  TOOLSETS,
+  parseToolsets,
+  isToolEnabled,
   toolAnnotations,
   normalizeAdvertisedSchema,
 } from './tools/registration.js';
 export { MONITOR_TYPE_FIELD_NAMES } from './monitors/fields.js';
+
+/**
+ * Each line names the tools it is about in quotes; it is kept only when every one of them is
+ * registered, so read-only mode and toolsets trim the instructions by the same rule as the
+ * tool list. A heading whose lines were all dropped goes with them.
+ */
+const INSTRUCTION_SECTIONS: Array<{ heading: string; lines: string[] }> = [
+  {
+    heading: 'READ operations:',
+    lines: [
+      `- START with 'getMonitorSummary' for status overview ("how is everything?", "what's down?").`,
+      `- Use 'listHeartbeats' for historical data, with monitorID for one monitor (set maxHeartbeats to 5-10 unless the user asks for more).`,
+      `- Use 'listMonitors' when you need configuration details (URLs, intervals, notification settings).`,
+      `- Use 'listNotifications' to see notification channels.`,
+      `- Use 'listTags' to see available tags.`,
+      `- Use 'listMaintenanceWindows' to see maintenance windows and the monitors each one covers.`,
+      `- Use 'listStatusPages' to see status page configurations, or 'getStatusPage' for one page's full details (groups + monitors).`,
+      `- Use 'listDockerHosts' to see configured docker daemons (used by docker container monitors).`,
+      `- Use 'getSettings' for server settings such as timezone and data retention.`,
+    ],
+  },
+  {
+    heading: 'WRITE operations:',
+    lines: [
+      `- Use 'createMonitor' / 'updateMonitor' / 'deleteMonitor' to manage monitors.`,
+      `- Call 'getMonitorTypeFields' before creating or reconfiguring a monitor: it names the fields a type needs. Type-specific fields go in the typeFields argument.`,
+      `- Use 'setMonitorActive' to temporarily stop/start checks.`,
+      `- Use 'createNotification' / 'updateNotification' / 'deleteNotification' to manage notification channels.`,
+      `- Call 'getNotificationTypeFields' before creating a notification channel: type and field names are case-sensitive. 'listNotificationTypes' lists the types.`,
+      `- Use 'createTag' / 'updateTag' / 'deleteTag' to manage tags.`,
+      `- Use 'createMaintenanceWindow' / 'updateMaintenanceWindow' / 'deleteMaintenanceWindow' to manage maintenance windows. Pass monitorIDs — a window with no monitors suppresses nothing.`,
+      `- Use 'setMaintenanceWindowActive' to switch a maintenance window off and on.`,
+      `- Use 'createDockerHost' / 'updateDockerHost' / 'deleteDockerHost' to manage docker daemon connections.`,
+      `- Use 'testDockerHost' to verify a docker daemon is reachable before saving.`,
+      `- Use 'createStatusPage' / 'updateStatusPage' / 'deleteStatusPage' to manage status pages. Creating returns an empty page — follow up with updateStatusPage to set groups and monitors.`,
+      `- Use 'updateSettings' to change server settings.`,
+    ],
+  },
+  {
+    heading: 'CREDENTIALS:',
+    lines: [
+      `- Read tools return "***" in place of passwords, tokens, API keys and HTTP headers. To attach a notification channel to a monitor you only need its id, so the common workflows never need the real values.`,
+      `- Pass includeSecrets: true (or set UPTIME_KUMA_INCLUDE_SECRETS=true) only when the value itself is needed. It will be written to this conversation's transcript.`,
+      `- "***" sent back to {UPDATE_TOOLS} restores the stored value rather than overwriting it, so a read-edit-write round trip is safe.`,
+    ],
+  },
+];
+
+/** The server instructions for the tools that are registered. Exported for its tests. */
+export function buildInstructions(enabled: (tool: string) => boolean, readOnly: boolean): string {
+  // The credentials round-trip line applies to whichever of these update tools are registered,
+  // and is dropped when none is.
+  const updateTools = ['updateMonitor', 'updateNotification', 'updateSettings'].filter(enabled);
+  const render = (line: string): string | undefined => {
+    if (line.includes('{UPDATE_TOOLS}')) {
+      return updateTools.length === 0
+        ? undefined
+        : line.replace('{UPDATE_TOOLS}', updateTools.map((t) => `'${t}'`).join(' / '));
+    }
+    const tools = [...line.matchAll(/'([a-zA-Z]+)'/g)].map((m) => m[1]);
+    return tools.every(enabled) ? line : undefined;
+  };
+
+  const parts = ['This MCP server provides access to Uptime Kuma monitoring data and management operations.'];
+  for (const { heading, lines } of INSTRUCTION_SECTIONS) {
+    const kept = lines.map(render).filter((line): line is string => line !== undefined);
+    if (kept.length > 0) parts.push([heading, ...kept].join('\n'));
+  }
+  if (readOnly) {
+    parts.push(
+      'This server is running READ-ONLY (UPTIME_KUMA_READ_ONLY): it has no tools that create, change, pause or delete anything. Say so if asked to make a change.'
+    );
+  }
+  return parts.join('\n\n');
+}
 export { mergeStatusPageConfig } from './tools/status-pages.js';
 
 /**
@@ -47,26 +125,15 @@ export async function createServer(
   // Track current logging level (default: info)
   let currentLogLevel: LoggingLevel = 'info';
 
-  // UPTIME_KUMA_READ_ONLY: the write tools are not registered (see
+  // UPTIME_KUMA_READ_ONLY and UPTIME_KUMA_TOOLSETS leave tools unregistered (see
   // installToolRegistration), so the instructions must not send a model looking for them.
   const readOnlyMode = config.readOnly === true;
-  const writeInstructions = readOnlyMode
-    ? `        This server is running READ-ONLY (UPTIME_KUMA_READ_ONLY): it has no tools that create,
-        change, pause or delete anything. Say so if asked to make a change.
-`
-    : `        WRITE operations:
-        - Use 'createMonitor' / 'updateMonitor' / 'deleteMonitor' to manage monitors.
-        - Call 'getMonitorTypeFields' before creating or reconfiguring a monitor: it names the fields a type needs. Type-specific fields go in the typeFields argument.
-        - Use 'createNotification' / 'updateNotification' / 'deleteNotification' to manage notification channels.
-        - Call 'getNotificationTypeFields' before creating a notification channel: type and field names are case-sensitive. 'listNotificationTypes' lists the types.
-        - Use 'createTag' / 'updateTag' / 'deleteTag' to manage tags.
-        - Use 'createMaintenanceWindow' / 'updateMaintenanceWindow' / 'deleteMaintenanceWindow' to manage maintenance windows. Pass monitorIDs — a window with no monitors suppresses nothing.
-        - Use 'setMaintenanceWindowActive' to switch a maintenance window off and on.
-        - Use 'createDockerHost' / 'updateDockerHost' / 'deleteDockerHost' to manage docker daemon connections.
-        - Use 'testDockerHost' to verify a docker daemon is reachable before saving.
-        - Use 'createStatusPage' / 'updateStatusPage' / 'deleteStatusPage' to manage status pages. Creating returns an empty page — follow up with updateStatusPage to set groups and monitors.
-        - Use 'setMonitorActive' to temporarily stop/start checks.
-`;
+  const selection: ToolSelection = {
+    readOnly: readOnlyMode,
+    // Re-parsed so a library caller passing an unknown name gets the same error as the env var.
+    toolsets: config.toolsets ? parseToolsets(config.toolsets.join(',') || 'all') : undefined,
+  };
+  const instructions = buildInstructions((name) => isToolEnabled(name, selection), readOnlyMode);
 
   const server = new McpServer(
     {
@@ -74,33 +141,7 @@ export async function createServer(
       version: VERSION,
     },
     {
-      instructions: `
-        This MCP server provides access to Uptime Kuma monitoring data and management operations.
-
-        READ operations:
-        - START with 'getMonitorSummary' for status overview ("how is everything?", "what's down?").
-        - Use 'listHeartbeats' for historical data, with monitorID for one monitor (set maxHeartbeats to 5-10 unless the user asks for more).
-        - Use 'listMonitors' when you need configuration details (URLs, intervals, notification settings).
-        - Use 'listNotifications' to see notification channels.
-        - Use 'listTags' to see available tags.
-        - Use 'listMaintenanceWindows' to see maintenance windows and the monitors each one covers.
-        - Use 'listStatusPages' to see status page configurations, or 'getStatusPage' for one page's full details (groups + monitors).
-        - Use 'listDockerHosts' to see configured docker daemons (used by docker container monitors).
-
-${writeInstructions}
-        CREDENTIALS:
-        - Read tools return "***" in place of passwords, tokens, API keys and HTTP headers.
-          To attach a notification channel to a monitor you only need its id, so the common
-          workflows never need the real values.
-        - Pass includeSecrets: true (or set UPTIME_KUMA_INCLUDE_SECRETS=true) only when the
-          value itself is needed. It will be written to this conversation's transcript.
-${
-  readOnlyMode
-    ? ''
-    : `        - "***" sent back to updateMonitor / updateNotification restores the stored value
-          rather than overwriting it, so a read-edit-write round trip is safe.`
-}
-      `,
+      instructions,
       capabilities: {
         logging: {},
       },
@@ -108,7 +149,7 @@ ${
   );
 
   // Must come before the first registerTool: it changes what registering a tool does.
-  installToolRegistration(server, readOnlyMode);
+  installToolRegistration(server, selection);
 
   // Handle logging level changes via the underlying server
   server.server.setRequestHandler(SetLevelRequestSchema, async (request) => {

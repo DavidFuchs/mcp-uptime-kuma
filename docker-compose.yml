@@ -13,6 +13,8 @@ services:
 #      - UPTIME_KUMA_HEADERS=${UPTIME_KUMA_HEADERS}
       # Optional: expose only the tools that report, and none that create, change or delete.
 #      - UPTIME_KUMA_READ_ONLY=true
+      # Optional: register only these tool sets, e.g. monitors,heartbeats. Default: all.
+#      - UPTIME_KUMA_TOOLSETS=monitors,heartbeats
 #      - PORT=3000 # Internal port. This is optional, defaults to 3000
       # Strongly recommended: without MCP_AUTH_TOKEN anyone who can reach this port has full
       # read/write control of your Uptime Kuma instance. Generate one with: openssl rand -base64 32

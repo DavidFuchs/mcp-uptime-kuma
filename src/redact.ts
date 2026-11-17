@@ -428,5 +428,5 @@ export function rehydrateUrlCredentials(
  * Shared wording for the opt-in, so every tool describes it the same way.
  */
 export const INCLUDE_SECRETS_DESCRIPTION =
-  'Return credentials in full instead of "***". Off by default: this output is persisted in ' +
-  'conversation transcripts and logs. Can also be enabled globally with UPTIME_KUMA_INCLUDE_SECRETS=true.';
+  'Return credentials in full instead of "***"; they then stay in the transcript. ' +
+  'Default: false, or UPTIME_KUMA_INCLUDE_SECRETS.';

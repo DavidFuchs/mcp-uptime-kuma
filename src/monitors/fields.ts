@@ -662,9 +662,8 @@ export function parseTypeFields(raw: unknown, topLevel: string[]): Record<string
 }
 
 export const TYPE_FIELDS_DESCRIPTION =
-  'Fields specific to the monitor type, e.g. {"mqttTopic": "sensors/#"} for mqtt or {"bearer_token": "…"} for an HTTP monitor behind authentication. ' +
-  'Call getMonitorTypeFields with the type for the names, meanings and allowed values — they are validated, and an unknown name is refused. ' +
-  'getMonitor returns these fields at the top level of the monitor; to change one, pass it here.';
+  'Type-specific fields, e.g. {"mqttTopic": "sensors/#"} for mqtt or {"bearer_token": "…"} for HTTP with auth. ' +
+  'getMonitorTypeFields names them for a type; an unknown name is refused. getMonitor returns them at the top level.';
 
 /**
  * The refusal for a type that does not exist. It names the valid ones, so a guess such as

@@ -27,7 +27,7 @@ const check = process.argv.includes('--check');
 const transport = new StdioClientTransport({
   command: process.execPath,
   args: [join(root, 'dist', 'index.js'), '-t', 'stdio'],
-  env: { ...process.env, UPTIME_KUMA_URL: 'http://127.0.0.1:9', UPTIME_KUMA_READ_ONLY: '' },
+  env: { ...process.env, UPTIME_KUMA_URL: 'http://127.0.0.1:9', UPTIME_KUMA_READ_ONLY: '', UPTIME_KUMA_TOOLSETS: '' },
   stderr: 'ignore',
 });
 const client = new Client({ name: 'docker-catalog-tools', version: '1.0.0' });
