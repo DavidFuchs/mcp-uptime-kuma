@@ -45,6 +45,26 @@
     }
   },
   {
+    "name": "createAPIKey",
+    "description": "Creates an API key and returns it. It is sent as the password of HTTP basic auth, with any username. This is the only time the key can be read, and it stays in this conversation's transcript, so give it to the user to store and do not repeat it. Note: once any key exists, Uptime Kuma's /metrics endpoint takes API keys instead of the admin username and password, so a Prometheus scraper still using those must switch.",
+    "arguments": [
+      {
+        "name": "name",
+        "type": "string",
+        "desc": "What the key is for, e.g. \"prometheus\""
+      },
+      {
+        "name": "expires",
+        "type": "string",
+        "desc": "When it stops working, in the server's local time: \"YYYY-MM-DD\" (end of that day) or \"YYYY-MM-DD HH:mm\". Omit for never.",
+        "optional": true
+      }
+    ],
+    "annotations": {
+      "title": "Create API Key"
+    }
+  },
+  {
     "name": "createDockerHost",
     "description": "Creates a Docker daemon connection; docker monitors take the returned ID in their docker_host field. Pass dockerType \"socket\" with a socket path, or \"tcp\" with a URL such as http://host:2375 (for example a docker-socket-proxy). The connection is saved without being checked, so call testDockerHost first. To change one use updateDockerHost.",
     "arguments": [
@@ -491,6 +511,85 @@
     }
   },
   {
+    "name": "createProxy",
+    "description": "Adds an HTTP or SOCKS proxy. Monitors use it once their proxyId is set to its ID (createMonitor / updateMonitor), or all at once with applyExisting. Pass username and password for a proxy that needs them.",
+    "arguments": [
+      {
+        "name": "protocol",
+        "type": "string",
+        "desc": "Proxy protocol: http, https, socks, socks5, socks5h, socks4"
+      },
+      {
+        "name": "host",
+        "type": "string",
+        "desc": "Proxy host name or IP address"
+      },
+      {
+        "name": "port",
+        "type": "integer",
+        "desc": "Proxy port"
+      },
+      {
+        "name": "username",
+        "type": "string",
+        "desc": "For a proxy that needs a login",
+        "optional": true
+      },
+      {
+        "name": "password",
+        "type": "string",
+        "desc": "For a proxy that needs a login. A credential.",
+        "optional": true
+      },
+      {
+        "name": "default",
+        "type": "boolean",
+        "desc": "Make it the proxy the web UI preselects for new monitors; the previous default stops being one",
+        "optional": true
+      },
+      {
+        "name": "applyExisting",
+        "type": "boolean",
+        "desc": "Also route every existing monitor through this proxy now. One-off: it is not stored.",
+        "optional": true
+      },
+      {
+        "name": "includeSecrets",
+        "type": "boolean",
+        "desc": "Return credentials in full instead of \"***\"; they then stay in the transcript. Default: false, or UPTIME_KUMA_INCLUDE_SECRETS.",
+        "optional": true
+      }
+    ],
+    "annotations": {
+      "title": "Create Proxy"
+    }
+  },
+  {
+    "name": "createRemoteBrowser",
+    "description": "Adds a remote browser. Real-browser monitors use it once their remote_browser field is set to its ID. Check the URL first with testRemoteBrowser.",
+    "arguments": [
+      {
+        "name": "name",
+        "type": "string",
+        "desc": "A name to tell it apart"
+      },
+      {
+        "name": "url",
+        "type": "string",
+        "desc": "WebSocket endpoint, e.g. ws://browserless:3000?token=…"
+      },
+      {
+        "name": "includeSecrets",
+        "type": "boolean",
+        "desc": "Return credentials in full instead of \"***\"; they then stay in the transcript. Default: false, or UPTIME_KUMA_INCLUDE_SECRETS.",
+        "optional": true
+      }
+    ],
+    "annotations": {
+      "title": "Create Remote Browser"
+    }
+  },
+  {
     "name": "createStatusPage",
     "description": "Creates an empty status page from a title and a slug (lowercase letters, digits and dashes only). It has no groups or monitors yet: add them, and the description and theme, with updateStatusPage.",
     "arguments": [
@@ -526,6 +625,21 @@
     ],
     "annotations": {
       "title": "Create Tag"
+    }
+  },
+  {
+    "name": "deleteAPIKey",
+    "description": "Permanently deletes an API key: anything still using it is refused from then on. To switch it off but keep it, use setAPIKeyActive. Find the ID with listAPIKeys.",
+    "arguments": [
+      {
+        "name": "keyID",
+        "type": "integer",
+        "desc": "The ID of the API key to delete"
+      }
+    ],
+    "annotations": {
+      "title": "Delete API Key",
+      "destructiveHint": true
     }
   },
   {
@@ -605,6 +719,36 @@
     ],
     "annotations": {
       "title": "Delete Notification",
+      "destructiveHint": true
+    }
+  },
+  {
+    "name": "deleteProxy",
+    "description": "Permanently deletes a proxy. Monitors that used it are kept and send their requests directly from then on. Find the ID with listProxies.",
+    "arguments": [
+      {
+        "name": "proxyID",
+        "type": "integer",
+        "desc": "The ID of the proxy to delete"
+      }
+    ],
+    "annotations": {
+      "title": "Delete Proxy",
+      "destructiveHint": true
+    }
+  },
+  {
+    "name": "deleteRemoteBrowser",
+    "description": "Permanently deletes a remote browser. Real-browser monitors that used it are kept and fall back to the built-in Chromium. Find the ID with listRemoteBrowsers.",
+    "arguments": [
+      {
+        "name": "remoteBrowserID",
+        "type": "integer",
+        "desc": "The ID of the remote browser to delete"
+      }
+    ],
+    "annotations": {
+      "title": "Delete Remote Browser",
       "destructiveHint": true
     }
   },
@@ -800,6 +944,14 @@
     }
   },
   {
+    "name": "listAPIKeys",
+    "description": "Returns the API keys for Uptime Kuma's API (such as its Prometheus /metrics endpoint) with name, status (active, inactive or expired) and expiry. The keys themselves cannot be read back: they are shown once, by createAPIKey.",
+    "annotations": {
+      "title": "List API Keys",
+      "readOnlyHint": true
+    }
+  },
+  {
     "name": "listDockerHosts",
     "description": "Returns the Docker daemon connections configured in Uptime Kuma. A docker monitor refers to one by ID in its docker_host field. Credentials embedded in a dockerDaemon URL read \"***\" unless includeSecrets is set.",
     "arguments": [
@@ -969,6 +1121,38 @@
     }
   },
   {
+    "name": "listProxies",
+    "description": "Returns the proxies monitors can send their requests through, with protocol, host, port and username. An HTTP-type monitor uses one by ID in its proxyId field. Passwords read \"***\" unless includeSecrets is set.",
+    "arguments": [
+      {
+        "name": "includeSecrets",
+        "type": "boolean",
+        "desc": "Return credentials in full instead of \"***\"; they then stay in the transcript. Default: false, or UPTIME_KUMA_INCLUDE_SECRETS.",
+        "optional": true
+      }
+    ],
+    "annotations": {
+      "title": "List Proxies",
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "listRemoteBrowsers",
+    "description": "Returns the remote browsers (a Chrome reachable over WebSocket, e.g. browserless) that real-browser monitors can run in instead of the built-in Chromium. A monitor uses one by ID in its remote_browser field. Tokens and logins in a URL read \"***\" unless includeSecrets is set.",
+    "arguments": [
+      {
+        "name": "includeSecrets",
+        "type": "boolean",
+        "desc": "Return credentials in full instead of \"***\"; they then stay in the transcript. Default: false, or UPTIME_KUMA_INCLUDE_SECRETS.",
+        "optional": true
+      }
+    ],
+    "annotations": {
+      "title": "List Remote Browsers",
+      "readOnlyHint": true
+    }
+  },
+  {
     "name": "listStatusPages",
     "description": "Returns every status page with its slug, title, published state and custom domains. The list dates from login, so a page that another client or the web UI created or deleted since may be missing or still listed; changes made through this server show at once, and getStatusPage always reads fresh.",
     "annotations": {
@@ -1001,6 +1185,26 @@
     ],
     "annotations": {
       "title": "Resolve Incident",
+      "idempotentHint": true
+    }
+  },
+  {
+    "name": "setAPIKeyActive",
+    "description": "Switches an API key off (active: false), so requests using it are refused, or back on (active: true). An expired key stays expired. To remove it for good use deleteAPIKey. Find the ID with listAPIKeys.",
+    "arguments": [
+      {
+        "name": "keyID",
+        "type": "integer",
+        "desc": "The ID of the API key"
+      },
+      {
+        "name": "active",
+        "type": "boolean",
+        "desc": "false switches the key off, true back on"
+      }
+    ],
+    "annotations": {
+      "title": "Set API Key Active",
       "idempotentHint": true
     }
   },
@@ -1082,6 +1286,28 @@
     "annotations": {
       "title": "Test Notification",
       "openWorldHint": true
+    }
+  },
+  {
+    "name": "testRemoteBrowser",
+    "description": "Checks that Uptime Kuma can drive a browser at a WebSocket URL, without saving anything: pass url to try one before createRemoteBrowser, or remoteBrowserID to check a saved one.",
+    "arguments": [
+      {
+        "name": "url",
+        "type": "string",
+        "desc": "A ws:// or wss:// endpoint to try",
+        "optional": true
+      },
+      {
+        "name": "remoteBrowserID",
+        "type": "integer",
+        "desc": "A saved remote browser to check",
+        "optional": true
+      }
+    ],
+    "annotations": {
+      "title": "Test Remote Browser",
+      "readOnlyHint": true
     }
   },
   {
@@ -1573,6 +1799,104 @@
     ],
     "annotations": {
       "title": "Update Notification",
+      "destructiveHint": true,
+      "idempotentHint": true
+    }
+  },
+  {
+    "name": "updateProxy",
+    "description": "Changes a proxy. Only the fields you pass change; a password sent back as \"***\" keeps the stored one. Clear username (pass \"\") to stop sending a login. Find the ID with listProxies.",
+    "arguments": [
+      {
+        "name": "proxyID",
+        "type": "integer",
+        "desc": "The ID of the proxy to change"
+      },
+      {
+        "name": "protocol",
+        "type": "string",
+        "desc": "New protocol: http, https, socks, socks5, socks5h, socks4",
+        "optional": true
+      },
+      {
+        "name": "host",
+        "type": "string",
+        "desc": "New host name or IP address",
+        "optional": true
+      },
+      {
+        "name": "port",
+        "type": "integer",
+        "desc": "New port",
+        "optional": true
+      },
+      {
+        "name": "username",
+        "type": "string",
+        "desc": "\"\" stops sending a login",
+        "optional": true
+      },
+      {
+        "name": "password",
+        "type": "string",
+        "desc": "A credential: \"***\" keeps the stored one",
+        "optional": true
+      },
+      {
+        "name": "default",
+        "type": "boolean",
+        "desc": "Make it the proxy the web UI preselects for new monitors; the previous default stops being one",
+        "optional": true
+      },
+      {
+        "name": "applyExisting",
+        "type": "boolean",
+        "desc": "Also route every existing monitor through this proxy now. One-off: it is not stored.",
+        "optional": true
+      },
+      {
+        "name": "includeSecrets",
+        "type": "boolean",
+        "desc": "Return credentials in full instead of \"***\"; they then stay in the transcript. Default: false, or UPTIME_KUMA_INCLUDE_SECRETS.",
+        "optional": true
+      }
+    ],
+    "annotations": {
+      "title": "Update Proxy",
+      "destructiveHint": true,
+      "idempotentHint": true
+    }
+  },
+  {
+    "name": "updateRemoteBrowser",
+    "description": "Changes a remote browser's name or URL; what you leave out keeps its stored value. To change the URL pass it in full: a URL with \"***\" in it is refused, since it would overwrite the stored token. Find the ID with listRemoteBrowsers.",
+    "arguments": [
+      {
+        "name": "remoteBrowserID",
+        "type": "integer",
+        "desc": "The ID of the remote browser to change"
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "desc": "New name",
+        "optional": true
+      },
+      {
+        "name": "url",
+        "type": "string",
+        "desc": "New ws:// or wss:// endpoint, in full",
+        "optional": true
+      },
+      {
+        "name": "includeSecrets",
+        "type": "boolean",
+        "desc": "Return credentials in full instead of \"***\"; they then stay in the transcript. Default: false, or UPTIME_KUMA_INCLUDE_SECRETS.",
+        "optional": true
+      }
+    ],
+    "annotations": {
+      "title": "Update Remote Browser",
       "destructiveHint": true,
       "idempotentHint": true
     }

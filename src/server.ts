@@ -25,6 +25,9 @@ import { registerMaintenanceTools } from './tools/maintenance.js';
 import { registerStatusPageTools } from './tools/status-pages.js';
 import { registerIncidentTools } from './tools/incidents.js';
 import { registerHistoryTools } from './tools/history.js';
+import { registerProxyTools } from './tools/proxies.js';
+import { registerRemoteBrowserTools } from './tools/remote-browsers.js';
+import { registerAPIKeyTools } from './tools/api-keys.js';
 
 // The parts of this module that moved out, still importable from here.
 export { createKumaSession, type KumaSession, type KumaLogSink } from './kuma-session.js';
@@ -59,6 +62,7 @@ const INSTRUCTION_SECTIONS: Array<{ heading: string; lines: string[] }> = [
       `- Use 'listStatusPages' to see status page configurations, or 'getStatusPage' for one page's full details (groups + monitors).`,
       `- Use 'listIncidents' for a status page's incident history; 'getStatusPage' includes the incidents showing now.`,
       `- Use 'listDockerHosts' to see configured docker daemons (used by docker container monitors).`,
+      `- Use 'listProxies' / 'listRemoteBrowsers' for the IDs a monitor's proxyId / remote_browser field takes, and 'listAPIKeys' for API keys.`,
       `- Use 'getSettings' for server settings such as timezone and data retention.`,
     ],
   },
@@ -79,6 +83,9 @@ const INSTRUCTION_SECTIONS: Array<{ heading: string; lines: string[] }> = [
       `- Use 'createStatusPage' / 'updateStatusPage' / 'deleteStatusPage' to manage status pages. Creating returns an empty page — follow up with updateStatusPage to set groups and monitors.`,
       `- Use 'createIncident' to post an incident banner on a status page, 'updateIncident' as it develops and 'resolveIncident' when it is over. 'deleteIncident' removes one from the history.`,
       `- Use 'clearMonitorEvents' / 'clearMonitorHeartbeats' to reset one monitor's history; 'clearAllStatistics' resets every monitor's, only when the user asks.`,
+      `- Use 'createProxy' / 'updateProxy' / 'deleteProxy' to manage the proxies monitors send requests through.`,
+      `- Use 'testRemoteBrowser' before 'createRemoteBrowser'; 'updateRemoteBrowser' / 'deleteRemoteBrowser' manage the rest.`,
+      `- Use 'createAPIKey' to make an API key (shown only once); 'setAPIKeyActive' / 'deleteAPIKey' switch one off or remove it.`,
       `- Use 'updateSettings' to change server settings.`,
     ],
   },
@@ -215,6 +222,9 @@ export async function createServer(
   registerMaintenanceTools(ctx);
   registerStatusPageTools(ctx);
   registerIncidentTools(ctx);
+  registerProxyTools(ctx);
+  registerRemoteBrowserTools(ctx);
+  registerAPIKeyTools(ctx);
 
   return { server, client, authenticateClient };
 }

@@ -33,8 +33,9 @@ Once it's connected, you manage Uptime Kuma by asking your AI assistant in plain
 
 ## Features
 
-- **Manage everything, not just read it.** 47 tools cover monitors of any type, notification
-  channels, tags, maintenance windows, status pages, Docker hosts and server settings. See [Available Tools](#available-tools).
+- **Manage everything, not just read it.** 60 tools cover monitors of any type, notification
+  channels, tags, maintenance windows, status pages and their incidents, proxies, remote browsers, API keys,
+  Docker hosts and server settings. See [Available Tools](#available-tools).
 - **Live data.** The server keeps a Socket.IO connection open to Uptime Kuma, so status and
   heartbeats are current without polling.
 - **Context-friendly.** Summaries come first and full detail only when asked for. The roughly
@@ -519,6 +520,34 @@ because the image speaks stdio by default:
 | `updateDockerHost` | Change an existing docker daemon connection. Fields you don't pass keep their values. |
 | `deleteDockerHost` | Permanently delete a docker daemon connection. Monitors that used it are kept but lose their docker host. |
 
+### Proxies
+
+| Tool | Purpose |
+|------|---------|
+| `listProxies` | List the HTTP and SOCKS proxies monitors can send requests through. A monitor uses one by ID in `proxyId`. |
+| `createProxy` | Add a proxy, optionally with a login, as the default, or applied to every monitor at once. |
+| `updateProxy` | Change a proxy; fields you don't pass keep their values, and `"***"` keeps the password. |
+| `deleteProxy` | Permanently delete a proxy. Monitors that used it go direct. |
+
+### Remote Browsers
+
+| Tool | Purpose |
+|------|---------|
+| `listRemoteBrowsers` | List the remote Chrome instances (e.g. browserless) real-browser monitors can run in. Tokens in the URL are hidden. |
+| `testRemoteBrowser` | Check that Uptime Kuma can drive a browser at a URL, or at a saved remote browser, without saving anything. |
+| `createRemoteBrowser` | Add a remote browser by name and `ws://` / `wss://` URL. |
+| `updateRemoteBrowser` | Change a remote browser's name or URL. |
+| `deleteRemoteBrowser` | Permanently delete a remote browser. Monitors that used it fall back to the built-in Chromium. |
+
+### API Keys
+
+| Tool | Purpose |
+|------|---------|
+| `listAPIKeys` | List API keys with their status and expiry. The keys themselves can't be read back. |
+| `createAPIKey` | Create an API key, optionally expiring. The key is shown only in this answer. Once any key exists, `/metrics` takes API keys instead of the admin login. |
+| `setAPIKeyActive` | Switch an API key off or back on. |
+| `deleteAPIKey` | Permanently delete an API key. |
+
 ### Settings
 
 | Tool | Purpose |
@@ -677,7 +706,7 @@ UPTIME_KUMA_READ_ONLY=true
 ```
 
 The write tools are then not registered at all, so they cannot be called and take up no room in
-the conversation. Fourteen tools remain: the `get…` and `list…` tools, minus
+the conversation. Seventeen tools remain: the `get…` and `list…` tools, minus
 `getMonitorTypeFields`, `listNotificationTypes` and `getNotificationTypeFields`, which only
 serve the write tools. This limits what the MCP server
 offers; it does not change what the Uptime Kuma account itself is allowed to do.
@@ -685,7 +714,7 @@ offers; it does not change what the Uptime Kuma account itself is allowed to do.
 ## Choosing Tool Sets
 
 Every registered tool's definition is sent to the model at the start of each conversation, so
-all 47 take up roughly 15k tokens before you ask anything. To register only the areas you use,
+all 60 take up roughly 18k tokens before you ask anything. To register only the areas you use,
 set `UPTIME_KUMA_TOOLSETS` to a comma-separated list:
 
 ```
@@ -702,6 +731,9 @@ UPTIME_KUMA_TOOLSETS=monitors,heartbeats
 | `status-pages` | `listStatusPages`, `getStatusPage`, `createStatusPage`, `updateStatusPage`, `deleteStatusPage`, `listIncidents`, `createIncident`, `updateIncident`, `resolveIncident`, `deleteIncident` |
 | `docker-hosts` | `listDockerHosts`, `createDockerHost`, `updateDockerHost`, `deleteDockerHost`, `testDockerHost` |
 | `settings` | `getSettings`, `updateSettings` |
+| `proxies` | `listProxies`, `createProxy`, `updateProxy`, `deleteProxy` |
+| `remote-browsers` | `listRemoteBrowsers`, `testRemoteBrowser`, `createRemoteBrowser`, `updateRemoteBrowser`, `deleteRemoteBrowser` |
+| `api-keys` | `listAPIKeys`, `createAPIKey`, `setAPIKeyActive`, `deleteAPIKey` |
 
 Unset, empty or `all` registers every tool set. An unknown name stops the server at startup
 with the list of valid ones, rather than quietly running with fewer tools.
