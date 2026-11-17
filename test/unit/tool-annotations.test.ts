@@ -58,7 +58,7 @@ describe('tool annotations', () => {
       'createNotification',
       'createTag',
       'setMonitorActive',
-      'setMaintenanceActive',
+      'setMaintenanceWindowActive',
     ]) {
       expect(destructive(name), name).toBe(false);
     }
@@ -67,7 +67,7 @@ describe('tool annotations', () => {
   it('marks updates and sets idempotent, and creates and deletes not', async () => {
     const tools = await listTools();
     const idempotent = (name: string) => tools.find((t) => t.name === name)?.annotations?.idempotentHint;
-    for (const name of ['updateMonitor', 'setMonitorActive', 'setMaintenanceActive']) {
+    for (const name of ['updateMonitor', 'setMonitorActive', 'setMaintenanceWindowActive']) {
       expect(idempotent(name), name).toBe(true);
     }
     for (const name of ['createMonitor', 'createTag', 'deleteMonitor']) {

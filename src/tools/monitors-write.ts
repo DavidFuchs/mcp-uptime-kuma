@@ -47,7 +47,7 @@ export function registerMonitorWriteTools(ctx: ToolContext): void {
     {
       title: 'Set Monitor Active',
       description:
-        'Pauses (active: false) or resumes (active: true) a monitor. A paused monitor stops checking, recording heartbeats and alerting; its configuration and history are kept, and resuming restarts checks at once. Setting the state it already has changes nothing. For planned downtime on a schedule use createMaintenance instead; setMaintenanceActive acts on a maintenance window, not a monitor. Find the ID with listMonitors.',
+        'Pauses (active: false) or resumes (active: true) a monitor. A paused monitor stops checking, recording heartbeats and alerting; its configuration and history are kept, and resuming restarts checks at once. Setting the state it already has changes nothing. For planned downtime on a schedule use createMaintenanceWindow instead; setMaintenanceWindowActive acts on a maintenance window, not a monitor. Find the ID with listMonitors.',
       inputSchema: {
         monitorID: requiredId('The ID of the monitor to pause or resume'),
         active: z.boolean().describe('false pauses the monitor, true resumes it'),

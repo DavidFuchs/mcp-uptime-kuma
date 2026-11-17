@@ -17,7 +17,7 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
     'manual',
   ] as const;
 
-  // The schedule fields shared by createMaintenance and updateMaintenance. Each tool applies
+  // The schedule fields shared by createMaintenanceWindow and updateMaintenanceWindow. Each tool applies
   // its own optionality: create requires title and strategy, update requires neither.
   const maintenanceScheduleFields = {
     description: z.string().optional().describe('Description or reason for the maintenance'),
@@ -243,7 +243,7 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
     {
       title: 'List Maintenance Windows',
       description:
-        'Returns every maintenance window with its schedule, whether it is active, and monitorIDs, the monitors it suppresses. A window with an empty monitorIDs list suppresses nothing. Use it to find the ID that updateMaintenance, setMaintenanceActive and deleteMaintenance take.',
+        'Returns every maintenance window with its schedule, whether it is active, and monitorIDs, the monitors it suppresses. A window with an empty monitorIDs list suppresses nothing. Use it to find the ID that updateMaintenanceWindow, setMaintenanceWindowActive and deleteMaintenanceWindow take.',
       inputSchema: {},
       outputSchema: {
         maintenanceWindows: z.array(MaintenanceSchema).describe('Array of maintenance windows'),
@@ -272,11 +272,11 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
   );
 
   server.registerTool(
-    'createMaintenance',
+    'createMaintenanceWindow',
     {
-      title: 'Create Maintenance',
+      title: 'Create Maintenance Window',
       description:
-        'Schedules a new maintenance window: while it is in effect the monitors in monitorIDs show MAINTENANCE instead of DOWN and do not alert. A window without monitorIDs suppresses nothing. strategy sets the schedule; "manual" makes a window you switch on and off with setMaintenanceActive. To stop one monitor\'s checks outright use setMonitorActive.',
+        'Schedules a new maintenance window: while it is in effect the monitors in monitorIDs show MAINTENANCE instead of DOWN and do not alert. A window without monitorIDs suppresses nothing. strategy sets the schedule; "manual" makes a window you switch on and off with setMaintenanceWindowActive. To stop one monitor\'s checks outright use setMonitorActive.',
       inputSchema: {
         title: z.string().describe('Title of the maintenance window'),
         strategy: z
@@ -317,7 +317,7 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
           if (problems.length > 0) {
             return errorResult(
               `${problems.join('\n\n')}\n\nMaintenance window ${maintenanceID} EXISTS — do not create it again. ` +
-                `Fix it with updateMaintenance, or remove it with deleteMaintenance ${maintenanceID}.`,
+                `Fix it with updateMaintenanceWindow, or remove it with deleteMaintenanceWindow ${maintenanceID}.`,
               text,
               structuredContent
             );
@@ -328,7 +328,8 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
           structuredContent.monitorIDs = [...new Set(monitorIDs)].sort((a, b) => a - b);
           text += `, covering monitors ${(structuredContent.monitorIDs as number[]).join(', ')}.`;
         } else {
-          text += '. It has no monitors, so it suppresses nothing — add them with updateMaintenance (monitorIDs).';
+          text +=
+            '. It has no monitors, so it suppresses nothing — add them with updateMaintenanceWindow (monitorIDs).';
         }
 
         return {
@@ -343,15 +344,18 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
   );
 
   server.registerTool(
-    'updateMaintenance',
+    'updateMaintenanceWindow',
     {
-      title: 'Update Maintenance',
+      title: 'Update Maintenance Window',
       description:
-        'Updates an existing maintenance window. Only the fields you pass change, except monitorIDs, which replaces the whole monitor list. To switch a window on or off use setMaintenanceActive. Find the ID with listMaintenanceWindows.',
+        'Updates an existing maintenance window. Only the fields you pass change, except monitorIDs, which replaces the whole monitor list. To switch a window on or off use setMaintenanceWindowActive. Find the ID with listMaintenanceWindows.',
       inputSchema: {
         maintenanceID: requiredId('The ID of the maintenance window to update'),
         title: z.string().optional().describe('Title of the maintenance window'),
-        strategy: z.enum(MAINTENANCE_STRATEGIES).optional().describe('Scheduling strategy (see createMaintenance)'),
+        strategy: z
+          .enum(MAINTENANCE_STRATEGIES)
+          .optional()
+          .describe('Scheduling strategy (see createMaintenanceWindow)'),
         ...maintenanceScheduleFields,
       },
       outputSchema: {
@@ -427,9 +431,9 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
   // One tool for switching a window off and on: they were pauseMaintenance and
   // resumeMaintenance, which took the same argument and differed only in direction.
   server.registerTool(
-    'setMaintenanceActive',
+    'setMaintenanceWindowActive',
     {
-      title: 'Set Maintenance Active',
+      title: 'Set Maintenance Window Active',
       description:
         "Switches a maintenance window off (active: false) or back on (active: true). Off, it stops suppressing its monitors and its schedule stops; on, a manual window starts maintenance immediately and a scheduled one follows its schedule again. It acts on a maintenance window; to stop a monitor's checks use setMonitorActive. Find the ID with listMaintenanceWindows.",
       inputSchema: {
@@ -472,11 +476,11 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
   );
 
   server.registerTool(
-    'deleteMaintenance',
+    'deleteMaintenanceWindow',
     {
-      title: 'Delete Maintenance',
+      title: 'Delete Maintenance Window',
       description:
-        'Permanently deletes a maintenance window; its monitors return to normal alerting. To switch it off but keep it, use setMaintenanceActive. Find the ID with listMaintenanceWindows.',
+        'Permanently deletes a maintenance window; its monitors return to normal alerting. To switch it off but keep it, use setMaintenanceWindowActive. Find the ID with listMaintenanceWindows.',
       inputSchema: {
         maintenanceID: requiredId('The ID of the maintenance window to delete'),
       },

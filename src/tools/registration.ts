@@ -52,10 +52,10 @@ export const WRITE_TOOLS: ReadonlySet<string> = new Set([
   'createTag',
   'updateTag',
   'deleteTag',
-  'createMaintenance',
-  'updateMaintenance',
-  'deleteMaintenance',
-  'setMaintenanceActive',
+  'createMaintenanceWindow',
+  'updateMaintenanceWindow',
+  'deleteMaintenanceWindow',
+  'setMaintenanceWindowActive',
   'updateSettings',
   'createStatusPage',
   'updateStatusPage',
@@ -90,7 +90,7 @@ export function toolAnnotations(name: string): {
   }
   // Deleting removes; updating replaces what was stored, a status page's groups included.
   const destructive = name.startsWith('delete') || name.startsWith('update');
-  // Repeating an update or a set (setMonitorActive, setMaintenanceActive) with the same
+  // Repeating an update or a set (setMonitorActive, setMaintenanceWindowActive) with the same
   // arguments leaves the same state. A second create makes a second object, and a second
   // delete fails.
   const idempotent = name.startsWith('update') || name.startsWith('set');

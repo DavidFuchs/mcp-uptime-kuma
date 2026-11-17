@@ -24,8 +24,8 @@
     }
   },
   {
-    "name": "createMaintenance",
-    "description": "Schedules a new maintenance window: while it is in effect the monitors in monitorIDs show MAINTENANCE instead of DOWN and do not alert. A window without monitorIDs suppresses nothing. strategy sets the schedule; \"manual\" makes a window you switch on and off with setMaintenanceActive. To stop one monitor's checks outright use setMonitorActive.",
+    "name": "createMaintenanceWindow",
+    "description": "Schedules a new maintenance window: while it is in effect the monitors in monitorIDs show MAINTENANCE instead of DOWN and do not alert. A window without monitorIDs suppresses nothing. strategy sets the schedule; \"manual\" makes a window you switch on and off with setMaintenanceWindowActive. To stop one monitor's checks outright use setMonitorActive.",
     "arguments": [
       {
         "name": "title",
@@ -120,7 +120,7 @@
       }
     ],
     "annotations": {
-      "title": "Create Maintenance"
+      "title": "Create Maintenance Window"
     }
   },
   {
@@ -460,8 +460,8 @@
     }
   },
   {
-    "name": "deleteMaintenance",
-    "description": "Permanently deletes a maintenance window; its monitors return to normal alerting. To switch it off but keep it, use setMaintenanceActive. Find the ID with listMaintenanceWindows.",
+    "name": "deleteMaintenanceWindow",
+    "description": "Permanently deletes a maintenance window; its monitors return to normal alerting. To switch it off but keep it, use setMaintenanceWindowActive. Find the ID with listMaintenanceWindows.",
     "arguments": [
       {
         "name": "maintenanceID",
@@ -470,7 +470,7 @@
       }
     ],
     "annotations": {
-      "title": "Delete Maintenance",
+      "title": "Delete Maintenance Window",
       "destructiveHint": true
     }
   },
@@ -726,7 +726,7 @@
   },
   {
     "name": "listMaintenanceWindows",
-    "description": "Returns every maintenance window with its schedule, whether it is active, and monitorIDs, the monitors it suppresses. A window with an empty monitorIDs list suppresses nothing. Use it to find the ID that updateMaintenance, setMaintenanceActive and deleteMaintenance take.",
+    "description": "Returns every maintenance window with its schedule, whether it is active, and monitorIDs, the monitors it suppresses. A window with an empty monitorIDs list suppresses nothing. Use it to find the ID that updateMaintenanceWindow, setMaintenanceWindowActive and deleteMaintenanceWindow take.",
     "annotations": {
       "title": "List Maintenance Windows",
       "readOnlyHint": true
@@ -839,7 +839,7 @@
     }
   },
   {
-    "name": "setMaintenanceActive",
+    "name": "setMaintenanceWindowActive",
     "description": "Switches a maintenance window off (active: false) or back on (active: true). Off, it stops suppressing its monitors and its schedule stops; on, a manual window starts maintenance immediately and a scheduled one follows its schedule again. It acts on a maintenance window; to stop a monitor's checks use setMonitorActive. Find the ID with listMaintenanceWindows.",
     "arguments": [
       {
@@ -854,13 +854,13 @@
       }
     ],
     "annotations": {
-      "title": "Set Maintenance Active",
+      "title": "Set Maintenance Window Active",
       "idempotentHint": true
     }
   },
   {
     "name": "setMonitorActive",
-    "description": "Pauses (active: false) or resumes (active: true) a monitor. A paused monitor stops checking, recording heartbeats and alerting; its configuration and history are kept, and resuming restarts checks at once. Setting the state it already has changes nothing. For planned downtime on a schedule use createMaintenance instead; setMaintenanceActive acts on a maintenance window, not a monitor. Find the ID with listMonitors.",
+    "description": "Pauses (active: false) or resumes (active: true) a monitor. A paused monitor stops checking, recording heartbeats and alerting; its configuration and history are kept, and resuming restarts checks at once. Setting the state it already has changes nothing. For planned downtime on a schedule use createMaintenanceWindow instead; setMaintenanceWindowActive acts on a maintenance window, not a monitor. Find the ID with listMonitors.",
     "arguments": [
       {
         "name": "monitorID",
@@ -938,8 +938,8 @@
     }
   },
   {
-    "name": "updateMaintenance",
-    "description": "Updates an existing maintenance window. Only the fields you pass change, except monitorIDs, which replaces the whole monitor list. To switch a window on or off use setMaintenanceActive. Find the ID with listMaintenanceWindows.",
+    "name": "updateMaintenanceWindow",
+    "description": "Updates an existing maintenance window. Only the fields you pass change, except monitorIDs, which replaces the whole monitor list. To switch a window on or off use setMaintenanceWindowActive. Find the ID with listMaintenanceWindows.",
     "arguments": [
       {
         "name": "maintenanceID",
@@ -955,7 +955,7 @@
       {
         "name": "strategy",
         "type": "string",
-        "desc": "Scheduling strategy (see createMaintenance)",
+        "desc": "Scheduling strategy (see createMaintenanceWindow)",
         "optional": true
       },
       {
@@ -1035,7 +1035,7 @@
       }
     ],
     "annotations": {
-      "title": "Update Maintenance",
+      "title": "Update Maintenance Window",
       "destructiveHint": true,
       "idempotentHint": true
     }

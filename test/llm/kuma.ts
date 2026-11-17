@@ -54,7 +54,7 @@ export async function sweep(ctx: TestContext): Promise<number> {
 
   const { maintenanceWindows = [] } = await call(ctx, 'listMaintenanceWindows');
   for (const w of maintenanceWindows as any[])
-    if (hasPrefix(w.title)) await del('deleteMaintenance', { maintenanceID: w.id });
+    if (hasPrefix(w.title)) await del('deleteMaintenanceWindow', { maintenanceID: w.id });
 
   const { notifications = [] } = await call(ctx, 'listNotifications');
   for (const n of notifications as any[])

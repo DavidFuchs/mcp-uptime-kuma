@@ -192,9 +192,9 @@ describe('numeric arguments reject junk instead of coercing it', () => {
   });
 
   /** Nested numerics are the easiest to miss, being neither top-level nor swept above. */
-  it('applies inside createMaintenance time ranges', () => {
+  it('applies inside createMaintenanceWindow time ranges', () => {
     const withHours = (hours: unknown) =>
-      tools.createMaintenance.inputSchema!.safeParse({
+      tools.createMaintenanceWindow.inputSchema!.safeParse({
         title: 'x',
         strategy: 'recurring-interval',
         timeRange: [{ hours, minutes: 0 }],
