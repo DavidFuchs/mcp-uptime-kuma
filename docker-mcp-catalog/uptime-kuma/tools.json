@@ -645,7 +645,7 @@
   },
   {
     "name": "getSettings",
-    "description": "Returns the Uptime Kuma server settings, such as timezone, primary base URL and data retention. Only settings that have been saved are returned, so a missing key (for example primaryBaseURL) has never been set. Credentials read \"***\" unless includeSecrets is set. Settings are read-only through this server.",
+    "description": "Returns the Uptime Kuma server settings, such as timezone, primary base URL and data retention. Only settings that have been saved are returned, so a missing key (for example primaryBaseURL) has never been set. Credentials read \"***\" unless includeSecrets is set. To change a setting use updateSettings.",
     "arguments": [
       {
         "name": "includeSecrets",
@@ -1338,6 +1338,131 @@
     ],
     "annotations": {
       "title": "Update Notification",
+      "destructiveHint": true,
+      "idempotentHint": true
+    }
+  },
+  {
+    "name": "updateSettings",
+    "description": "Changes Uptime Kuma server settings: timezone, primary base URL, entry page, data retention, certificate and domain expiry warning days, search engine indexing, update checks, reverse-proxy trust, NSCD, the Chrome path, API and Prometheus access, the Steam and Globalping credentials, and whether login is required. Pass only what should change; every other setting keeps its stored value. Returns the settings as saved. Turning login off (disableAuth: true) needs the admin password in currentPassword and leaves the dashboard open to anyone who can reach it; turning it back on logs out every other session. Read the current values with getSettings.",
+    "arguments": [
+      {
+        "name": "serverTimezone",
+        "type": "string",
+        "desc": "IANA timezone the server shows times and schedules maintenance in, e.g. \"America/Edmonton\" or \"UTC\"",
+        "optional": true
+      },
+      {
+        "name": "primaryBaseURL",
+        "type": "string",
+        "desc": "The public address of this Uptime Kuma, used for links in notifications, e.g. \"https://status.example.com\". \"\" clears it.",
+        "optional": true
+      },
+      {
+        "name": "entryPage",
+        "type": "string",
+        "desc": "What \"/\" opens: \"dashboard\", or a status page as \"statusPage-<slug>\". Find slugs with listStatusPages.",
+        "optional": true
+      },
+      {
+        "name": "keepDataPeriodDays",
+        "type": "integer",
+        "desc": "Days of heartbeat history to keep; older beats are deleted",
+        "optional": true
+      },
+      {
+        "name": "tlsExpiryNotifyDays",
+        "type": "array",
+        "desc": "Days before a TLS certificate expires to send a warning, e.g. [7, 14, 21]. Replaces the whole list.",
+        "items": {
+          "type": "integer"
+        },
+        "optional": true
+      },
+      {
+        "name": "domainExpiryNotifyDays",
+        "type": "array",
+        "desc": "Days before a domain registration expires to send a warning. Replaces the whole list.",
+        "items": {
+          "type": "integer"
+        },
+        "optional": true
+      },
+      {
+        "name": "searchEngineIndex",
+        "type": "boolean",
+        "desc": "Let search engines index status pages",
+        "optional": true
+      },
+      {
+        "name": "checkUpdate",
+        "type": "boolean",
+        "desc": "Show when a new Uptime Kuma version is available",
+        "optional": true
+      },
+      {
+        "name": "trustProxy",
+        "type": "boolean",
+        "desc": "Trust X-Forwarded-* headers. Set only when Uptime Kuma sits behind a reverse proxy.",
+        "optional": true
+      },
+      {
+        "name": "nscd",
+        "type": "boolean",
+        "desc": "Cache DNS lookups with NSCD (Docker images only)",
+        "optional": true
+      },
+      {
+        "name": "chromeExecutable",
+        "type": "string",
+        "desc": "Path of the Chrome or Chromium binary real-browser monitors run, e.g. \"/usr/bin/chromium\". \"\" auto-detects. Changing it restarts the browser.",
+        "optional": true
+      },
+      {
+        "name": "apiEnabled",
+        "type": "boolean",
+        "desc": "The \"API\" switch in Settings > General",
+        "optional": true
+      },
+      {
+        "name": "prometheusApiEnabled",
+        "type": "boolean",
+        "desc": "Collect Prometheus metrics. Changing it starts or stops the collection.",
+        "optional": true
+      },
+      {
+        "name": "steamAPIKey",
+        "type": "string",
+        "desc": "Steam Web API key, used by Steam game server monitors. A credential: \"***\" (what read tools return) keeps the stored key, \"\" clears it.",
+        "optional": true
+      },
+      {
+        "name": "globalpingApiToken",
+        "type": "string",
+        "desc": "Globalping API token, used by globalping monitors. A credential: \"***\" (what read tools return) keeps the stored token, \"\" clears it.",
+        "optional": true
+      },
+      {
+        "name": "disableAuth",
+        "type": "boolean",
+        "desc": "true turns login off: anyone who can reach Uptime Kuma gets full control. Needs currentPassword. false turns login back on and logs out every other session.",
+        "optional": true
+      },
+      {
+        "name": "currentPassword",
+        "type": "string",
+        "desc": "The admin password. Required only to turn login off (disableAuth: true) while it is on; never stored or returned.",
+        "optional": true
+      },
+      {
+        "name": "includeSecrets",
+        "type": "boolean",
+        "desc": "Return credentials in full instead of \"***\". Off by default: this output is persisted in conversation transcripts and logs. Can also be enabled globally with UPTIME_KUMA_INCLUDE_SECRETS=true.",
+        "optional": true
+      }
+    ],
+    "annotations": {
+      "title": "Update Settings",
       "destructiveHint": true,
       "idempotentHint": true
     }

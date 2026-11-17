@@ -56,6 +56,7 @@ export const WRITE_TOOLS: ReadonlySet<string> = new Set([
   'updateMaintenance',
   'deleteMaintenance',
   'setMaintenanceActive',
+  'updateSettings',
   'createStatusPage',
   'updateStatusPage',
   'deleteStatusPage',
