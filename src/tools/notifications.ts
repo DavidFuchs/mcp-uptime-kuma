@@ -43,6 +43,24 @@ function notificationProblem(type: unknown, config: Record<string, unknown>): st
   return undefined;
 }
 
+/**
+ * A stored channel's config as an object. Uptime Kuma keeps it as a JSON string (type and
+ * provider fields included); anything unreadable is treated as empty.
+ */
+function storedNotificationConfig(stored: Record<string, unknown>): Record<string, unknown> {
+  const raw = stored['config'];
+  if (typeof raw === 'string') {
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+    } catch {
+      // Unreadable: treated as empty.
+    }
+    return {};
+  }
+  return raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+}
+
 /** The notification channel tools. */
 export function registerNotificationTools(ctx: ToolContext): void {
   const { server, client, authenticateClient, wantsSecrets, includeSecretsParam } = ctx;
@@ -286,20 +304,7 @@ export function registerNotificationTools(ctx: ToolContext): void {
         if (!stored) {
           throw new Error(`Notification ${notificationID} not found — call listNotifications to see available IDs`);
         }
-        let storedConfig: Record<string, unknown> = {};
-        const rawStored = stored['config'];
-        if (typeof rawStored === 'string') {
-          try {
-            const parsed: unknown = JSON.parse(rawStored);
-            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-              storedConfig = parsed as Record<string, unknown>;
-            }
-          } catch {
-            storedConfig = {};
-          }
-        } else if (rawStored && typeof rawStored === 'object' && !Array.isArray(rawStored)) {
-          storedConfig = rawStored as Record<string, unknown>;
-        }
+        const storedConfig = storedNotificationConfig(stored);
 
         // A different provider shares no settings with the old one. Carrying them over would
         // leave the old provider's fields, credentials among them, in a config that no longer
@@ -393,6 +398,49 @@ export function registerNotificationTools(ctx: ToolContext): void {
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         throw new McpError(ErrorCode.InternalError, `Failed to delete notification: ${errorMessage}`);
+      }
+    }
+  );
+  server.registerTool(
+    'testNotification',
+    {
+      title: 'Test Notification',
+      description:
+        'Sends a test message ("<channel name> Testing") through a saved notification channel, as the Test button in Uptime Kuma does, to check its settings work. It really is delivered, to Slack, email or wherever the channel points, so do not repeat it without reason. Nothing is saved. Find the ID with listNotifications.',
+      inputSchema: {
+        notificationID: requiredId('The ID of the channel to test'),
+      },
+      outputSchema: {
+        ok: z.boolean(),
+        msg: z.string().optional().describe('The provider\'s answer, e.g. "Sent Successfully."'),
+      },
+    },
+    async ({ notificationID }) => {
+      await authenticateClient();
+
+      try {
+        const stored = client
+          .getNotificationList()
+          .find((n) => (n as Record<string, unknown>)['id'] === notificationID) as Record<string, unknown> | undefined;
+        if (!stored) {
+          throw new Error(`Notification ${notificationID} not found — call listNotifications to see available IDs`);
+        }
+        // testNotification takes the whole config, as the web UI's form holds it, not an ID.
+        const config = storedNotificationConfig(stored);
+        const response = await client.testNotification({
+          ...config,
+          name: config['name'] ?? stored['name'],
+          type: config['type'] ?? stored['type'],
+        });
+        return {
+          content: [
+            { type: 'text', text: `Test notification sent through channel ${notificationID}: ${response.msg ?? 'ok'}` },
+          ],
+          structuredContent: { ok: response.ok, msg: response.msg },
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new McpError(ErrorCode.InternalError, `Failed to send the test notification: ${errorMessage}`);
       }
     }
   );

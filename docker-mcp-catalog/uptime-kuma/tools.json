@@ -1,5 +1,50 @@
 [
   {
+    "name": "clearAllStatistics",
+    "description": "Deletes the heartbeats and uptime statistics of EVERY monitor, and restarts the active ones; monitors and settings are kept. Cannot be undone. Only when the user explicitly asks to reset all history: confirm with them first, then pass confirm: true. For one monitor use clearMonitorHeartbeats.",
+    "arguments": [
+      {
+        "name": "confirm",
+        "type": "boolean",
+        "desc": "Must be true: confirms that the user asked to delete every monitor's history"
+      }
+    ],
+    "annotations": {
+      "title": "Clear All Statistics",
+      "destructiveHint": true
+    }
+  },
+  {
+    "name": "clearMonitorEvents",
+    "description": "Empties a monitor's event list, the status changes listHeartbeats returns with important: true: every heartbeat's message is blanked and none counts as a status change any more. The heartbeats and the uptime statistics are kept. Cannot be undone.",
+    "arguments": [
+      {
+        "name": "monitorID",
+        "type": "integer",
+        "desc": "The monitor whose events to clear. Find IDs with listMonitors."
+      }
+    ],
+    "annotations": {
+      "title": "Clear Monitor Events",
+      "destructiveHint": true
+    }
+  },
+  {
+    "name": "clearMonitorHeartbeats",
+    "description": "Deletes all of one monitor's heartbeats and uptime statistics, so its history and uptime start again from the next check; an active monitor is restarted. The monitor and its settings are kept. Cannot be undone. To clear only its event list, use clearMonitorEvents; for every monitor at once, clearAllStatistics.",
+    "arguments": [
+      {
+        "name": "monitorID",
+        "type": "integer",
+        "desc": "The monitor whose history to delete. Find IDs with listMonitors."
+      }
+    ],
+    "annotations": {
+      "title": "Clear Monitor Heartbeats",
+      "destructiveHint": true
+    }
+  },
+  {
     "name": "createDockerHost",
     "description": "Creates a Docker daemon connection; docker monitors take the returned ID in their docker_host field. Pass dockerType \"socket\" with a socket path, or \"tcp\" with a URL such as http://host:2375 (for example a docker-socket-proxy). The connection is saved without being checked, so call testDockerHost first. To change one use updateDockerHost.",
     "arguments": [
@@ -688,6 +733,27 @@
     }
   },
   {
+    "name": "getMonitorUptime",
+    "description": "Returns a monitor's uptime percentage, check counts and ping (min/avg/max) over the last N hours, up to a year, with the minutes, hours or days in which checks failed, newest first. Use it for \"what was the uptime this week?\"; for the current status use getMonitorSummary, and for individual checks listHeartbeats. Counted as Uptime Kuma counts them: PENDING is down, and MAINTENANCE is neither.",
+    "arguments": [
+      {
+        "name": "monitorID",
+        "type": "integer",
+        "desc": "The monitor to report on. Find IDs with listMonitors."
+      },
+      {
+        "name": "hours",
+        "type": "integer",
+        "desc": "How far back, in hours (default: 24; e.g. 168 for a week, 720 for 30 days). Up to 24 is counted per minute, up to 720 per hour, beyond that per whole day.",
+        "optional": true
+      }
+    ],
+    "annotations": {
+      "title": "Get Monitor Uptime",
+      "readOnlyHint": true
+    }
+  },
+  {
     "name": "getNotificationTypeFields",
     "description": "Describes the config fields one notification type takes: which are required, which are optional and what each means. Call it before createNotification, or before updateNotification changes a type or its settings: field names are case-sensitive and Uptime Kuma saves a misspelled one without complaint. The common types are covered; for the rest it says so, and their field names can be copied from an existing channel in listNotifications. Type names come from listNotificationTypes.",
     "arguments": [
@@ -1001,6 +1067,21 @@
     "annotations": {
       "title": "Test Docker Host",
       "readOnlyHint": true
+    }
+  },
+  {
+    "name": "testNotification",
+    "description": "Sends a test message (\"<channel name> Testing\") through a saved notification channel, as the Test button in Uptime Kuma does, to check its settings work. It really is delivered, to Slack, email or wherever the channel points, so do not repeat it without reason. Nothing is saved. Find the ID with listNotifications.",
+    "arguments": [
+      {
+        "name": "notificationID",
+        "type": "integer",
+        "desc": "The ID of the channel to test"
+      }
+    ],
+    "annotations": {
+      "title": "Test Notification",
+      "openWorldHint": true
     }
   },
   {

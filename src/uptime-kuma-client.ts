@@ -11,6 +11,7 @@ import type {
   MonitorSummary,
   Heartbeat,
   HeartbeatList,
+  UptimeBucket,
   GetSettingsResponse,
   Settings,
   Notification,
@@ -1870,6 +1871,68 @@ export class UptimeKumaClient {
     );
     this.safeLog('info', `Set ${statusPageIDs.length} status page(s) on maintenance window ${maintenanceID}`);
     return response;
+  }
+
+  // ─── Monitor history and statistics ─────────────────────────────────────────
+
+  /**
+   * Uptime buckets for the last `hours` (Uptime Kuma's getMonitorChartData): per minute up to 24
+   * hours, per hour up to 720 (30 days), per day beyond, up to 365 days. Each bucket counts the
+   * checks that came up and down in it, with their ping; buckets without checks are left out.
+   */
+  async getMonitorChartData(monitorID: number, hours: number): Promise<UptimeBucket[]> {
+    const response = await this.readBack<{ data?: UptimeBucket[] }>(
+      'getMonitorChartData',
+      [monitorID, hours],
+      `the uptime statistics of monitor ${monitorID}`
+    );
+    return response.data ?? [];
+  }
+
+  /**
+   * Clear a monitor's event list (Uptime Kuma's clearEvents): every heartbeat's message is
+   * blanked and none counts as a status change any more. Heartbeats and uptime are kept.
+   */
+  async clearEvents(monitorID: number): Promise<ApiResponse> {
+    const response = await this.request(
+      'clearEvents',
+      [monitorID],
+      `Failed to clear the events of monitor ${monitorID}`
+    );
+    this.safeLog('info', `Cleared the events of monitor ${monitorID}`);
+    return response;
+  }
+
+  /**
+   * Delete a monitor's heartbeats and uptime statistics (Uptime Kuma's clearHeartbeats). An
+   * active monitor is restarted, so its history starts again with the next check.
+   */
+  async clearHeartbeats(monitorID: number): Promise<ApiResponse> {
+    const response = await this.request(
+      'clearHeartbeats',
+      [monitorID],
+      `Failed to clear the heartbeats of monitor ${monitorID}`
+    );
+    this.safeLog('info', `Cleared the heartbeats of monitor ${monitorID}`);
+    return response;
+  }
+
+  /**
+   * Delete the heartbeats and uptime statistics of every monitor (Uptime Kuma's
+   * clearStatistics), and restart every active monitor.
+   */
+  async clearStatistics(): Promise<ApiResponse> {
+    const response = await this.request('clearStatistics', [], 'Failed to clear statistics');
+    this.safeLog('info', 'Cleared the heartbeats and statistics of every monitor');
+    return response;
+  }
+
+  /**
+   * Send a test message through a notification channel (Uptime Kuma's testNotification). It
+   * takes the channel's whole config, not an ID, and sends "<name> Testing". Nothing is saved.
+   */
+  async testNotification(notification: Record<string, unknown>): Promise<ApiResponse> {
+    return this.request('testNotification', [notification], 'Failed to send the test notification');
   }
 
   // ─── Socket accessor ─────────────────────────────────────────────────────────

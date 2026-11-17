@@ -24,6 +24,7 @@ export const READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
   'listMonitorTypes',
   'getMonitorSummary',
   'listHeartbeats',
+  'getMonitorUptime',
   'getSettings',
   'listNotifications',
   'listDockerHosts',
@@ -46,6 +47,10 @@ export const WRITE_TOOLS: ReadonlySet<string> = new Set([
   'createNotification',
   'updateNotification',
   'deleteNotification',
+  'testNotification',
+  'clearMonitorEvents',
+  'clearMonitorHeartbeats',
+  'clearAllStatistics',
   'createDockerHost',
   'updateDockerHost',
   'deleteDockerHost',
@@ -83,7 +88,13 @@ export const TOOLSETS = {
     'deleteMonitor',
     'setMonitorActive',
   ],
-  heartbeats: ['listHeartbeats'],
+  heartbeats: [
+    'listHeartbeats',
+    'getMonitorUptime',
+    'clearMonitorEvents',
+    'clearMonitorHeartbeats',
+    'clearAllStatistics',
+  ],
   notifications: [
     'listNotifications',
     'listNotificationTypes',
@@ -91,6 +102,7 @@ export const TOOLSETS = {
     'createNotification',
     'updateNotification',
     'deleteNotification',
+    'testNotification',
   ],
   tags: ['listTags', 'createTag', 'updateTag', 'deleteTag'],
   maintenance: [
@@ -169,7 +181,8 @@ export const CHANGE_NOTHING_TOOLS: ReadonlySet<string> = new Set([
  * asking and what deserves a confirmation.
  *
  * Derived from the tool's name so that a tool added later is covered without an entry here.
- * Nothing reaches beyond the one Uptime Kuma instance, hence openWorldHint: false throughout.
+ * Only testNotification reaches beyond the one Uptime Kuma instance (it delivers a message), so
+ * it alone has openWorldHint: true.
  */
 export function toolAnnotations(name: string): {
   readOnlyHint: boolean;
@@ -182,14 +195,18 @@ export function toolAnnotations(name: string): {
   if (READ_ONLY_TOOLS.has(name) || CHANGE_NOTHING_TOOLS.has(name)) {
     return { readOnlyHint: true, openWorldHint: false };
   }
-  // Deleting removes; updating replaces what was stored, a status page's groups included.
-  const destructive = name.startsWith('delete') || name.startsWith('update');
+  // Deleting and clearing remove; updating replaces what was stored, a status page's groups
+  // included.
+  const destructive = name.startsWith('delete') || name.startsWith('update') || name.startsWith('clear');
   // Repeating an update or a set (setMonitorActive, setMaintenanceWindowActive) with the same
   // arguments leaves the same state. A second create makes a second object, and a second
   // delete fails.
   // Resolving an incident twice leaves it resolved.
   const idempotent = name.startsWith('update') || name.startsWith('set') || name.startsWith('resolve');
-  return { readOnlyHint: false, destructiveHint: destructive, idempotentHint: idempotent, openWorldHint: false };
+  // The one tool whose effect leaves Uptime Kuma: a test message is delivered to Slack, email
+  // or wherever the channel points.
+  const openWorld = name === 'testNotification';
+  return { readOnlyHint: false, destructiveHint: destructive, idempotentHint: idempotent, openWorldHint: openWorld };
 }
 
 const DRAFT_07_DIALECT = 'http://json-schema.org/draft-07/schema#';

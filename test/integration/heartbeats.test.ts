@@ -181,4 +181,50 @@ export const heartbeatTests: Array<{ name: string; fn: TestFn }> = [
       console.log('  ⚠ important: no monitor has ≥2 status changes yet (call succeeded)');
     },
   },
+  {
+    name: 'getMonitorUptime counts real checks; clearMonitorEvents and clearMonitorHeartbeats run',
+    fn: async ({ client }) => {
+      const call = async (name: string, args: Record<string, unknown>) => {
+        const result = (await client.callTool({ name, arguments: args })) as CallToolResult & {
+          structuredContent: Record<string, any>;
+        };
+        if (result.isError) throw new Error(`${name} failed: ${extractText(result, name)}`);
+        return result.structuredContent;
+      };
+
+      // Uptime Kuma itself, from inside its container: UP on the first check, made at once.
+      const created = await call('createMonitor', {
+        name: 'zz-uptime-history-delete-me',
+        type: 'http',
+        url: 'http://127.0.0.1:3001',
+        interval: 20,
+      });
+      const monitorID = created.monitorID as number;
+      if (!monitorID) throw new Error('createMonitor returned no monitorID');
+      try {
+        let uptime: Record<string, any> = {};
+        for (let i = 0; i < 30; i++) {
+          uptime = await call('getMonitorUptime', { monitorID, hours: 1 });
+          if (uptime.checks.up > 0) break;
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+        if (!(uptime.checks.up > 0)) throw new Error(`no UP check counted: ${JSON.stringify(uptime)}`);
+        if (uptime.uptimePercent !== 100) throw new Error(`expected 100% up, got ${uptime.uptimePercent}`);
+        if (uptime.granularity !== 'minute') throw new Error(`expected minute buckets, got ${uptime.granularity}`);
+
+        const week = await call('getMonitorUptime', { monitorID, hours: 168 });
+        if (week.granularity !== 'hour' || !(week.checks.up > 0)) {
+          throw new Error(`a week did not count the check per hour: ${JSON.stringify(week)}`);
+        }
+
+        await call('clearMonitorEvents', { monitorID });
+        await call('clearMonitorHeartbeats', { monitorID });
+        console.log(
+          `  ✓ getMonitorUptime: ${uptime.checks.up} UP check(s), 100%; clear tools ran on monitor ${monitorID}`
+        );
+      } finally {
+        await client.callTool({ name: 'deleteMonitor', arguments: { monitorID } });
+      }
+    },
+  },
 ];
