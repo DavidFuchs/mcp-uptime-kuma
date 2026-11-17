@@ -40,3 +40,6 @@ export * from './status-page.js';
 
 // Docker host schemas
 export * from './docker-host.js';
+
+// Proxies, remote browsers and API keys
+export * from './proxy.js';

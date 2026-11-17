@@ -15,9 +15,12 @@ What is withheld:
 | `listNotifications` | everything in `config` except `type`/`name`/`isDefault`/`applyExisting`. The withheld field names are listed in `redactedConfigKeys` |
 | `listMonitors`, `getMonitor` | `pushToken`, `basic_auth_pass`, `bearer_token`, `oauth_client_secret`, `radiusPassword`, `radiusSecret`, `mqttPassword`, `rabbitmqPassword`, `gamedigToken`, `sshPassword`, `sshPrivateKey`, `sshPassphrase`, the password inside `kafkaProducerSaslOptions`, `user:pass@` inside `rabbitmqNodes`, `tlsCert`/`tlsKey`/`tlsCa`, `databaseConnectionString`, `headers`, `grpcMetadata`, plus anything matching `/pass|secret|token|apikey|auth(oriz\|entic)|bearer|credential|private.?key|jwt/i` |
 | `listDockerHosts` | `user:password@` inside a `dockerDaemon` URL |
+| `listProxies`, `createProxy`, `updateProxy` | the proxy `password` |
+| `listRemoteBrowsers`, `createRemoteBrowser`, `updateRemoteBrowser` | `user:password@` and secret-named query parameters (e.g. `?token=`) inside the `url` |
 | `listHeartbeats` | any column Uptime Kuma returns beyond the declared heartbeat fields (e.g. `response`, which can carry a service's response body) is dropped, and `user:password@` inside a URL quoted in the status message is scrubbed |
 | `getSettings`, `updateSettings` | any secret-named field Uptime Kuma returns (e.g. `steamAPIKey`) |
 | `getMonitorSummary` | nothing - it returns no credentials to begin with |
+| `createAPIKey` | nothing, on purpose: returning the new key is the point of the call, and it is the only time Uptime Kuma gives it out. `listAPIKeys` never returns keys |
 
 `hostname`, `port`, `url`, `authMethod`, `oauth_token_url`, `oauth_scopes` and usernames stay
 visible: hiding useful configuration is how a redaction feature gets switched off.

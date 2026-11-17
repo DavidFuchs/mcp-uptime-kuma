@@ -33,6 +33,9 @@ export const READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
   'listStatusPages',
   'getStatusPage',
   'listIncidents',
+  'listProxies',
+  'listRemoteBrowsers',
+  'listAPIKeys',
 ]);
 
 /** Every other tool. Left out of read-only mode. */
@@ -70,6 +73,16 @@ export const WRITE_TOOLS: ReadonlySet<string> = new Set([
   'updateIncident',
   'resolveIncident',
   'deleteIncident',
+  'createProxy',
+  'updateProxy',
+  'deleteProxy',
+  'testRemoteBrowser',
+  'createRemoteBrowser',
+  'updateRemoteBrowser',
+  'deleteRemoteBrowser',
+  'createAPIKey',
+  'setAPIKeyActive',
+  'deleteAPIKey',
 ]);
 
 /**
@@ -126,6 +139,15 @@ export const TOOLSETS = {
   ],
   'docker-hosts': ['listDockerHosts', 'createDockerHost', 'updateDockerHost', 'deleteDockerHost', 'testDockerHost'],
   settings: ['getSettings', 'updateSettings'],
+  proxies: ['listProxies', 'createProxy', 'updateProxy', 'deleteProxy'],
+  'remote-browsers': [
+    'listRemoteBrowsers',
+    'testRemoteBrowser',
+    'createRemoteBrowser',
+    'updateRemoteBrowser',
+    'deleteRemoteBrowser',
+  ],
+  'api-keys': ['listAPIKeys', 'createAPIKey', 'setAPIKeyActive', 'deleteAPIKey'],
 } as const satisfies Record<string, readonly string[]>;
 
 export type ToolsetName = keyof typeof TOOLSETS;
@@ -174,6 +196,7 @@ export const CHANGE_NOTHING_TOOLS: ReadonlySet<string> = new Set([
   'listNotificationTypes',
   'getNotificationTypeFields',
   'testDockerHost',
+  'testRemoteBrowser',
 ]);
 
 /**

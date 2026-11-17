@@ -19,6 +19,9 @@ import type {
   StatusPage,
   Incident,
   DockerHost,
+  KumaProxy,
+  RemoteBrowser,
+  APIKey,
 } from './types/index.js';
 import { normaliseMsg } from './utils/normalize-msg.js';
 
@@ -53,7 +56,26 @@ const DATA_EVENTS = [
   'maintenanceList',
   'statusPageList',
   'dockerHostList',
+  'proxyList',
+  'remoteBrowserList',
+  'apiKeyList',
 ] as const;
+
+/** A proxy row as Uptime Kuma pushes it (snake_case, 0/1 flags), in the shape the tools return. */
+function normalizeProxy(row: Record<string, unknown>): KumaProxy {
+  return {
+    id: Number(row.id),
+    protocol: String(row.protocol ?? ''),
+    host: String(row.host ?? ''),
+    port: Number(row.port),
+    auth: !!row.auth,
+    username: (row.username as string | null | undefined) ?? null,
+    password: (row.password as string | null | undefined) ?? null,
+    default: !!row.default,
+    createdDate:
+      (row.created_date as string | null | undefined) ?? (row.createdDate as string | null | undefined) ?? null,
+  };
+}
 
 /** The heartbeat statuses the summary can be filtered by, under the names Uptime Kuma shows. */
 const STATUS_BY_NAME: Record<string, number> = { down: 0, up: 1, pending: 2, maintenance: 3 };
@@ -242,6 +264,9 @@ export class UptimeKumaClient {
   private maintenanceListCache: { [id: string]: Maintenance } = {};
   private statusPageListCache: { [slug: string]: StatusPage } = {};
   private dockerHostListCache: DockerHost[] = [];
+  private proxyListCache: KumaProxy[] = [];
+  private remoteBrowserListCache: RemoteBrowser[] = [];
+  private apiKeyListCache: APIKey[] = [];
   private server?: { sendLoggingMessage: (params: { level: LoggingLevel; data: unknown }) => Promise<void> };
   private shouldLog: (level: LoggingLevel) => boolean;
   private loginCredentials: {
@@ -516,6 +541,9 @@ export class UptimeKumaClient {
     this.maintenanceListCache = {};
     this.statusPageListCache = {};
     this.dockerHostListCache = [];
+    this.proxyListCache = [];
+    this.remoteBrowserListCache = [];
+    this.apiKeyListCache = [];
   }
 
   /**
@@ -554,6 +582,7 @@ export class UptimeKumaClient {
       this.setupMaintenanceListListeners();
       this.setupStatusPageListListeners();
       this.setupDockerHostListListeners();
+      this.setupProxyAndKeyListListeners();
 
       // If JWT token is provided, use token-based authentication
       if (jwtToken) {
@@ -1106,6 +1135,26 @@ export class UptimeKumaClient {
     this.socket.on('dockerHostList', (dockerHostList: DockerHost[]) => {
       this.safeLog('debug', `Received dockerHostList with ${dockerHostList.length} docker hosts`);
       this.dockerHostListCache = dockerHostList;
+    });
+  }
+
+  /**
+   * Uptime Kuma pushes these three lists after login and again after every change to them.
+   * proxyList arrives as raw rows (snake_case, 0/1 flags), so it is normalized here.
+   */
+  private setupProxyAndKeyListListeners(): void {
+    if (!this.socket) return;
+    this.socket.on('proxyList', (rows: Array<Record<string, unknown>>) => {
+      this.safeLog('debug', `Received proxyList with ${rows.length} proxies`);
+      this.proxyListCache = rows.map(normalizeProxy);
+    });
+    this.socket.on('remoteBrowserList', (list: RemoteBrowser[]) => {
+      this.safeLog('debug', `Received remoteBrowserList with ${list.length} remote browsers`);
+      this.remoteBrowserListCache = list;
+    });
+    this.socket.on('apiKeyList', (list: Array<Record<string, unknown>>) => {
+      this.safeLog('debug', `Received apiKeyList with ${list.length} API keys`);
+      this.apiKeyListCache = list.map((k) => ({ ...k, active: !!k.active }) as APIKey);
     });
   }
 
@@ -1933,6 +1982,117 @@ export class UptimeKumaClient {
    */
   async testNotification(notification: Record<string, unknown>): Promise<ApiResponse> {
     return this.request('testNotification', [notification], 'Failed to send the test notification');
+  }
+
+  // ─── Proxies ─────────────────────────────────────────────────────────────────
+
+  /** The proxies, as Uptime Kuma last pushed them (after login and after every change). */
+  getProxyList(): KumaProxy[] {
+    return this.proxyListCache;
+  }
+
+  /**
+   * Create a proxy, or replace one (Uptime Kuma's addProxy with an ID). Every field is written
+   * from what is sent, so an update must carry the stored values it keeps. applyExisting
+   * attaches the proxy to every monitor; default makes it the one the web UI preselects.
+   */
+  async saveProxy(proxy: Record<string, unknown>, proxyID: number | null): Promise<ApiResponse & { id?: number }> {
+    const response = await this.request<{ id?: number }>(
+      'addProxy',
+      [proxy, proxyID],
+      proxyID === null ? 'Failed to create proxy' : `Failed to update proxy ${proxyID}`
+    );
+    this.safeLog('info', `Saved proxy ${response.id ?? proxyID}`);
+    return response;
+  }
+
+  /** Delete a proxy. Monitors that used it are kept and go direct. */
+  async deleteProxy(proxyID: number): Promise<ApiResponse> {
+    const response = await this.request('deleteProxy', [proxyID], `Failed to delete proxy ${proxyID}`);
+    this.safeLog('info', `Deleted proxy ${proxyID}`);
+    return response;
+  }
+
+  // ─── Remote browsers ────────────────────────────────────────────────────────
+
+  /** The remote browsers, as Uptime Kuma last pushed them. */
+  getRemoteBrowserList(): RemoteBrowser[] {
+    return this.remoteBrowserListCache;
+  }
+
+  /** Create a remote browser, or replace one's name and URL (Uptime Kuma's addRemoteBrowser). */
+  async saveRemoteBrowser(
+    remoteBrowser: { name: string; url: string },
+    remoteBrowserID: number | null
+  ): Promise<ApiResponse & { id?: number }> {
+    const response = await this.request<{ id?: number }>(
+      'addRemoteBrowser',
+      [remoteBrowser, remoteBrowserID],
+      remoteBrowserID === null
+        ? 'Failed to create remote browser'
+        : `Failed to update remote browser ${remoteBrowserID}`
+    );
+    this.safeLog('info', `Saved remote browser ${response.id ?? remoteBrowserID}`);
+    return response;
+  }
+
+  /** Delete a remote browser. Monitors that used it fall back to the built-in Chromium. */
+  async deleteRemoteBrowser(remoteBrowserID: number): Promise<ApiResponse> {
+    const response = await this.request(
+      'deleteRemoteBrowser',
+      [remoteBrowserID],
+      `Failed to delete remote browser ${remoteBrowserID}`
+    );
+    this.safeLog('info', `Deleted remote browser ${remoteBrowserID}`);
+    return response;
+  }
+
+  /** Check that Uptime Kuma can drive a browser at this WebSocket URL. Nothing is saved. */
+  async testRemoteBrowser(url: string): Promise<ApiResponse> {
+    return this.request('testRemoteBrowser', [{ url }], 'Failed to connect to the remote browser');
+  }
+
+  // ─── API keys ────────────────────────────────────────────────────────────────
+
+  /** The API keys, as Uptime Kuma last pushed them: names and status, never the keys. */
+  getAPIKeyList(): APIKey[] {
+    return this.apiKeyListCache;
+  }
+
+  /**
+   * Create an API key (Uptime Kuma's addAPIKey). The returned `key` is the only time the key
+   * itself can be read. Creating one also turns on Uptime Kuma's apiKeysEnabled setting.
+   */
+  async addAPIKey(key: {
+    name: string;
+    active: boolean;
+    expires: string | null;
+  }): Promise<ApiResponse & { key?: string; keyID?: number }> {
+    const response = await this.request<{ key?: string; keyID?: number }>(
+      'addAPIKey',
+      [key],
+      'Failed to create API key'
+    );
+    this.safeLog('info', `Created API key ${response.keyID}`);
+    return response;
+  }
+
+  /** Switch an API key off (disableAPIKey) or back on (enableAPIKey). */
+  async setAPIKeyActive(keyID: number, active: boolean): Promise<ApiResponse> {
+    const response = await this.request(
+      active ? 'enableAPIKey' : 'disableAPIKey',
+      [keyID],
+      `Failed to ${active ? 'enable' : 'disable'} API key ${keyID}`
+    );
+    this.safeLog('info', `${active ? 'Enabled' : 'Disabled'} API key ${keyID}`);
+    return response;
+  }
+
+  /** Delete an API key: requests using it are refused from then on. */
+  async deleteAPIKey(keyID: number): Promise<ApiResponse> {
+    const response = await this.request('deleteAPIKey', [keyID], `Failed to delete API key ${keyID}`);
+    this.safeLog('info', `Deleted API key ${keyID}`);
+    return response;
   }
 
   // ─── Socket accessor ─────────────────────────────────────────────────────────

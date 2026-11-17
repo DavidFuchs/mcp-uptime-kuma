@@ -12,6 +12,7 @@ import { redactionTests } from './redaction.test.js';
 import { monitorTypeFieldTests } from './monitor-type-fields.test.js';
 import { startupTests } from './startup.test.js';
 import { monitorHistoryTests } from './monitor-history.long.test.js';
+import { proxyTests } from './proxies.test.js';
 
 /**
  * Unified integration test runner.
@@ -43,6 +44,7 @@ const SHORT_SUITES: Record<string, Suite> = {
   'strict-schema': { name: 'Strict Input Schemas', tests: strictSchemaTests },
   redaction: { name: 'Credential Redaction', tests: redactionTests },
   'monitor-type-fields': { name: 'Type-specific Monitor Fields', tests: monitorTypeFieldTests },
+  proxies: { name: 'Proxies, Remote Browsers & API Keys', tests: proxyTests },
   startup: { name: 'Fresh Server Startup', tests: startupTests },
 };
 
