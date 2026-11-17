@@ -2010,7 +2010,19 @@ export class UptimeKumaClient {
   async deleteProxy(proxyID: number): Promise<ApiResponse> {
     const response = await this.request('deleteProxy', [proxyID], `Failed to delete proxy ${proxyID}`);
     this.safeLog('info', `Deleted proxy ${proxyID}`);
+    this.clearMonitorReference('proxyId', proxyID);
     return response;
+  }
+
+  /**
+   * Deleting a proxy or remote browser clears it from every monitor in the database
+   * (`UPDATE monitor SET proxy_id = null …`), but Uptime Kuma pushes no new monitor list for it,
+   * so the cached monitors would keep pointing at the deleted one. Mirror the change here.
+   */
+  private clearMonitorReference(field: 'proxyId' | 'remote_browser', id: number): void {
+    for (const monitor of Object.values(this.monitorListCache) as Array<Record<string, unknown>>) {
+      if (monitor[field] === id) monitor[field] = null;
+    }
   }
 
   // ─── Remote browsers ────────────────────────────────────────────────────────
@@ -2044,6 +2056,7 @@ export class UptimeKumaClient {
       `Failed to delete remote browser ${remoteBrowserID}`
     );
     this.safeLog('info', `Deleted remote browser ${remoteBrowserID}`);
+    this.clearMonitorReference('remote_browser', remoteBrowserID);
     return response;
   }
 

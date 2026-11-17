@@ -5,7 +5,7 @@ import { createServer } from '../../src/server.js';
 import { UptimeKumaClient } from '../../src/uptime-kuma-client.js';
 import { redactRemoteBrowserUrl } from '../../src/tools/remote-browsers.js';
 import { normalizeExpiry } from '../../src/tools/api-keys.js';
-import { createMockSocket, injectSocket } from './helpers.js';
+import { createMockSocket, injectSocket, injectMonitorListCache } from './helpers.js';
 
 describe('the pushed lists', () => {
   it('normalizes proxyList rows (snake_case, 0/1 flags) and apiKeyList flags', () => {
@@ -45,6 +45,32 @@ describe('the pushed lists', () => {
       },
     ]);
     expect(client.getAPIKeyList()[0].active).toBe(true);
+  });
+});
+
+// Found by the integration test: Uptime Kuma clears the reference in its database but pushes
+// no new monitor list, so the cached monitor kept pointing at the deleted proxy.
+describe('deleting a proxy or remote browser', () => {
+  it('clears it from the cached monitors that used it, and only from those', async () => {
+    const client = new UptimeKumaClient('http://localhost:3001');
+    const ok = (callback: unknown) => (callback as (res: unknown) => void)({ ok: true });
+    const { socket } = createMockSocket({
+      deleteProxy: (_id, callback) => ok(callback),
+      deleteRemoteBrowser: (_id, callback) => ok(callback),
+    });
+    injectSocket(client, socket);
+    injectMonitorListCache(client, {
+      '1': { id: 1, name: 'a', type: 'http', proxyId: 3 },
+      '2': { id: 2, name: 'b', type: 'http', proxyId: 4 },
+      '3': { id: 3, name: 'c', type: 'real-browser', remote_browser: 5 },
+    });
+
+    await client.deleteProxy(3);
+    await client.deleteRemoteBrowser(5);
+
+    expect(client.getMonitor(1, true)).toMatchObject({ proxyId: null });
+    expect(client.getMonitor(2, true)).toMatchObject({ proxyId: 4 });
+    expect(client.getMonitor(3, true)).toMatchObject({ remote_browser: null });
   });
 });
 
