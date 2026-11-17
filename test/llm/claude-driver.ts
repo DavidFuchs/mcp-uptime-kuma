@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { createWriteStream, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { finished } from 'stream';
@@ -238,18 +238,29 @@ export async function runClaude(opts: ClaudeRunOptions): Promise<Trace> {
   try {
     const { stdout, stderr, code } = await new Promise<{ stdout: string; stderr: string; code: number | null }>(
       (resolve, reject) => {
-        const child = spawn(bin, args, {
+        const isWindows = process.platform === 'win32';
+        // A CLAUDE_BIN that is a JavaScript file runs under this node, the same on every
+        // platform: Windows cannot execute a script by its shebang.
+        const [command, commandArgs] = /\.[cm]?js$/.test(bin) ? [process.execPath, [bin, ...args]] : [bin, args];
+        const child = spawn(command, commandArgs, {
           cwd,
           env: buildChildEnv(process.env),
           stdio: ['ignore', 'pipe', 'pipe'],
-          // Own process group, so a timeout also kills the MCP server claude started.
-          detached: true,
+          // Own process group, so a timeout also kills the MCP server claude started. Windows
+          // has no process groups (detached there means a new console), so the tree is killed
+          // with taskkill instead.
+          detached: !isWindows,
+          windowsHide: true,
         });
         const raw = createWriteStream(opts.rawPath);
         let out = '';
         let err = '';
         let settled = false;
         const killGroup = () => {
+          if (isWindows && child.pid !== undefined) {
+            spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
+            return;
+          }
           try {
             process.kill(-child.pid!, 'SIGKILL');
           } catch {

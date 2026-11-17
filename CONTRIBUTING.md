@@ -87,7 +87,16 @@ For HTTP transport testing, start the HTTP server first (`npm run dev:http`), th
 npm test
 ```
 
-These need no Uptime Kuma instance, and they run in CI on every pull request.
+These need no Uptime Kuma instance. They run on Linux, macOS and Windows, and CI runs them on
+all three on every pull request.
+
+Use `npm test` (or `npm run test:watch`) rather than `npx vitest` on Windows: the npm scripts
+start Vitest through `scripts/vitest.mjs`, which works around a Vitest failure when the folder
+is opened with a lowercase drive letter (`c:\…`, as VS Code often does). Every test then fails
+with "Cannot read properties of undefined (reading 'config')".
+
+Two tests are skipped on Windows: they check that the HTTP server shuts down cleanly on
+SIGTERM and SIGINT, and Windows has no way to send a process those signals.
 
 ### Integration Tests
 

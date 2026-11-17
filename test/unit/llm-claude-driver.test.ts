@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync, mkdtempSync, writeFileSync, chmodSync } from 'fs';
+import { readFileSync, mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -18,6 +18,16 @@ import { classify } from '../llm/scenario.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixtureLines = readFileSync(join(here, 'fixtures/claude-stream.jsonl'), 'utf8').split('\n');
+
+/**
+ * A stand-in for the claude binary: a Node script, which runClaude runs under this node, so the
+ * same fake works on Windows, where a #!/bin/sh script cannot be executed.
+ */
+function fakeClaude(dir: string, name: string, body: string): string {
+  const bin = join(dir, `${name}.mjs`);
+  writeFileSync(bin, body);
+  return bin;
+}
 
 const toolUse = (id: string, name: string, input: unknown = {}) =>
   JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name, input }] } });
@@ -196,9 +206,9 @@ describe('buildMcpConfig', () => {
     const s = cfg.mcpServers['uptime-kuma'];
     // The repo's own tsx, run by this node: no npx lookup from the empty temp cwd.
     expect(s.command).toBe(process.execPath);
-    expect(s.args[0]).toBe('/repo/node_modules/tsx/dist/cli.mjs');
+    expect(s.args[0]).toBe(join('/repo', 'node_modules/tsx/dist/cli.mjs'));
     expect(s.args.slice(-2)).toEqual(['-t', 'stdio']);
-    expect(s.args).toContain('/repo/src/index.ts');
+    expect(s.args).toContain(join('/repo', 'src/index.ts'));
     expect(s.env).toEqual({
       UPTIME_KUMA_URL: 'http://localhost:3001',
       UPTIME_KUMA_USERNAME: 'admin',
@@ -211,9 +221,7 @@ describe('buildMcpConfig', () => {
 describe('runClaude', () => {
   it('timeout yields error outcome', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'llm-driver-test-'));
-    const bin = join(dir, 'slow-claude');
-    writeFileSync(bin, '#!/bin/sh\nsleep 10\n');
-    chmodSync(bin, 0o755);
+    const bin = fakeClaude(dir, 'slow-claude', 'setTimeout(() => {}, 10_000);');
     const prev = process.env.CLAUDE_BIN;
     process.env.CLAUDE_BIN = bin;
     const started = Date.now();
@@ -237,12 +245,15 @@ describe('runClaude', () => {
 
   it('a timeout while the process is still writing does not crash the runner', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'llm-driver-test-'));
-    const bin = join(dir, 'chatty-claude');
-    writeFileSync(
-      bin,
-      '#!/bin/sh\nwhile true; do echo \'{"type":"noise","padding":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}\'; done\n'
+    // Writes as fast as the pipe takes it, for as long as it lives.
+    const bin = fakeClaude(
+      dir,
+      'chatty-claude',
+      `const line = ${JSON.stringify(JSON.stringify({ type: 'noise', padding: 'x'.repeat(40) }) + '\n')};
+const write = () => { while (process.stdout.write(line)); process.stdout.once('drain', write); };
+write();
+`
     );
-    chmodSync(bin, 0o755);
     const uncaught: unknown[] = [];
     const onUncaught = (e: unknown) => uncaught.push(e);
     process.on('uncaughtException', onUncaught);
@@ -270,9 +281,7 @@ describe('runClaude', () => {
 
   it('an unwritable trace path rejects instead of crashing', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'llm-driver-test-'));
-    const bin = join(dir, 'fake-claude');
-    writeFileSync(bin, `#!/bin/sh\necho '${result}'\n`);
-    chmodSync(bin, 0o755);
+    const bin = fakeClaude(dir, 'fake-claude', `console.log(${JSON.stringify(result)});`);
     const prev = process.env.CLAUDE_BIN;
     process.env.CLAUDE_BIN = bin;
     try {
@@ -294,11 +303,18 @@ describe('runClaude', () => {
 
   it('abortActiveClaude kills the running session and its process group', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'llm-driver-test-'));
-    const bin = join(dir, 'slow-claude');
     const pidFile = join(dir, 'grandchild.pid');
-    // A grandchild in the same group, standing in for the MCP server claude starts.
-    writeFileSync(bin, `#!/bin/sh\nsleep 30 &\necho $! > "${pidFile}"\nsleep 30\n`);
-    chmodSync(bin, 0o755);
+    // A grandchild, standing in for the MCP server claude starts: the abort must kill it too.
+    const bin = fakeClaude(
+      dir,
+      'slow-claude',
+      `import { spawn } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+const grandchild = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30_000)'], { stdio: 'ignore' });
+writeFileSync(${JSON.stringify(pidFile)}, String(grandchild.pid));
+setTimeout(() => {}, 30_000);
+`
+    );
     const prev = process.env.CLAUDE_BIN;
     process.env.CLAUDE_BIN = bin;
     try {
@@ -327,10 +343,14 @@ describe('runClaude', () => {
 
   it('parses the stream of a process that exits normally', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'llm-driver-test-'));
-    const bin = join(dir, 'fake-claude');
     writeFileSync(join(dir, 'out.jsonl'), fixtureLines.join('\n'));
-    writeFileSync(bin, `#!/bin/sh\ncat "${join(dir, 'out.jsonl')}"\n`);
-    chmodSync(bin, 0o755);
+    const bin = fakeClaude(
+      dir,
+      'fake-claude',
+      `import { readFileSync } from 'node:fs';
+process.stdout.write(readFileSync(${JSON.stringify(join(dir, 'out.jsonl'))}));
+`
+    );
     const prev = process.env.CLAUDE_BIN;
     process.env.CLAUDE_BIN = bin;
     try {

@@ -33,9 +33,9 @@
     "test:integration:long": "node scripts/run-bash.mjs test/integration/run-tests.sh --long",
     "test:integration:direct": "tsx test/integration/run-all.ts",
     "test:llm": "node scripts/run-bash.mjs test/llm/run-llm.sh",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
+    "test": "node scripts/vitest.mjs run",
+    "test:watch": "node scripts/vitest.mjs",
+    "test:coverage": "node scripts/vitest.mjs run --coverage",
     "docker-catalog:tools": "node scripts/docker-catalog-tools.mjs"
   },
   "keywords": [
