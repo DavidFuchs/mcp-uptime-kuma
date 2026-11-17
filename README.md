@@ -33,9 +33,9 @@ Once it's connected, you manage Uptime Kuma by asking your AI assistant in plain
 
 ## Features
 
-- **Manage everything, not just read it.** 60 tools cover monitors of any type, notification
+- **Manage everything, not just read it.** 62 tools cover monitors of any type, notification
   channels, tags, maintenance windows, status pages and their incidents, proxies, remote browsers, API keys,
-  Docker hosts and server settings. See [Available Tools](#available-tools).
+  Docker hosts, server settings and the database. See [Available Tools](#available-tools).
 - **Live data.** The server keeps a Socket.IO connection open to Uptime Kuma, so status and
   heartbeats are current without polling.
 - **Context-friendly.** Summaries come first and full detail only when asked for. The roughly
@@ -548,6 +548,13 @@ because the image speaks stdio by default:
 | `setAPIKeyActive` | Switch an API key off or back on. |
 | `deleteAPIKey` | Permanently delete an API key. |
 
+### Database
+
+| Tool | Purpose |
+|------|---------|
+| `getDatabaseInfo` | Which database Uptime Kuma uses, the SQLite file's size, and how many days of history it keeps. |
+| `shrinkDatabase` | Give the space of cleared history back to the disk (SQLite `VACUUM`). Checks are not recorded while it runs, and it needs free disk space about the database's size. |
+
 ### Settings
 
 | Tool | Purpose |
@@ -706,7 +713,7 @@ UPTIME_KUMA_READ_ONLY=true
 ```
 
 The write tools are then not registered at all, so they cannot be called and take up no room in
-the conversation. Seventeen tools remain: the `get…` and `list…` tools, minus
+the conversation. Eighteen tools remain: the `get…` and `list…` tools, minus
 `getMonitorTypeFields`, `listNotificationTypes` and `getNotificationTypeFields`, which only
 serve the write tools. This limits what the MCP server
 offers; it does not change what the Uptime Kuma account itself is allowed to do.
@@ -714,7 +721,7 @@ offers; it does not change what the Uptime Kuma account itself is allowed to do.
 ## Choosing Tool Sets
 
 Every registered tool's definition is sent to the model at the start of each conversation, so
-all 60 take up roughly 18k tokens before you ask anything. To register only the areas you use,
+all 62 take up roughly 18k tokens before you ask anything. To register only the areas you use,
 set `UPTIME_KUMA_TOOLSETS` to a comma-separated list:
 
 ```
@@ -734,6 +741,7 @@ UPTIME_KUMA_TOOLSETS=monitors,heartbeats
 | `proxies` | `listProxies`, `createProxy`, `updateProxy`, `deleteProxy` |
 | `remote-browsers` | `listRemoteBrowsers`, `testRemoteBrowser`, `createRemoteBrowser`, `updateRemoteBrowser`, `deleteRemoteBrowser` |
 | `api-keys` | `listAPIKeys`, `createAPIKey`, `setAPIKeyActive`, `deleteAPIKey` |
+| `database` | `getDatabaseInfo`, `shrinkDatabase` |
 
 Unset, empty or `all` registers every tool set. An unknown name stops the server at startup
 with the list of valid ones, rather than quietly running with fewer tools.

@@ -13,6 +13,7 @@ import { monitorTypeFieldTests } from './monitor-type-fields.test.js';
 import { startupTests } from './startup.test.js';
 import { monitorHistoryTests } from './monitor-history.long.test.js';
 import { proxyTests } from './proxies.test.js';
+import { databaseTests } from './database.test.js';
 
 /**
  * Unified integration test runner.
@@ -45,6 +46,7 @@ const SHORT_SUITES: Record<string, Suite> = {
   redaction: { name: 'Credential Redaction', tests: redactionTests },
   'monitor-type-fields': { name: 'Type-specific Monitor Fields', tests: monitorTypeFieldTests },
   proxies: { name: 'Proxies, Remote Browsers & API Keys', tests: proxyTests },
+  database: { name: 'Database', tests: databaseTests },
   startup: { name: 'Fresh Server Startup', tests: startupTests },
 };
 

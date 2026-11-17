@@ -783,6 +783,14 @@
     }
   },
   {
+    "name": "getDatabaseInfo",
+    "description": "Returns which database Uptime Kuma stores its data in (sqlite, mariadb or embedded-mariadb), the SQLite file's size, and how many days of monitor history it keeps (keepDataPeriodDays). Uptime Kuma can only measure and shrink SQLite; for MariaDB the size is null.",
+    "annotations": {
+      "title": "Get Database Info",
+      "readOnlyHint": true
+    }
+  },
+  {
     "name": "getMonitor",
     "description": "Returns one monitor's configuration by ID (check interval, notifications, tags, parent group) with its uptime and average ping. Type-specific fields such as url, hostname and port are returned only with includeTypeSpecificFields. Read it before updateMonitor. For current status use getMonitorSummary; for check history, listHeartbeats. Find IDs with listMonitors.",
     "arguments": [
@@ -1245,6 +1253,14 @@
     ],
     "annotations": {
       "title": "Set Monitor Active",
+      "idempotentHint": true
+    }
+  },
+  {
+    "name": "shrinkDatabase",
+    "description": "Gives the space of deleted history back to the disk by rewriting the SQLite file (VACUUM). Run it after clearing history or lowering keepDataPeriodDays; it frees nothing otherwise. While it runs, Uptime Kuma cannot record checks, and it needs free disk space about the database's size. A large database takes minutes. SQLite only: refused on MariaDB, where Uptime Kuma has nothing to do. Returns the size before and after.",
+    "annotations": {
+      "title": "Shrink Database",
       "idempotentHint": true
     }
   },

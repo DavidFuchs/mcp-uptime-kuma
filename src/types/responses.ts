@@ -11,6 +11,22 @@ export interface ApiResponse {
 }
 
 /**
+ * What Uptime Kuma pushes about itself in its "info" event. The version, database type and
+ * runtime are only sent once logged in.
+ */
+export interface ServerInfo {
+  version?: string;
+  latestVersion?: string;
+  /** "sqlite", "mariadb" or "embedded-mariadb". */
+  dbType?: string;
+  isContainer?: boolean;
+  primaryBaseURL?: string | null;
+  serverTimezone?: string;
+  serverTimezoneOffset?: string;
+  runtime?: { platform?: string; arch?: string };
+}
+
+/**
  * Login response
  */
 export interface LoginResponse extends ApiResponse {

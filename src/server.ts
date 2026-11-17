@@ -28,6 +28,7 @@ import { registerHistoryTools } from './tools/history.js';
 import { registerProxyTools } from './tools/proxies.js';
 import { registerRemoteBrowserTools } from './tools/remote-browsers.js';
 import { registerAPIKeyTools } from './tools/api-keys.js';
+import { registerDatabaseTools } from './tools/database.js';
 
 // The parts of this module that moved out, still importable from here.
 export { createKumaSession, type KumaSession, type KumaLogSink } from './kuma-session.js';
@@ -64,6 +65,7 @@ const INSTRUCTION_SECTIONS: Array<{ heading: string; lines: string[] }> = [
       `- Use 'listDockerHosts' to see configured docker daemons (used by docker container monitors).`,
       `- Use 'listProxies' / 'listRemoteBrowsers' for the IDs a monitor's proxyId / remote_browser field takes, and 'listAPIKeys' for API keys.`,
       `- Use 'getSettings' for server settings such as timezone and data retention.`,
+      `- Use 'getDatabaseInfo' for the database type, its size and how long history is kept.`,
     ],
   },
   {
@@ -87,6 +89,7 @@ const INSTRUCTION_SECTIONS: Array<{ heading: string; lines: string[] }> = [
       `- Use 'testRemoteBrowser' before 'createRemoteBrowser'; 'updateRemoteBrowser' / 'deleteRemoteBrowser' manage the rest.`,
       `- Use 'createAPIKey' to make an API key (shown only once); 'setAPIKeyActive' / 'deleteAPIKey' switch one off or remove it.`,
       `- Use 'updateSettings' to change server settings.`,
+      `- Use 'shrinkDatabase' to give the space of cleared history back to the disk (SQLite only).`,
     ],
   },
   {
@@ -225,6 +228,7 @@ export async function createServer(
   registerProxyTools(ctx);
   registerRemoteBrowserTools(ctx);
   registerAPIKeyTools(ctx);
+  registerDatabaseTools(ctx);
 
   return { server, client, authenticateClient };
 }
