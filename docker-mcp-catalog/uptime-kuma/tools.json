@@ -24,6 +24,36 @@
     }
   },
   {
+    "name": "createIncident",
+    "description": "Posts an incident banner on a status page, for example \"API degraded\". It shows on the page at once, pinned and active, alongside any other active incidents. Follow up with updateIncident as things change, and resolveIncident when it is over.",
+    "arguments": [
+      {
+        "name": "slug",
+        "type": "string",
+        "desc": "The status page slug. Find slugs with listStatusPages."
+      },
+      {
+        "name": "title",
+        "type": "string",
+        "desc": "Headline of the banner"
+      },
+      {
+        "name": "content",
+        "type": "string",
+        "desc": "Body of the banner, in Markdown"
+      },
+      {
+        "name": "style",
+        "type": "string",
+        "desc": "Banner color (default: primary). primary, info, warning, danger, light or dark",
+        "optional": true
+      }
+    ],
+    "annotations": {
+      "title": "Create Incident"
+    }
+  },
+  {
     "name": "createMaintenanceWindow",
     "description": "Schedules a new maintenance window: while it is in effect the monitors in monitorIDs show MAINTENANCE instead of DOWN and do not alert. A window without monitorIDs suppresses nothing. strategy sets the schedule; \"manual\" makes a window you switch on and off with setMaintenanceWindowActive. To stop one monitor's checks outright use setMonitorActive.",
     "arguments": [
@@ -115,6 +145,15 @@
         "desc": "IDs of the monitors this window suppresses. A window with no monitors suppresses nothing. On update this REPLACES the current list; pass [] to detach all.",
         "items": {
           "type": "integer"
+        },
+        "optional": true
+      },
+      {
+        "name": "statusPageSlugs",
+        "type": "array",
+        "desc": "Slugs of the status pages that announce this window while it is in effect. On update this REPLACES the current list; pass [] to remove it from all. Find slugs with listStatusPages.",
+        "items": {
+          "type": "string"
         },
         "optional": true
       }
@@ -460,6 +499,26 @@
     }
   },
   {
+    "name": "deleteIncident",
+    "description": "Permanently deletes an incident from a status page and its history. To end an incident but keep its record, use resolveIncident. Find the ID with listIncidents.",
+    "arguments": [
+      {
+        "name": "slug",
+        "type": "string",
+        "desc": "The status page slug. Find slugs with listStatusPages."
+      },
+      {
+        "name": "incidentID",
+        "type": "integer",
+        "desc": "The ID of the incident to delete"
+      }
+    ],
+    "annotations": {
+      "title": "Delete Incident",
+      "destructiveHint": true
+    }
+  },
+  {
     "name": "deleteMaintenanceWindow",
     "description": "Permanently deletes a maintenance window; its monitors return to normal alerting. To switch it off but keep it, use setMaintenanceWindowActive. Find the ID with listMaintenanceWindows.",
     "arguments": [
@@ -725,8 +784,29 @@
     }
   },
   {
+    "name": "listIncidents",
+    "description": "Returns a status page's incidents, newest first, 10 per call, resolved ones included; pass nextCursor back as cursor for the next 10. An incident shows on the page while it is both pinned and active. getStatusPage also returns the ones showing now.",
+    "arguments": [
+      {
+        "name": "slug",
+        "type": "string",
+        "desc": "The status page slug. Find slugs with listStatusPages."
+      },
+      {
+        "name": "cursor",
+        "type": "string",
+        "desc": "nextCursor from the previous call, for the next page",
+        "optional": true
+      }
+    ],
+    "annotations": {
+      "title": "List Incidents",
+      "readOnlyHint": true
+    }
+  },
+  {
     "name": "listMaintenanceWindows",
-    "description": "Returns every maintenance window with its schedule, whether it is active, and monitorIDs, the monitors it suppresses. A window with an empty monitorIDs list suppresses nothing. Use it to find the ID that updateMaintenanceWindow, setMaintenanceWindowActive and deleteMaintenanceWindow take.",
+    "description": "Returns every maintenance window with its schedule, whether it is active, monitorIDs (the monitors it suppresses) and statusPageSlugs (the status pages that announce it). A window with an empty monitorIDs list suppresses nothing. Use it to find the ID that updateMaintenanceWindow, setMaintenanceWindowActive and deleteMaintenanceWindow take.",
     "annotations": {
       "title": "List Maintenance Windows",
       "readOnlyHint": true
@@ -839,6 +919,26 @@
     }
   },
   {
+    "name": "resolveIncident",
+    "description": "Marks an incident as over: it leaves the status page but stays in listIncidents. To remove it from the history too, use deleteIncident. Find the ID with listIncidents or getStatusPage.",
+    "arguments": [
+      {
+        "name": "slug",
+        "type": "string",
+        "desc": "The status page slug. Find slugs with listStatusPages."
+      },
+      {
+        "name": "incidentID",
+        "type": "integer",
+        "desc": "The ID of the incident to resolve"
+      }
+    ],
+    "annotations": {
+      "title": "Resolve Incident",
+      "idempotentHint": true
+    }
+  },
+  {
     "name": "setMaintenanceWindowActive",
     "description": "Switches a maintenance window off (active: false) or back on (active: true). Off, it stops suppressing its monitors and its schedule stops; on, a manual window starts maintenance immediately and a scheduled one follows its schedule again. It acts on a maintenance window; to stop a monitor's checks use setMonitorActive. Find the ID with listMaintenanceWindows.",
     "arguments": [
@@ -938,8 +1038,53 @@
     }
   },
   {
+    "name": "updateIncident",
+    "description": "Changes an incident banner. Only the fields you pass change. pinned: false takes it off the page without resolving it; to end an incident use resolveIncident. Find the ID with listIncidents or getStatusPage.",
+    "arguments": [
+      {
+        "name": "slug",
+        "type": "string",
+        "desc": "The status page slug. Find slugs with listStatusPages."
+      },
+      {
+        "name": "incidentID",
+        "type": "integer",
+        "desc": "The ID of the incident to change"
+      },
+      {
+        "name": "title",
+        "type": "string",
+        "desc": "New headline",
+        "optional": true
+      },
+      {
+        "name": "content",
+        "type": "string",
+        "desc": "New body, in Markdown",
+        "optional": true
+      },
+      {
+        "name": "style",
+        "type": "string",
+        "desc": "Banner color: primary (blue), info, warning (yellow), danger (red), light or dark",
+        "optional": true
+      },
+      {
+        "name": "pinned",
+        "type": "boolean",
+        "desc": "false takes the banner off the page; true puts it back",
+        "optional": true
+      }
+    ],
+    "annotations": {
+      "title": "Update Incident",
+      "destructiveHint": true,
+      "idempotentHint": true
+    }
+  },
+  {
     "name": "updateMaintenanceWindow",
-    "description": "Updates an existing maintenance window. Only the fields you pass change, except monitorIDs, which replaces the whole monitor list. To switch a window on or off use setMaintenanceWindowActive. Find the ID with listMaintenanceWindows.",
+    "description": "Updates an existing maintenance window. Only the fields you pass change, except monitorIDs and statusPageSlugs, which each replace the whole list. To switch a window on or off use setMaintenanceWindowActive. Find the ID with listMaintenanceWindows.",
     "arguments": [
       {
         "name": "maintenanceID",
@@ -1030,6 +1175,15 @@
         "desc": "IDs of the monitors this window suppresses. A window with no monitors suppresses nothing. On update this REPLACES the current list; pass [] to detach all.",
         "items": {
           "type": "integer"
+        },
+        "optional": true
+      },
+      {
+        "name": "statusPageSlugs",
+        "type": "array",
+        "desc": "Slugs of the status pages that announce this window while it is in effect. On update this REPLACES the current list; pass [] to remove it from all. Find slugs with listStatusPages.",
+        "items": {
+          "type": "string"
         },
         "optional": true
       }

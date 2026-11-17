@@ -65,6 +65,12 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
       .describe(
         'IDs of the monitors this window suppresses. A window with no monitors suppresses nothing. On update this REPLACES the current list; pass [] to detach all.'
       ),
+    statusPageSlugs: z
+      .array(z.string())
+      .optional()
+      .describe(
+        'Slugs of the status pages that announce this window while it is in effect. On update this REPLACES the current list; pass [] to remove it from all. Find slugs with listStatusPages.'
+      ),
   };
 
   /**
@@ -218,6 +224,56 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
     return null;
   };
 
+  /** Status page slugs to IDs. Throws on an unknown slug, before anything is written. */
+  const statusPageIDsFor = (slugs: string[]): number[] => {
+    const pages = client.getStatusPageList();
+    const unknown = slugs.filter((s) => !pages.some((p) => p.slug === s));
+    if (unknown.length > 0) {
+      throw new Error(
+        `No status page with slug ${unknown.map((s) => `"${s}"`).join(', ')} — call listStatusPages to see the slugs`
+      );
+    }
+    return [...new Set(slugs.map((s) => pages.find((p) => p.slug === s)!.id as number))].sort((a, b) => a - b);
+  };
+
+  /** The slugs of the status pages a window is shown on. A page missing from the cache shows by title. */
+  const statusPageSlugsOf = async (maintenanceID: number): Promise<string[]> => {
+    const pages = client.getStatusPageList();
+    return (await client.getMaintenanceStatusPages(maintenanceID))
+      .map((sp) => (pages.find((p) => p.id === sp.id)?.slug as string | undefined) ?? sp.title)
+      .sort();
+  };
+
+  /**
+   * Sets the status pages a window is shown on (a full replace) and reads them back. Returns
+   * the problem as a string, like setAndVerifyMaintenanceMonitors().
+   */
+  const setAndVerifyMaintenanceStatusPages = async (
+    maintenanceID: number,
+    statusPageIDs: number[],
+    slugs: string[],
+    operation: string
+  ): Promise<string | null> => {
+    const wanted = [...new Set(slugs)].sort();
+    try {
+      await client.setMaintenanceStatusPages(maintenanceID, statusPageIDs);
+    } catch (linkError) {
+      const m = linkError instanceof Error ? linkError.message : String(linkError);
+      return `Maintenance window ${maintenanceID} was ${operation}, but setting its status pages to [${wanted.join(', ')}] failed: ${m}`;
+    }
+    let stored: number[];
+    try {
+      stored = (await client.getMaintenanceStatusPages(maintenanceID)).map((sp) => sp.id).sort((a, b) => a - b);
+    } catch (verifyError) {
+      const m = verifyError instanceof Error ? verifyError.message : String(verifyError);
+      return `Maintenance window ${maintenanceID} was ${operation}, but its status pages could NOT be verified: ${m}. Do not assume it applied.`;
+    }
+    if (JSON.stringify(stored) !== JSON.stringify(statusPageIDs)) {
+      return `Maintenance window ${maintenanceID} was ${operation}, but it is shown on status page IDs [${stored.join(', ')}] rather than the requested [${wanted.join(', ')}].`;
+    }
+    return null;
+  };
+
   /**
    * Uptime Kuma answers a write to a missing window with either `ok: true` (delete) or a raw
    * "Cannot read properties of null" (edit, pause, resume). Check first so the caller gets
@@ -243,7 +299,7 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
     {
       title: 'List Maintenance Windows',
       description:
-        'Returns every maintenance window with its schedule, whether it is active, and monitorIDs, the monitors it suppresses. A window with an empty monitorIDs list suppresses nothing. Use it to find the ID that updateMaintenanceWindow, setMaintenanceWindowActive and deleteMaintenanceWindow take.',
+        'Returns every maintenance window with its schedule, whether it is active, monitorIDs (the monitors it suppresses) and statusPageSlugs (the status pages that announce it). A window with an empty monitorIDs list suppresses nothing. Use it to find the ID that updateMaintenanceWindow, setMaintenanceWindowActive and deleteMaintenanceWindow take.',
       inputSchema: {},
       outputSchema: {
         maintenanceWindows: z.array(MaintenanceSchema).describe('Array of maintenance windows'),
@@ -258,6 +314,7 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
           client.getMaintenanceList().map(async (w) => ({
             ...w,
             monitorIDs: w.id === undefined ? [] : await client.getMonitorMaintenance(w.id),
+            statusPageSlugs: w.id === undefined ? [] : await statusPageSlugsOf(w.id),
           }))
         );
         return {
@@ -296,13 +353,15 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
         ok: z.boolean(),
         maintenanceID: z.number().optional(),
         monitorIDs: z.array(z.number()).optional(),
+        statusPageSlugs: z.array(z.string()).optional(),
         msg: z.string().optional(),
       },
     },
-    async ({ monitorIDs, ...input }) => {
+    async ({ monitorIDs, statusPageSlugs, ...input }) => {
       await authenticateClient();
 
       try {
+        const statusPageIDs = statusPageSlugs ? statusPageIDsFor(statusPageSlugs) : undefined;
         const response = await client.createMaintenance(toKumaMaintenance(input));
         const maintenanceID = response.maintenanceID;
         const structuredContent: Record<string, unknown> = { ok: response.ok, maintenanceID, msg: response.msg };
@@ -312,6 +371,9 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
           const problems = [
             await verifyMaintenanceWrite(maintenanceID, input, 'created'),
             monitorIDs ? await setAndVerifyMaintenanceMonitors(maintenanceID, monitorIDs, 'created') : null,
+            statusPageIDs && statusPageSlugs
+              ? await setAndVerifyMaintenanceStatusPages(maintenanceID, statusPageIDs, statusPageSlugs, 'created')
+              : null,
           ].filter((p): p is string => p !== null);
 
           if (problems.length > 0) {
@@ -332,6 +394,11 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
             '. It has no monitors, so it suppresses nothing — add them with updateMaintenanceWindow (monitorIDs).';
         }
 
+        if (statusPageSlugs && statusPageSlugs.length > 0) {
+          structuredContent.statusPageSlugs = [...new Set(statusPageSlugs)].sort();
+          text += ` Shown on status pages ${(structuredContent.statusPageSlugs as string[]).join(', ')}.`;
+        }
+
         return {
           content: [{ type: 'text', text }],
           structuredContent,
@@ -348,7 +415,7 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
     {
       title: 'Update Maintenance Window',
       description:
-        'Updates an existing maintenance window. Only the fields you pass change, except monitorIDs, which replaces the whole monitor list. To switch a window on or off use setMaintenanceWindowActive. Find the ID with listMaintenanceWindows.',
+        'Updates an existing maintenance window. Only the fields you pass change, except monitorIDs and statusPageSlugs, which each replace the whole list. To switch a window on or off use setMaintenanceWindowActive. Find the ID with listMaintenanceWindows.',
       inputSchema: {
         maintenanceID: requiredId('The ID of the maintenance window to update'),
         title: z.string().optional().describe('Title of the maintenance window'),
@@ -362,17 +429,19 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
         ok: z.boolean(),
         maintenanceID: z.number(),
         monitorIDs: z.array(z.number()).optional(),
+        statusPageSlugs: z.array(z.string()).optional(),
         msg: z.string().optional(),
       },
     },
-    async ({ maintenanceID, monitorIDs, ...rest }) => {
+    async ({ maintenanceID, monitorIDs, statusPageSlugs, ...rest }) => {
       await authenticateClient();
 
       try {
         const defined = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined));
-        if (Object.keys(defined).length === 0 && monitorIDs === undefined) {
-          throw new Error('Nothing to update — pass at least one field to change, or monitorIDs.');
+        if (Object.keys(defined).length === 0 && monitorIDs === undefined && statusPageSlugs === undefined) {
+          throw new Error('Nothing to update — pass at least one field to change, monitorIDs or statusPageSlugs.');
         }
+        const statusPageIDs = statusPageSlugs ? statusPageIDsFor(statusPageSlugs) : undefined;
 
         await requireMaintenance(maintenanceID);
         const structuredContent: Record<string, unknown> = { ok: true, maintenanceID };
@@ -410,7 +479,22 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
           else structuredContent.monitorIDs = [...new Set(monitorIDs)].sort((a, b) => a - b);
         }
 
-        const changed = [...Object.keys(defined), ...(monitorIDs !== undefined ? ['monitorIDs'] : [])];
+        if (statusPageIDs && statusPageSlugs) {
+          const problem = await setAndVerifyMaintenanceStatusPages(
+            maintenanceID,
+            statusPageIDs,
+            statusPageSlugs,
+            'updated'
+          );
+          if (problem) problems.push(problem);
+          else structuredContent.statusPageSlugs = [...new Set(statusPageSlugs)].sort();
+        }
+
+        const changed = [
+          ...Object.keys(defined),
+          ...(monitorIDs !== undefined ? ['monitorIDs'] : []),
+          ...(statusPageSlugs !== undefined ? ['statusPageSlugs'] : []),
+        ];
         const text = `Maintenance window ${maintenanceID} updated (${changed.join(', ')}).`;
         if (problems.length > 0) {
           structuredContent.ok = false;
