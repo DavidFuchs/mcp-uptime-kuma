@@ -3,563 +3,563 @@
   "all": {
     "tools": 67,
     "instructions": 4452,
-    "core": 67192,
+    "core": 63373,
     "description": 19567,
-    "inputSchema": 43659,
-    "outputSchema": 47089,
+    "inputSchema": 39840,
+    "outputSchema": 43270,
     "annotations": 4762,
-    "advertised": 125686,
-    "perRequestMin": 71644,
-    "perRequestMax": 130138
+    "advertised": 118048,
+    "perRequestMin": 67825,
+    "perRequestMax": 122500
   },
   "readOnly": {
     "tools": 18,
     "instructions": 1896,
-    "core": 13601,
+    "core": 12575,
     "description": 5534,
-    "inputSchema": 7023,
-    "outputSchema": 25590,
+    "inputSchema": 5997,
+    "outputSchema": 24564,
     "annotations": 774,
-    "advertised": 41723,
-    "perRequestMin": 15497,
-    "perRequestMax": 43619
+    "advertised": 39671,
+    "perRequestMin": 14471,
+    "perRequestMax": 41567
   },
   "tools": {
     "checkDomainExpirySupport": {
-      "core": 823,
+      "core": 766,
       "description": 360,
-      "inputSchema": 396,
-      "outputSchema": 357,
+      "inputSchema": 339,
+      "outputSchema": 300,
       "annotations": 43,
-      "advertised": 1332
+      "advertised": 1218
     },
     "clearAllStatistics": {
-      "core": 630,
+      "core": 573,
       "description": 293,
-      "inputSchema": 276,
-      "outputSchema": 160,
+      "inputSchema": 219,
+      "outputSchema": 103,
       "annotations": 90,
-      "advertised": 982
+      "advertised": 868
     },
     "clearMonitorEvents": {
-      "core": 572,
+      "core": 515,
       "description": 246,
-      "inputSchema": 265,
-      "outputSchema": 202,
+      "inputSchema": 208,
+      "outputSchema": 145,
       "annotations": 90,
-      "advertised": 966
+      "advertised": 852
     },
     "clearMonitorHeartbeats": {
-      "core": 643,
+      "core": 586,
       "description": 311,
-      "inputSchema": 267,
-      "outputSchema": 202,
+      "inputSchema": 210,
+      "outputSchema": 145,
       "annotations": 90,
-      "advertised": 1041
+      "advertised": 927
     },
     "createAPIKey": {
-      "core": 876,
+      "core": 819,
       "description": 418,
-      "inputSchema": 403,
-      "outputSchema": 321,
+      "inputSchema": 346,
+      "outputSchema": 264,
       "annotations": 91,
-      "advertised": 1384
+      "advertised": 1270
     },
     "createDockerHost": {
-      "core": 968,
+      "core": 911,
       "description": 340,
-      "inputSchema": 565,
-      "outputSchema": 207,
+      "inputSchema": 508,
+      "outputSchema": 150,
       "annotations": 91,
-      "advertised": 1366
+      "advertised": 1252
     },
     "createIncident": {
-      "core": 903,
+      "core": 846,
       "description": 242,
-      "inputSchema": 602,
-      "outputSchema": 885,
+      "inputSchema": 545,
+      "outputSchema": 828,
       "annotations": 91,
-      "advertised": 1976
+      "advertised": 1862
     },
     "createMaintenanceWindow": {
-      "core": 3229,
+      "core": 3172,
       "description": 350,
-      "inputSchema": 2811,
-      "outputSchema": 335,
+      "inputSchema": 2754,
+      "outputSchema": 278,
       "annotations": 91,
-      "advertised": 3762
+      "advertised": 3648
     },
     "createMonitor": {
-      "core": 5754,
+      "core": 5697,
       "description": 500,
-      "inputSchema": 5198,
-      "outputSchema": 712,
+      "inputSchema": 5141,
+      "outputSchema": 655,
       "annotations": 91,
-      "advertised": 6653
+      "advertised": 6539
     },
     "createNotification": {
-      "core": 1372,
+      "core": 1315,
       "description": 493,
-      "inputSchema": 818,
-      "outputSchema": 207,
+      "inputSchema": 761,
+      "outputSchema": 150,
       "annotations": 91,
-      "advertised": 1771
+      "advertised": 1657
     },
     "createProxy": {
-      "core": 1369,
+      "core": 1312,
       "description": 204,
-      "inputSchema": 1111,
-      "outputSchema": 855,
+      "inputSchema": 1054,
+      "outputSchema": 798,
       "annotations": 91,
-      "advertised": 2409
+      "advertised": 2295
     },
     "createRemoteBrowser": {
-      "core": 736,
+      "core": 679,
       "description": 145,
-      "inputSchema": 529,
-      "outputSchema": 500,
+      "inputSchema": 472,
+      "outputSchema": 443,
       "annotations": 91,
-      "advertised": 1430
+      "advertised": 1316
     },
     "createStatusPage": {
-      "core": 595,
+      "core": 538,
       "description": 195,
-      "inputSchema": 341,
-      "outputSchema": 184,
+      "inputSchema": 284,
+      "outputSchema": 127,
       "annotations": 91,
-      "advertised": 970
+      "advertised": 856
     },
     "createTag": {
-      "core": 714,
+      "core": 657,
       "description": 361,
-      "inputSchema": 301,
-      "outputSchema": 359,
+      "inputSchema": 244,
+      "outputSchema": 302,
       "annotations": 91,
-      "advertised": 1256
+      "advertised": 1142
     },
     "deleteAPIKey": {
-      "core": 442,
+      "core": 385,
       "description": 161,
-      "inputSchema": 226,
-      "outputSchema": 184,
+      "inputSchema": 169,
+      "outputSchema": 127,
       "annotations": 90,
-      "advertised": 812
+      "advertised": 698
     },
     "deleteDockerHost": {
-      "core": 498,
+      "core": 441,
       "description": 195,
-      "inputSchema": 244,
-      "outputSchema": 184,
+      "inputSchema": 187,
+      "outputSchema": 127,
       "annotations": 90,
-      "advertised": 872
+      "advertised": 758
     },
     "deleteIncident": {
-      "core": 557,
+      "core": 500,
       "description": 160,
-      "inputSchema": 340,
-      "outputSchema": 184,
+      "inputSchema": 283,
+      "outputSchema": 127,
       "annotations": 90,
-      "advertised": 928
+      "advertised": 814
     },
     "deleteMaintenanceWindow": {
-      "core": 503,
+      "core": 446,
       "description": 184,
-      "inputSchema": 253,
-      "outputSchema": 184,
+      "inputSchema": 196,
+      "outputSchema": 127,
       "annotations": 90,
-      "advertised": 884
+      "advertised": 770
     },
     "deleteMonitor": {
-      "core": 560,
+      "core": 503,
       "description": 270,
-      "inputSchema": 234,
-      "outputSchema": 184,
+      "inputSchema": 177,
+      "outputSchema": 127,
       "annotations": 90,
-      "advertised": 930
+      "advertised": 816
     },
     "deleteNotification": {
-      "core": 517,
+      "core": 460,
       "description": 207,
-      "inputSchema": 249,
-      "outputSchema": 184,
+      "inputSchema": 192,
+      "outputSchema": 127,
       "annotations": 90,
-      "advertised": 892
+      "advertised": 778
     },
     "deleteProxy": {
-      "core": 418,
+      "core": 361,
       "description": 136,
-      "inputSchema": 228,
-      "outputSchema": 184,
+      "inputSchema": 171,
+      "outputSchema": 127,
       "annotations": 90,
-      "advertised": 786
+      "advertised": 672
     },
     "deleteRemoteBrowser": {
-      "core": 473,
+      "core": 416,
       "description": 158,
-      "inputSchema": 253,
-      "outputSchema": 184,
+      "inputSchema": 196,
+      "outputSchema": 127,
       "annotations": 90,
-      "advertised": 850
+      "advertised": 736
     },
     "deleteStatusPage": {
-      "core": 412,
+      "core": 355,
       "description": 143,
-      "inputSchema": 210,
-      "outputSchema": 184,
+      "inputSchema": 153,
+      "outputSchema": 127,
       "annotations": 90,
-      "advertised": 786
+      "advertised": 672
     },
     "deleteTag": {
-      "core": 477,
+      "core": 420,
       "description": 203,
-      "inputSchema": 222,
-      "outputSchema": 184,
+      "inputSchema": 165,
+      "outputSchema": 127,
       "annotations": 90,
-      "advertised": 843
+      "advertised": 729
     },
     "getDatabaseInfo": {
-      "core": 439,
+      "core": 382,
       "description": 262,
-      "inputSchema": 119,
-      "outputSchema": 790,
+      "inputSchema": 62,
+      "outputSchema": 733,
       "annotations": 43,
-      "advertised": 1371
+      "advertised": 1257
     },
     "getMonitor": {
-      "core": 978,
+      "core": 921,
       "description": 364,
-      "inputSchema": 561,
-      "outputSchema": 3697,
+      "inputSchema": 504,
+      "outputSchema": 3640,
       "annotations": 43,
-      "advertised": 4811
+      "advertised": 4697
     },
     "getMonitorSummary": {
-      "core": 1630,
+      "core": 1573,
       "description": 479,
-      "inputSchema": 1087,
-      "outputSchema": 1955,
+      "inputSchema": 1030,
+      "outputSchema": 1898,
       "annotations": 43,
-      "advertised": 3729
+      "advertised": 3615
     },
     "getMonitorTypeFields": {
-      "core": 688,
+      "core": 631,
       "description": 367,
-      "inputSchema": 258,
-      "outputSchema": 1842,
+      "inputSchema": 201,
+      "outputSchema": 1785,
       "annotations": 43,
-      "advertised": 2678
+      "advertised": 2564
     },
     "getMonitorUptime": {
-      "core": 937,
+      "core": 880,
       "description": 395,
-      "inputSchema": 481,
-      "outputSchema": 1289,
+      "inputSchema": 424,
+      "outputSchema": 1232,
       "annotations": 43,
-      "advertised": 2369
+      "advertised": 2255
     },
     "getNotificationTypeFields": {
-      "core": 825,
+      "core": 768,
       "description": 483,
-      "inputSchema": 274,
-      "outputSchema": 1138,
+      "inputSchema": 217,
+      "outputSchema": 1081,
       "annotations": 43,
-      "advertised": 2116
+      "advertised": 2002
     },
     "getPushExample": {
-      "core": 1037,
+      "core": 980,
       "description": 357,
-      "inputSchema": 621,
-      "outputSchema": 464,
+      "inputSchema": 564,
+      "outputSchema": 407,
       "annotations": 43,
-      "advertised": 1642
+      "advertised": 1528
     },
     "getSettings": {
-      "core": 658,
+      "core": 601,
       "description": 303,
-      "inputSchema": 299,
-      "outputSchema": 1726,
+      "inputSchema": 242,
+      "outputSchema": 1669,
       "annotations": 43,
-      "advertised": 2521
+      "advertised": 2407
     },
     "getStatusPage": {
-      "core": 499,
+      "core": 442,
       "description": 217,
-      "inputSchema": 226,
-      "outputSchema": 1592,
+      "inputSchema": 169,
+      "outputSchema": 1535,
       "annotations": 43,
-      "advertised": 2231
+      "advertised": 2117
     },
     "listAPIKeys": {
-      "core": 397,
+      "core": 340,
       "description": 224,
-      "inputSchema": 119,
-      "outputSchema": 598,
+      "inputSchema": 62,
+      "outputSchema": 541,
       "annotations": 43,
-      "advertised": 1133
+      "advertised": 1019
     },
     "listDockerHosts": {
-      "core": 570,
+      "core": 513,
       "description": 211,
-      "inputSchema": 299,
-      "outputSchema": 986,
+      "inputSchema": 242,
+      "outputSchema": 929,
       "annotations": 43,
-      "advertised": 1698
+      "advertised": 1584
     },
     "listGames": {
-      "core": 708,
+      "core": 651,
       "description": 295,
-      "inputSchema": 355,
-      "outputSchema": 592,
+      "inputSchema": 298,
+      "outputSchema": 535,
       "annotations": 43,
-      "advertised": 1435
+      "advertised": 1321
     },
     "listHeartbeats": {
-      "core": 1497,
+      "core": 1440,
       "description": 556,
-      "inputSchema": 882,
-      "outputSchema": 1580,
+      "inputSchema": 825,
+      "outputSchema": 1523,
       "annotations": 43,
-      "advertised": 3217
+      "advertised": 3103
     },
     "listIncidents": {
-      "core": 634,
+      "core": 577,
       "description": 248,
-      "inputSchema": 330,
-      "outputSchema": 1133,
+      "inputSchema": 273,
+      "outputSchema": 1076,
       "annotations": 43,
-      "advertised": 1906
+      "advertised": 1792
     },
     "listMaintenanceWindows": {
-      "core": 526,
+      "core": 469,
       "description": 342,
-      "inputSchema": 119,
-      "outputSchema": 1869,
+      "inputSchema": 62,
+      "outputSchema": 1812,
       "annotations": 43,
-      "advertised": 2544
+      "advertised": 2430
     },
     "listMonitors": {
-      "core": 1645,
+      "core": 1588,
       "description": 343,
-      "inputSchema": 1247,
-      "outputSchema": 3768,
+      "inputSchema": 1190,
+      "outputSchema": 3711,
       "annotations": 43,
-      "advertised": 5551
+      "advertised": 5437
     },
     "listMonitorTypes": {
-      "core": 484,
-      "description": 306,
-      "inputSchema": 119,
-      "outputSchema": 477,
-      "annotations": 43,
-      "advertised": 1104
-    },
-    "listNotifications": {
-      "core": 704,
-      "description": 345,
-      "inputSchema": 299,
-      "outputSchema": 1023,
-      "annotations": 43,
-      "advertised": 1870
-    },
-    "listNotificationTypes": {
-      "core": 478,
-      "description": 295,
-      "inputSchema": 119,
-      "outputSchema": 629,
-      "annotations": 43,
-      "advertised": 1255
-    },
-    "listPM2Processes": {
       "core": 427,
-      "description": 249,
-      "inputSchema": 119,
-      "outputSchema": 385,
+      "description": 306,
+      "inputSchema": 62,
+      "outputSchema": 420,
       "annotations": 43,
-      "advertised": 955
-    },
-    "listProxies": {
-      "core": 565,
-      "description": 210,
-      "inputSchema": 299,
-      "outputSchema": 869,
-      "annotations": 43,
-      "advertised": 1571
-    },
-    "listRemoteBrowsers": {
-      "core": 637,
-      "description": 275,
-      "inputSchema": 299,
-      "outputSchema": 512,
-      "annotations": 43,
-      "advertised": 1294
-    },
-    "listStatusPages": {
-      "core": 473,
-      "description": 296,
-      "inputSchema": 119,
-      "outputSchema": 1323,
-      "annotations": 43,
-      "advertised": 1938
-    },
-    "listTags": {
-      "core": 328,
-      "description": 158,
-      "inputSchema": 119,
-      "outputSchema": 403,
-      "annotations": 43,
-      "advertised": 865
-    },
-    "resolveIncident": {
-      "core": 583,
-      "description": 184,
-      "inputSchema": 341,
-      "outputSchema": 885,
-      "annotations": 90,
-      "advertised": 1656
-    },
-    "setAPIKeyActive": {
-      "core": 569,
-      "description": 201,
-      "inputSchema": 310,
-      "outputSchema": 231,
-      "annotations": 90,
       "advertised": 990
     },
-    "setMaintenanceWindowActive": {
-      "core": 787,
-      "description": 361,
-      "inputSchema": 357,
-      "outputSchema": 271,
+    "listNotifications": {
+      "core": 647,
+      "description": 345,
+      "inputSchema": 242,
+      "outputSchema": 966,
+      "annotations": 43,
+      "advertised": 1756
+    },
+    "listNotificationTypes": {
+      "core": 421,
+      "description": 295,
+      "inputSchema": 62,
+      "outputSchema": 572,
+      "annotations": 43,
+      "advertised": 1141
+    },
+    "listPM2Processes": {
+      "core": 370,
+      "description": 249,
+      "inputSchema": 62,
+      "outputSchema": 328,
+      "annotations": 43,
+      "advertised": 841
+    },
+    "listProxies": {
+      "core": 508,
+      "description": 210,
+      "inputSchema": 242,
+      "outputSchema": 812,
+      "annotations": 43,
+      "advertised": 1457
+    },
+    "listRemoteBrowsers": {
+      "core": 580,
+      "description": 275,
+      "inputSchema": 242,
+      "outputSchema": 455,
+      "annotations": 43,
+      "advertised": 1180
+    },
+    "listStatusPages": {
+      "core": 416,
+      "description": 296,
+      "inputSchema": 62,
+      "outputSchema": 1266,
+      "annotations": 43,
+      "advertised": 1824
+    },
+    "listTags": {
+      "core": 271,
+      "description": 158,
+      "inputSchema": 62,
+      "outputSchema": 346,
+      "annotations": 43,
+      "advertised": 751
+    },
+    "resolveIncident": {
+      "core": 526,
+      "description": 184,
+      "inputSchema": 284,
+      "outputSchema": 828,
       "annotations": 90,
-      "advertised": 1259
+      "advertised": 1542
+    },
+    "setAPIKeyActive": {
+      "core": 512,
+      "description": 201,
+      "inputSchema": 253,
+      "outputSchema": 174,
+      "annotations": 90,
+      "advertised": 876
+    },
+    "setMaintenanceWindowActive": {
+      "core": 730,
+      "description": 361,
+      "inputSchema": 300,
+      "outputSchema": 214,
+      "annotations": 90,
+      "advertised": 1145
     },
     "setMonitorActive": {
-      "core": 827,
+      "core": 770,
       "description": 430,
-      "inputSchema": 338,
-      "outputSchema": 263,
+      "inputSchema": 281,
+      "outputSchema": 206,
       "annotations": 90,
-      "advertised": 1280
+      "advertised": 1166
     },
     "shrinkDatabase": {
-      "core": 598,
+      "core": 541,
       "description": 422,
-      "inputSchema": 119,
-      "outputSchema": 405,
+      "inputSchema": 62,
+      "outputSchema": 348,
       "annotations": 90,
-      "advertised": 1190
+      "advertised": 1076
     },
     "testChrome": {
-      "core": 929,
+      "core": 872,
       "description": 532,
-      "inputSchema": 344,
-      "outputSchema": 352,
+      "inputSchema": 287,
+      "outputSchema": 295,
       "annotations": 91,
-      "advertised": 1465
+      "advertised": 1351
     },
     "testDockerHost": {
-      "core": 715,
+      "core": 658,
       "description": 184,
-      "inputSchema": 474,
-      "outputSchema": 184,
+      "inputSchema": 417,
+      "outputSchema": 127,
       "annotations": 43,
-      "advertised": 1040
+      "advertised": 926
     },
     "testNotification": {
-      "core": 618,
+      "core": 561,
       "description": 315,
-      "inputSchema": 242,
-      "outputSchema": 251,
+      "inputSchema": 185,
+      "outputSchema": 194,
       "annotations": 90,
-      "advertised": 1058
+      "advertised": 944
     },
     "testRemoteBrowser": {
-      "core": 556,
+      "core": 499,
       "description": 177,
-      "inputSchema": 319,
-      "outputSchema": 184,
+      "inputSchema": 262,
+      "outputSchema": 127,
       "annotations": 43,
-      "advertised": 884
+      "advertised": 770
     },
     "updateDockerHost": {
-      "core": 774,
+      "core": 717,
       "description": 237,
-      "inputSchema": 476,
-      "outputSchema": 207,
+      "inputSchema": 419,
+      "outputSchema": 150,
       "annotations": 89,
-      "advertised": 1170
+      "advertised": 1056
     },
     "updateIncident": {
-      "core": 1036,
+      "core": 979,
       "description": 207,
-      "inputSchema": 772,
-      "outputSchema": 909,
+      "inputSchema": 715,
+      "outputSchema": 852,
       "annotations": 89,
-      "advertised": 2131
+      "advertised": 2017
     },
     "updateMaintenanceWindow": {
-      "core": 2895,
+      "core": 2838,
       "description": 248,
-      "inputSchema": 2581,
-      "outputSchema": 351,
+      "inputSchema": 2524,
+      "outputSchema": 294,
       "annotations": 89,
-      "advertised": 3442
+      "advertised": 3328
     },
     "updateMonitor": {
-      "core": 5374,
+      "core": 5317,
       "description": 485,
-      "inputSchema": 4831,
-      "outputSchema": 599,
+      "inputSchema": 4774,
+      "outputSchema": 542,
       "annotations": 89,
-      "advertised": 6158
+      "advertised": 6044
     },
     "updateNotification": {
-      "core": 1439,
+      "core": 1382,
       "description": 435,
-      "inputSchema": 941,
-      "outputSchema": 207,
+      "inputSchema": 884,
+      "outputSchema": 150,
       "annotations": 89,
-      "advertised": 1836
+      "advertised": 1722
     },
     "updateProxy": {
-      "core": 1409,
+      "core": 1352,
       "description": 181,
-      "inputSchema": 1170,
-      "outputSchema": 865,
+      "inputSchema": 1113,
+      "outputSchema": 808,
       "annotations": 89,
-      "advertised": 2457
+      "advertised": 2343
     },
     "updateRemoteBrowser": {
-      "core": 902,
+      "core": 845,
       "description": 232,
-      "inputSchema": 606,
-      "outputSchema": 518,
+      "inputSchema": 549,
+      "outputSchema": 461,
       "annotations": 89,
-      "advertised": 1612
+      "advertised": 1498
     },
     "updateSettings": {
-      "core": 3347,
+      "core": 3290,
       "description": 301,
-      "inputSchema": 2989,
-      "outputSchema": 1898,
+      "inputSchema": 2932,
+      "outputSchema": 1841,
       "annotations": 89,
-      "advertised": 5431
+      "advertised": 5317
     },
     "updateStatusPage": {
-      "core": 1313,
+      "core": 1256,
       "description": 363,
-      "inputSchema": 891,
-      "outputSchema": 184,
+      "inputSchema": 834,
+      "outputSchema": 127,
       "annotations": 89,
-      "advertised": 1686
+      "advertised": 1572
     },
     "updateTag": {
-      "core": 716,
+      "core": 659,
       "description": 217,
-      "inputSchema": 447,
-      "outputSchema": 359,
+      "inputSchema": 390,
+      "outputSchema": 302,
       "annotations": 89,
-      "advertised": 1256
+      "advertised": 1142
     }
   }
 }

@@ -70,13 +70,10 @@ describe('normalizeAdvertisedSchema', () => {
     expect(result.properties.config.additionalProperties).toBe(true);
   });
 
-  it('still relabels the draft-07 dialect stamp', () => {
-    const result = normalizeAdvertisedSchema({
-      $schema: 'http://json-schema.org/draft-07/schema#',
-      type: 'object',
-    }) as { $schema: string };
-
-    expect(result.$schema).toBe('https://json-schema.org/draft/2020-12/schema');
+  it('drops the dialect stamp, draft-07 or 2020-12, so the MCP default of 2020-12 applies', () => {
+    for (const $schema of ['http://json-schema.org/draft-07/schema#', 'https://json-schema.org/draft/2020-12/schema']) {
+      expect(normalizeAdvertisedSchema({ $schema, type: 'object' })).toEqual({ type: 'object' });
+    }
   });
 
   it('leaves a non-empty additionalProperties schema alone', () => {

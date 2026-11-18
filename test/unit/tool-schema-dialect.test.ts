@@ -1,17 +1,59 @@
 import { describe, it, expect } from 'vitest';
 import { createServer } from '../../src/server.js';
+import { Ajv } from 'ajv';
+import { Ajv2020 } from 'ajv/dist/2020.js';
 
 /**
  * Issue #83: the SDK stamps every tool's input/output schema with
  * "$schema": "http://json-schema.org/draft-07/schema#" (zod-to-json-schema's default target),
  * which clients validating strictly against the MCP spec's default dialect (2020-12, per
- * SEP-1613) reject outright. src/tools/registration.ts relabels the dialect on the way out; this asserts none
- * of the advertised schemas still declare draft-07.
+ * SEP-1613) reject outright. src/tools/registration.ts drops the stamp on the way out, so the
+ * spec's default applies; this asserts no advertised schema declares a dialect.
  */
 describe('tools/list schema dialect', () => {
-  type Tool = { name: string; inputSchema?: Record<string, unknown> };
+  type Tool = { name: string; inputSchema?: Record<string, unknown>; outputSchema?: Record<string, unknown> };
 
-  it('advertises the 2020-12 dialect on every tool schema, never draft-07', async () => {
+  /**
+   * A client built before the MCP spec named a default dialect may read an unstamped schema
+   * with its validator's own default, often draft-07. Every advertised schema has to compile,
+   * with unknown keywords refused, under both drafts, so it means the same either way.
+   */
+  it('compiles every advertised schema under draft-07 and 2020-12 alike', async () => {
+    const { server } = await createServer({
+      url: 'http://localhost:3001',
+      username: undefined,
+      password: undefined,
+      token: undefined,
+      jwtToken: undefined,
+    });
+    type ToolsListHandler = (request: unknown, extra: unknown) => Promise<{ tools: Tool[] }>;
+    const handler = (
+      server.server as unknown as { _requestHandlers: Map<string, ToolsListHandler> }
+    )._requestHandlers.get('tools/list');
+    const { tools } = await handler!({ method: 'tools/list', params: {} }, {});
+
+    const options = { strictSchema: true, strictTypes: false, strictTuples: false, logger: false } as const;
+    const validators = { 'draft-07': new Ajv(options), '2020-12': new Ajv2020(options) };
+    const failures: string[] = [];
+    for (const tool of tools) {
+      for (const [part, schema] of [
+        ['inputSchema', tool.inputSchema],
+        ['outputSchema', tool.outputSchema],
+      ] as const) {
+        if (!schema) continue;
+        for (const [draft, ajv] of Object.entries(validators)) {
+          try {
+            ajv.compile(schema);
+          } catch (error) {
+            failures.push(`${tool.name}.${part} (${draft}): ${error instanceof Error ? error.message : error}`);
+          }
+        }
+      }
+    }
+    expect(failures).toEqual([]);
+  });
+
+  it('declares no dialect on any tool schema, so the MCP default of 2020-12 applies', async () => {
     const { server } = await createServer({
       url: 'http://localhost:3001',
       username: undefined,
@@ -30,24 +72,25 @@ describe('tools/list schema dialect', () => {
     const { tools } = await handler!({ method: 'tools/list', params: {} }, {});
     expect(tools.length).toBeGreaterThan(0);
 
-    const draft07 = 'http://json-schema.org/draft-07/schema#';
-    const found = new Set<string>();
-    const walk = (value: unknown): void => {
+    const found: string[] = [];
+    const walk = (value: unknown, path: string): void => {
       if (Array.isArray(value)) {
-        value.forEach(walk);
+        value.forEach((v, i) => walk(v, `${path}[${i}]`));
         return;
       }
       if (value && typeof value === 'object') {
         for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
-          if (key === '$schema' && typeof val === 'string') found.add(val);
-          walk(val);
+          if (key === '$schema') found.push(`${path}: ${String(val)}`);
+          walk(val, `${path}.${key}`);
         }
       }
     };
-    walk(tools);
+    for (const tool of tools as Tool[]) {
+      walk(tool.inputSchema, `${tool.name}.inputSchema`);
+      walk(tool.outputSchema, `${tool.name}.outputSchema`);
+    }
 
-    expect(found.has(draft07)).toBe(false);
-    expect(found.has('https://json-schema.org/draft/2020-12/schema')).toBe(true);
+    expect(found).toEqual([]);
   });
 
   it('uses a boolean for unconstrained record values', async () => {
