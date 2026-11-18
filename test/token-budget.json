@@ -3,26 +3,26 @@
   "all": {
     "tools": 67,
     "instructions": 4548,
-    "core": 63373,
-    "description": 19567,
-    "inputSchema": 39840,
-    "outputSchema": 43270,
+    "core": 64113,
+    "description": 19690,
+    "inputSchema": 40457,
+    "outputSchema": 43111,
     "annotations": 4762,
-    "advertised": 118048,
-    "perRequestMin": 67921,
-    "perRequestMax": 122596
+    "advertised": 118629,
+    "perRequestMin": 68661,
+    "perRequestMax": 123177
   },
   "readOnly": {
     "tools": 18,
     "instructions": 1992,
-    "core": 12575,
-    "description": 5534,
-    "inputSchema": 5997,
-    "outputSchema": 24564,
+    "core": 13315,
+    "description": 5657,
+    "inputSchema": 6614,
+    "outputSchema": 24405,
     "annotations": 774,
-    "advertised": 39671,
-    "perRequestMin": 14567,
-    "perRequestMax": 41663
+    "advertised": 40252,
+    "perRequestMin": 15307,
+    "perRequestMax": 42244
   },
   "tools": {
     "checkDomainExpirySupport": {
@@ -226,12 +226,12 @@
       "advertised": 1257
     },
     "getMonitor": {
-      "core": 921,
-      "description": 364,
-      "inputSchema": 504,
-      "outputSchema": 3640,
+      "core": 1192,
+      "description": 405,
+      "inputSchema": 734,
+      "outputSchema": 3551,
       "annotations": 43,
-      "advertised": 4697
+      "advertised": 4879
     },
     "getMonitorSummary": {
       "core": 1573,
@@ -330,20 +330,20 @@
       "advertised": 1792
     },
     "listMaintenanceWindows": {
-      "core": 469,
-      "description": 342,
-      "inputSchema": 62,
-      "outputSchema": 1812,
+      "core": 667,
+      "description": 383,
+      "inputSchema": 219,
+      "outputSchema": 1831,
       "annotations": 43,
-      "advertised": 2430
+      "advertised": 2647
     },
     "listMonitors": {
-      "core": 1588,
-      "description": 343,
-      "inputSchema": 1190,
-      "outputSchema": 3711,
+      "core": 1859,
+      "description": 384,
+      "inputSchema": 1420,
+      "outputSchema": 3622,
       "annotations": 43,
-      "advertised": 5437
+      "advertised": 5619
     },
     "listMonitorTypes": {
       "core": 427,
