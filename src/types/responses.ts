@@ -26,6 +26,31 @@ export interface ServerInfo {
   runtime?: { platform?: string; arch?: string };
 }
 
+/** A game in GameDig's list, as Uptime Kuma's getGameList returns it. */
+export interface GameDigGame {
+  keys: string[];
+  pretty: string;
+  options?: { port?: number; port_query?: number; port_query_offset?: number | number[]; protocol?: string };
+  extra?: { old_id?: string; doc_notes?: string };
+}
+
+/** A process from `pm2 jlist` on the Uptime Kuma host. */
+export interface PM2Process {
+  id: string;
+  name: string;
+  status: string;
+}
+
+/**
+ * Uptime Kuma's answer to checkDomain. A refusal has ok: false and msg set to a translation key
+ * (msgi18n: true), with the values for its placeholders in meta.
+ */
+export interface CheckDomainResponse extends ApiResponse {
+  domain?: string;
+  tld?: string;
+  meta?: Record<string, unknown>;
+}
+
 /**
  * Login response
  */

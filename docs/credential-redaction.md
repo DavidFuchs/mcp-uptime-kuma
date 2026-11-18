@@ -19,6 +19,7 @@ What is withheld:
 | `listRemoteBrowsers`, `createRemoteBrowser`, `updateRemoteBrowser` | `user:password@` and secret-named query parameters (e.g. `?token=`) inside the `url` |
 | `listHeartbeats` | any column Uptime Kuma returns beyond the declared heartbeat fields (e.g. `response`, which can carry a service's response body) is dropped, and `user:password@` inside a URL quoted in the status message is scrubbed |
 | `getSettings`, `updateSettings` | any secret-named field Uptime Kuma returns (e.g. `steamAPIKey`) |
+| `getPushExample` | the push token, in both `pushURL` and the sample code (which then will not run until called with `includeSecrets`) |
 | `getMonitorSummary` | nothing - it returns no credentials to begin with |
 | `createAPIKey` | nothing, on purpose: returning the new key is the point of the call, and it is the only time Uptime Kuma gives it out. `listAPIKeys` never returns keys |
 

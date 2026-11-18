@@ -315,6 +315,13 @@ export async function runClaude(opts: ClaudeRunOptions): Promise<Trace> {
     }
     return trace;
   } finally {
-    rmSync(workDir, { recursive: true, force: true });
+    // On Windows a process taskkill has just ended can hold its working directory for a moment
+    // longer (EBUSY), so the removal is retried. Should it still fail, the leftover temp
+    // directory must not replace the outcome being reported, a timeout above all.
+    try {
+      rmSync(workDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    } catch {
+      /* leave it to the OS's temp cleanup */
+    }
   }
 }

@@ -29,6 +29,7 @@ import { registerProxyTools } from './tools/proxies.js';
 import { registerRemoteBrowserTools } from './tools/remote-browsers.js';
 import { registerAPIKeyTools } from './tools/api-keys.js';
 import { registerDatabaseTools } from './tools/database.js';
+import { registerMonitorHelperTools } from './tools/monitor-helpers.js';
 
 // The parts of this module that moved out, still importable from here.
 export { createKumaSession, type KumaSession, type KumaLogSink } from './kuma-session.js';
@@ -74,6 +75,8 @@ const INSTRUCTION_SECTIONS: Array<{ heading: string; lines: string[] }> = [
       `- Use 'createMonitor' / 'updateMonitor' / 'deleteMonitor' to manage monitors.`,
       `- Call 'getMonitorTypeFields' before creating or reconfiguring a monitor: it names the fields a type needs. Type-specific fields go in the typeFields argument.`,
       `- Use 'setMonitorActive' to temporarily stop/start checks.`,
+      `- While setting up a monitor: 'listGames' finds a gamedig monitor's game ID, 'listPM2Processes' a pm2 monitor's process, 'testChrome' checks real-browser monitors can start Chrome, and 'checkDomainExpirySupport' whether domainExpiryNotification can work for its address.`,
+      `- Use 'getPushExample' after creating a push monitor, for sample code that reports to it.`,
       `- Use 'createNotification' / 'updateNotification' / 'deleteNotification' to manage notification channels.`,
       `- Use 'testNotification' to send a real test message through a saved channel.`,
       `- Call 'getNotificationTypeFields' before creating a notification channel: type and field names are case-sensitive. 'listNotificationTypes' lists the types.`,
@@ -229,6 +232,7 @@ export async function createServer(
   registerRemoteBrowserTools(ctx);
   registerAPIKeyTools(ctx);
   registerDatabaseTools(ctx);
+  registerMonitorHelperTools(ctx);
 
   return { server, client, authenticateClient };
 }

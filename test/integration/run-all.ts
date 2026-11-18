@@ -14,6 +14,7 @@ import { startupTests } from './startup.test.js';
 import { monitorHistoryTests } from './monitor-history.long.test.js';
 import { proxyTests } from './proxies.test.js';
 import { databaseTests } from './database.test.js';
+import { monitorHelperTests } from './monitor-helpers.test.js';
 
 /**
  * Unified integration test runner.
@@ -47,6 +48,7 @@ const SHORT_SUITES: Record<string, Suite> = {
   'monitor-type-fields': { name: 'Type-specific Monitor Fields', tests: monitorTypeFieldTests },
   proxies: { name: 'Proxies, Remote Browsers & API Keys', tests: proxyTests },
   database: { name: 'Database', tests: databaseTests },
+  'monitor-helpers': { name: 'Monitor-creation Helpers', tests: monitorHelperTests },
   startup: { name: 'Fresh Server Startup', tests: startupTests },
 };
 

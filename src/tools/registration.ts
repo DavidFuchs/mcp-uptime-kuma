@@ -85,6 +85,11 @@ export const WRITE_TOOLS: ReadonlySet<string> = new Set([
   'setAPIKeyActive',
   'deleteAPIKey',
   'shrinkDatabase',
+  'listGames',
+  'listPM2Processes',
+  'testChrome',
+  'getPushExample',
+  'checkDomainExpirySupport',
 ]);
 
 /**
@@ -102,6 +107,11 @@ export const TOOLSETS = {
     'updateMonitor',
     'deleteMonitor',
     'setMonitorActive',
+    'listGames',
+    'listPM2Processes',
+    'testChrome',
+    'getPushExample',
+    'checkDomainExpirySupport',
   ],
   heartbeats: [
     'listHeartbeats',
@@ -200,6 +210,10 @@ export const CHANGE_NOTHING_TOOLS: ReadonlySet<string> = new Set([
   'getNotificationTypeFields',
   'testDockerHost',
   'testRemoteBrowser',
+  'listGames',
+  'listPM2Processes',
+  'getPushExample',
+  'checkDomainExpirySupport',
 ]);
 
 /**

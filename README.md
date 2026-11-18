@@ -33,7 +33,7 @@ Once it's connected, you manage Uptime Kuma by asking your AI assistant in plain
 
 ## Features
 
-- **Manage everything, not just read it.** 62 tools cover monitors of any type, notification
+- **Manage everything, not just read it.** 67 tools cover monitors of any type, notification
   channels, tags, maintenance windows, status pages and their incidents, proxies, remote browsers, API keys,
   Docker hosts, server settings and the database. See [Available Tools](#available-tools).
 - **Live data.** The server keeps a Socket.IO connection open to Uptime Kuma, so status and
@@ -453,6 +453,11 @@ because the image speaks stdio by default:
 | `updateMonitor` | Update an existing monitor's configuration, including changing its type in place (keeps the ID and history). |
 | `deleteMonitor` | Permanently delete a monitor and all its heartbeat history. |
 | `setMonitorActive` | Pause a monitor to stop its checks, or resume a paused one. |
+| `listGames` | Find the GameDig ID a game server (`gamedig`) monitor needs, by game name. |
+| `listPM2Processes` | List the PM2 processes on the Uptime Kuma host, for a `pm2` monitor. |
+| `testChrome` | Check that real-browser monitors can start Chrome on the Uptime Kuma host. With no path set, Uptime Kuma's Docker image installs Chromium first, which can take minutes. |
+| `getPushExample` | Sample code (bash, Python, PowerShell, Go and more) that reports to a push monitor, with its URL and interval filled in. The token is hidden unless `includeSecrets` is set. |
+| `checkDomainExpirySupport` | Whether Uptime Kuma can watch an address's domain registration expiry, and why not if it can't. |
 
 ### Heartbeats
 
@@ -721,7 +726,7 @@ offers; it does not change what the Uptime Kuma account itself is allowed to do.
 ## Choosing Tool Sets
 
 Every registered tool's definition is sent to the model at the start of each conversation, so
-all 62 take up roughly 18k tokens before you ask anything. To register only the areas you use,
+all 67 take up roughly 19k tokens before you ask anything. To register only the areas you use,
 set `UPTIME_KUMA_TOOLSETS` to a comma-separated list:
 
 ```
@@ -730,7 +735,7 @@ UPTIME_KUMA_TOOLSETS=monitors,heartbeats
 
 | Tool set | Tools |
 |---|---|
-| `monitors` | `getMonitorSummary`, `getMonitor`, `listMonitors`, `listMonitorTypes`, `getMonitorTypeFields`, `createMonitor`, `updateMonitor`, `deleteMonitor`, `setMonitorActive` |
+| `monitors` | `getMonitorSummary`, `getMonitor`, `listMonitors`, `listMonitorTypes`, `getMonitorTypeFields`, `createMonitor`, `updateMonitor`, `deleteMonitor`, `setMonitorActive`, `listGames`, `listPM2Processes`, `testChrome`, `getPushExample`, `checkDomainExpirySupport` |
 | `heartbeats` | `listHeartbeats`, `getMonitorUptime`, `clearMonitorEvents`, `clearMonitorHeartbeats`, `clearAllStatistics` |
 | `notifications` | `listNotifications`, `listNotificationTypes`, `getNotificationTypeFields`, `createNotification`, `updateNotification`, `deleteNotification`, `testNotification` |
 | `tags` | `listTags`, `createTag`, `updateTag`, `deleteTag` |

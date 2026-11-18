@@ -23,6 +23,9 @@ import type {
   RemoteBrowser,
   APIKey,
   ServerInfo,
+  GameDigGame,
+  PM2Process,
+  CheckDomainResponse,
 } from './types/index.js';
 import { normaliseMsg } from './utils/normalize-msg.js';
 
@@ -41,10 +44,11 @@ const FETCH_MONITOR_TIMEOUT_MS = 10_000;
 const ACK_TIMEOUT_MS = 30_000;
 
 /**
- * How long shrinkDatabase waits. SQLite's VACUUM rewrites the whole file before Uptime Kuma
- * answers, which on a database of several gigabytes takes minutes, not seconds.
+ * How long the calls wait that make Uptime Kuma do minutes of work before it answers:
+ * shrinkDatabase (SQLite's VACUUM rewrites the whole file) and testChrome (in the Docker image,
+ * it first installs Chromium with apt when none is there).
  */
-const SHRINK_TIMEOUT_MS = 10 * 60_000;
+const SLOW_TASK_TIMEOUT_MS = 10 * 60_000;
 
 /**
  * Every event Uptime Kuma pushes that a cache is filled from. Listed once so that the
@@ -2017,13 +2021,75 @@ export class UptimeKumaClient {
    */
   async shrinkDatabase(): Promise<ApiResponse> {
     const response = await this.request('shrinkDatabase', [], 'Failed to shrink the database', {
-      ms: SHRINK_TIMEOUT_MS,
+      ms: SLOW_TASK_TIMEOUT_MS,
       msg:
-        `No response from Uptime Kuma to "shrinkDatabase" within ${SHRINK_TIMEOUT_MS / 60_000} minutes. ` +
+        `No response from Uptime Kuma to "shrinkDatabase" within ${SLOW_TASK_TIMEOUT_MS / 60_000} minutes. ` +
         'It may still be running; check the size with getDatabaseInfo before trying again.',
     });
     this.safeLog('info', 'Shrank the database');
     return response;
+  }
+
+  // ─── Monitor-creation helpers ────────────────────────────────────────────────
+
+  /** The games GameDig can query, for a gamedig monitor's game field. Sorted by name. */
+  async getGameList(): Promise<GameDigGame[]> {
+    const response = await this.request<{ gameList?: GameDigGame[] }>('getGameList', [], 'Failed to get the game list');
+    return response.gameList ?? [];
+  }
+
+  /** The PM2 processes on the Uptime Kuma host, for a pm2 monitor's system_service_name. */
+  async getPM2ProcessList(): Promise<PM2Process[]> {
+    const response = await this.request<{ processList?: PM2Process[] }>(
+      'getPM2ProcessList',
+      [],
+      'Failed to get the PM2 process list'
+    );
+    return response.processList ?? [];
+  }
+
+  /**
+   * Launch a Chrome or Chromium binary on the Uptime Kuma host and return its version. An empty
+   * path auto-detects one, and in the Docker image installs Chromium first when there is none.
+   */
+  async testChrome(executable: string): Promise<string> {
+    const response = await this.request<{ msg?: unknown }>('testChrome', [executable], 'Chrome test failed', {
+      ms: SLOW_TASK_TIMEOUT_MS,
+      msg:
+        `No response from Uptime Kuma to "testChrome" within ${SLOW_TASK_TIMEOUT_MS / 60_000} minutes. ` +
+        'It may still be installing Chromium; try again later.',
+    });
+    // Answered as the translation { key: "foundChromiumVersion", values: [version] }.
+    const msg = response.msg as { values?: unknown[] } | string | undefined;
+    return String(typeof msg === 'object' && msg?.values ? (msg.values[0] ?? '') : (msg ?? ''));
+  }
+
+  /**
+   * Uptime Kuma's sample code for a push monitor in one language, with its placeholder push URL
+   * (https://example.com/api/push/key?status=up&msg=OK&ping=) and interval (60) still in it.
+   */
+  async getPushExample(language: string): Promise<string> {
+    const response = await this.request<{ code?: string }>(
+      'getPushExample',
+      [language],
+      `No push example for "${language}"`
+    );
+    return response.code ?? '';
+  }
+
+  /**
+   * Whether Uptime Kuma can watch the domain registration expiry of a monitor's address. Takes
+   * the monitor (or the part of one that matters: type and url / hostname / grpcUrl). The answer
+   * is returned whole, refusals included: those are a normal answer here, not a failure.
+   */
+  checkDomain(partial: Record<string, unknown>): Promise<CheckDomainResponse> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+      this.emitAck<CheckDomainResponse>('checkDomain', [partial], resolve);
+    });
   }
 
   // ─── Proxies ─────────────────────────────────────────────────────────────────
