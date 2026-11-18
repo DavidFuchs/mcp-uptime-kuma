@@ -42,6 +42,13 @@ export interface Trace {
   mcpStatus?: string;
   /** HTTP status of the API error that ended a failed session (e.g. 529 overloaded), if any. */
   apiErrorStatus?: number;
+  /**
+   * The session's main-model tokens, from the result message's usage; undefined when it had
+   * none. `input` counts cached and uncached input alike. It is the whole context summed over
+   * every model turn, so it grows with every large tool result the model has to carry. It
+   * includes Claude Code's own system prompt, which is the same in every run.
+   */
+  tokens?: { input: number; output: number };
 }
 
 /** Why a session that did not succeed ended, for error messages: its reply, else the API status. */
@@ -161,6 +168,7 @@ export function parseStreamJson(lines: string[], rawPath: string): Trace {
   let resultSubtype = 'missing';
   let mcpStatus: string | undefined;
   let apiErrorStatus: number | undefined;
+  let tokens: Trace['tokens'];
 
   for (const line of lines) {
     const trimmed = line.trim();
@@ -202,10 +210,29 @@ export function parseStreamJson(lines: string[], rawPath: string): Trace {
       turns = Number(msg.num_turns) || 0;
       finalText = typeof msg.result === 'string' ? msg.result : '';
       if (typeof msg.api_error_status === 'number') apiErrorStatus = msg.api_error_status;
+      const usage = msg.usage;
+      if (usage && typeof usage === 'object') {
+        const n = (v: unknown) => Number(v) || 0;
+        tokens = {
+          input: n(usage.input_tokens) + n(usage.cache_creation_input_tokens) + n(usage.cache_read_input_tokens),
+          output: n(usage.output_tokens),
+        };
+      }
     }
   }
 
-  return { toolCalls, turns, costUsd, durationMs, finalText, rawPath, resultSubtype, mcpStatus, apiErrorStatus };
+  return {
+    toolCalls,
+    turns,
+    costUsd,
+    durationMs,
+    finalText,
+    rawPath,
+    resultSubtype,
+    mcpStatus,
+    apiErrorStatus,
+    tokens,
+  };
 }
 
 /** Throws unless the session succeeded and the uptime-kuma MCP server connected. Used by preflight. */

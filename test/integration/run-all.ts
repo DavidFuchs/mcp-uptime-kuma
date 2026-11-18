@@ -15,6 +15,7 @@ import { monitorHistoryTests } from './monitor-history.long.test.js';
 import { proxyTests } from './proxies.test.js';
 import { databaseTests } from './database.test.js';
 import { monitorHelperTests } from './monitor-helpers.test.js';
+import { resultSizeTests } from './result-sizes.test.js';
 
 /**
  * Unified integration test runner.
@@ -50,6 +51,8 @@ const SHORT_SUITES: Record<string, Suite> = {
   database: { name: 'Database', tests: databaseTests },
   'monitor-helpers': { name: 'Monitor-creation Helpers', tests: monitorHelperTests },
   startup: { name: 'Fresh Server Startup', tests: startupTests },
+  // Last, so the instance-wide reads see the same leftovers on every run.
+  'result-sizes': { name: 'Tool Result Sizes', tests: resultSizeTests },
 };
 
 const LONG_SUITES: Record<string, Suite> = {

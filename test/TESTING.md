@@ -81,6 +81,7 @@ wait on a check.
 | `redaction` | `redaction.test.ts` | short |
 | `monitor-type-fields` | `monitor-type-fields.test.ts` | short |
 | `startup` | `startup.test.ts` | short |
+| `result-sizes` | `result-sizes.test.ts` | short, report only |
 | `monitor-history` | `monitor-history.long.test.ts` | long |
 
 Run chosen suites by name, short or long:

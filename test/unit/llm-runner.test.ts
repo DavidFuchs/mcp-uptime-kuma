@@ -111,6 +111,37 @@ describe('summarize', () => {
     expect(s.rows[0]).toMatchObject({ avgToolCalls: 5, avgToolErrors: 1 });
     expect(s.totalCostUsd).toBeCloseTo(0.04);
   });
+
+  it('averages tokens and tool-result characters over the runs that report them', () => {
+    const t = (results: string[], tokens?: { input: number; output: number }) => ({
+      toolCalls: results.map((resultText) => ({ name: 'x', input: {}, isError: false, resultText })),
+      turns: 1,
+      costUsd: 0,
+      durationMs: 0,
+      finalText: '',
+      rawPath: '',
+      resultSubtype: 'success',
+      tokens,
+    });
+    const s = summarize(
+      [
+        run('a', 'pass', { trace: t(['abc', 'de'], { input: 1000, output: 10 }) }),
+        run('a', 'pass', { trace: t(['abcdefg'], { input: 3000, output: 30 }) }),
+        run('a', 'pass', { trace: t([]) }),
+      ],
+      1
+    );
+    expect(s.rows[0]).toMatchObject({ avgInputTokens: 2000, avgOutputTokens: 20 });
+    // 5, 7 and 0 characters of tool results.
+    expect(s.rows[0].avgResultChars).toBe(4);
+    expect(s.totalInputTokens).toBe(4000);
+  });
+
+  it('reports no token average when no run has usage', () => {
+    const s = summarize([run('a', 'error')], 1);
+    expect(s.rows[0].avgInputTokens).toBeUndefined();
+    expect(s.totalInputTokens).toBe(0);
+  });
 });
 
 describe('formatConsole', () => {

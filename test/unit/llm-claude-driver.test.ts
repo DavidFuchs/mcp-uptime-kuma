@@ -100,6 +100,15 @@ describe('parseStreamJson', () => {
     expect(t.finalText.length).toBeGreaterThan(0);
   });
 
+  it('totals input tokens, cached and uncached, and output tokens from the result usage', () => {
+    // The fixture's usage: 4 input + 2497 cache creation + 41997 cache read, 254 output.
+    expect(parseStreamJson(fixtureLines, 'x').tokens).toEqual({ input: 44498, output: 254 });
+  });
+
+  it('leaves tokens undefined when the result message has no usage', () => {
+    expect(parseStreamJson([result], 'x').tokens).toBeUndefined();
+  });
+
   it('reports a missing result message as subtype "missing"', () => {
     const t = parseStreamJson([toolUse('a', 'mcp__uptime-kuma__listMonitors')], 'x');
     expect(t.resultSubtype).toBe('missing');
