@@ -543,7 +543,8 @@ export const monitorTests: Array<{ name: string; fn: TestFn }> = [
             'getMonitor'
           )
         );
-        if (back.parent !== null) throw new Error('re-parent to top level did not persist');
+        // Read results leave a null parent out.
+        if ((back.parent ?? null) !== null) throw new Error('re-parent to top level did not persist');
         console.log(
           '  ✓ #63/#65: re-parent works both ways; parentId returns direct children on both list and summary'
         );

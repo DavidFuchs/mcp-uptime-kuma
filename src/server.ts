@@ -54,6 +54,7 @@ const INSTRUCTION_SECTIONS: Array<{ heading: string; lines: string[] }> = [
   {
     heading: 'READ operations:',
     lines: [
+      `- Read results leave out fields that are null or empty: a field that is not there has no value.`,
       `- START with 'getMonitorSummary' for status overview ("how is everything?", "what's down?").`,
       `- Use 'listHeartbeats' for historical data, with monitorID for one monitor (set maxHeartbeats to 5-10 unless the user asks for more).`,
       `- Use 'getMonitorUptime' for uptime percentage and ping over a period ("uptime this week"), up to a year.`,
