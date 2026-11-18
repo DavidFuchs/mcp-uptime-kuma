@@ -1109,12 +1109,36 @@
   },
   {
     "name": "listMaintenanceWindows",
-    "description": "Returns every maintenance window with its schedule, whether it is active, monitorIDs (the monitors it suppresses) and statusPageSlugs (the status pages that announce it). A window with an empty monitorIDs list suppresses nothing. Use it to find the ID that updateMaintenanceWindow, setMaintenanceWindowActive and deleteMaintenanceWindow take; fields returns only the fields you name.",
+    "description": "Returns every maintenance window with its schedule, whether it is active, monitorIDs (the monitors it suppresses) and statusPageSlugs (the status pages that announce it). A window with an empty monitorIDs list suppresses nothing. Use it to find the ID that updateMaintenanceWindow, setMaintenanceWindowActive and deleteMaintenanceWindow take; fields returns only the fields you name. Filter by keywords in the title, or by status, e.g. \"scheduled,under-maintenance\" to leave out ended windows. Returns up to 50 windows per call; pass nextCursor back as cursor for the next page.",
     "arguments": [
+      {
+        "name": "keywords",
+        "type": "string",
+        "desc": "Space-separated keywords matched against the window's title, case-insensitively; all must match",
+        "optional": true
+      },
+      {
+        "name": "status",
+        "type": "string",
+        "desc": "Only windows in these statuses, comma-separated: inactive, scheduled, under-maintenance, ended, unknown",
+        "optional": true
+      },
       {
         "name": "fields",
         "type": "string",
         "desc": "Only these fields, comma-separated, e.g. \"title,active,monitorIDs\"; id is always returned. Default: every field.",
+        "optional": true
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "desc": "How many windows to return (default: 50)",
+        "optional": true
+      },
+      {
+        "name": "cursor",
+        "type": "string",
+        "desc": "The nextCursor of the previous call, for the next page",
         "optional": true
       }
     ],
@@ -1125,7 +1149,7 @@
   },
   {
     "name": "listMonitors",
-    "description": "Returns the configuration of every monitor, or of those matching the filters (keywords, type, active, maintenance, tags, parent group). Use it to find monitor IDs or compare settings; for current UP/DOWN status use getMonitorSummary instead. Type-specific fields such as url, hostname and port are returned only with includeTypeSpecificFields; fields returns only the fields you name.",
+    "description": "Returns the configuration of every monitor, or of those matching the filters (keywords, type, active, maintenance, tags, parent group). Use it to find monitor IDs or compare settings; for current UP/DOWN status use getMonitorSummary instead. Type-specific fields such as url, hostname and port are returned only with includeTypeSpecificFields; fields returns only the fields you name. Returns up to 50 monitors per call; pass nextCursor back as cursor for the next page.",
     "arguments": [
       {
         "name": "includeTypeSpecificFields",
@@ -1173,6 +1197,18 @@
         "name": "parentId",
         "type": "integer",
         "desc": "Only the direct children of this group monitor (not recursive); null for top-level monitors",
+        "optional": true
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "desc": "How many monitors to return (default: 50)",
+        "optional": true
+      },
+      {
+        "name": "cursor",
+        "type": "string",
+        "desc": "The nextCursor of the previous call, for the next page",
         "optional": true
       },
       {

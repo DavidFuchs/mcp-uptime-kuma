@@ -3,26 +3,26 @@
   "all": {
     "tools": 67,
     "instructions": 4548,
-    "core": 64113,
-    "description": 19690,
-    "inputSchema": 40457,
-    "outputSchema": 43111,
+    "core": 65091,
+    "description": 19971,
+    "inputSchema": 41152,
+    "outputSchema": 43737,
     "annotations": 4762,
-    "advertised": 118629,
-    "perRequestMin": 68661,
-    "perRequestMax": 123177
+    "advertised": 120233,
+    "perRequestMin": 69639,
+    "perRequestMax": 124781
   },
   "readOnly": {
     "tools": 18,
     "instructions": 1992,
-    "core": 13315,
-    "description": 5657,
-    "inputSchema": 6614,
-    "outputSchema": 24405,
+    "core": 14293,
+    "description": 5938,
+    "inputSchema": 7309,
+    "outputSchema": 25031,
     "annotations": 774,
-    "advertised": 40252,
-    "perRequestMin": 15307,
-    "perRequestMax": 42244
+    "advertised": 41856,
+    "perRequestMin": 16285,
+    "perRequestMax": 43848
   },
   "tools": {
     "checkDomainExpirySupport": {
@@ -330,20 +330,20 @@
       "advertised": 1792
     },
     "listMaintenanceWindows": {
-      "core": 667,
-      "description": 383,
-      "inputSchema": 219,
-      "outputSchema": 1831,
+      "core": 1355,
+      "description": 578,
+      "inputSchema": 710,
+      "outputSchema": 2206,
       "annotations": 43,
-      "advertised": 2647
+      "advertised": 3710
     },
     "listMonitors": {
-      "core": 1859,
-      "description": 384,
-      "inputSchema": 1420,
-      "outputSchema": 3622,
+      "core": 2149,
+      "description": 470,
+      "inputSchema": 1624,
+      "outputSchema": 3873,
       "annotations": 43,
-      "advertised": 5619
+      "advertised": 6160
     },
     "listMonitorTypes": {
       "core": 427,

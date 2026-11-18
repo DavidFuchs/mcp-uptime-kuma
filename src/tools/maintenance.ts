@@ -4,6 +4,24 @@ import type { ToolContext } from './context.js';
 import { MaintenanceSchema } from '../types/index.js';
 import { numeric, requiredId } from './schema.js';
 import { fieldsParam, parseFields, pickFields, wantsField } from './fields.js';
+import { pageById, pageNote, pagingOutput, pagingParams } from './paging.js';
+
+/** The statuses Uptime Kuma's Maintenance.getStatus() reports. */
+const MAINTENANCE_STATUSES = ['inactive', 'scheduled', 'under-maintenance', 'ended', 'unknown'];
+
+/** Reads a `status` filter: comma-separated names, in any case. Blank means no filter. */
+function parseMaintenanceStatus(status: string | undefined): ReadonlySet<string> | undefined {
+  const names = (status ?? '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter((s) => s.length > 0);
+  for (const name of names) {
+    if (!MAINTENANCE_STATUSES.includes(name)) {
+      throw new Error(`Unrecognised status "${name}". Use ${MAINTENANCE_STATUSES.join(', ')}.`);
+    }
+  }
+  return names.length > 0 ? new Set(names) : undefined;
+}
 
 /** The maintenance window tools. */
 export function registerMaintenanceTools(ctx: ToolContext): void {
@@ -318,30 +336,50 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
     {
       title: 'List Maintenance Windows',
       description:
-        'Returns every maintenance window with its schedule, whether it is active, monitorIDs (the monitors it suppresses) and statusPageSlugs (the status pages that announce it). A window with an empty monitorIDs list suppresses nothing. Use it to find the ID that updateMaintenanceWindow, setMaintenanceWindowActive and deleteMaintenanceWindow take; fields returns only the fields you name.',
+        'Returns every maintenance window with its schedule, whether it is active, monitorIDs (the monitors it suppresses) and statusPageSlugs (the status pages that announce it). A window with an empty monitorIDs list suppresses nothing. Use it to find the ID that updateMaintenanceWindow, setMaintenanceWindowActive and deleteMaintenanceWindow take; fields returns only the fields you name. Filter by keywords in the title, or by status, e.g. "scheduled,under-maintenance" to leave out ended windows. Returns up to 50 windows per call; pass nextCursor back as cursor for the next page.',
       inputSchema: {
+        keywords: z
+          .string()
+          .optional()
+          .describe("Space-separated keywords matched against the window's title, case-insensitively; all must match"),
+        status: z
+          .string()
+          .optional()
+          .describe(
+            'Only windows in these statuses, comma-separated: inactive, scheduled, under-maintenance, ended, unknown'
+          ),
         fields: fieldsParam(
           'Only these fields, comma-separated, e.g. "title,active,monitorIDs"; id is always returned. Default: every field.'
         ),
+        ...pagingParams('windows'),
       },
       outputSchema: {
         // With `fields`, a window carries only what was asked for, so no field can be required.
         maintenanceWindows: z
           .array(MaintenanceSchema.partial())
           .describe('Array of maintenance windows; with fields, only the fields asked for'),
-        count: z.number(),
+        count: z.number().describe('How many windows this page holds'),
+        ...pagingOutput,
       },
     },
-    async ({ fields }) => {
+    async ({ keywords, status, fields, limit, cursor }) => {
       await authenticateClient();
 
       try {
+        const statuses = parseMaintenanceStatus(status);
         const selection = parseFields(fields);
-        // Each of these is a request per window, so skip the ones the caller did not ask for.
+        // Each of these is a request per window, so skip the ones the caller did not ask for,
+        // and make them only for the windows on this page.
         const withMonitors = wantsField(selection, 'monitorIDs');
         const withPages = wantsField(selection, 'statusPageSlugs');
+        const words = (keywords ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+        const matching = client
+          .getMaintenanceList()
+          .filter((w) => !statuses || statuses.has(String(w.status ?? '').toLowerCase()))
+          .filter((w) => words.every((word) => w.title.toLowerCase().includes(word)));
+        const paged = pageById(matching, limit, cursor);
         const maintenanceWindows = await Promise.all(
-          client.getMaintenanceList().map(async (w) =>
+          paged.page.map(async (w) =>
             pickFields(
               {
                 ...w,
@@ -352,9 +390,18 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
             )
           )
         );
+        const note = pageNote('maintenance windows', paged);
         return {
-          content: [{ type: 'text', text: JSON.stringify(maintenanceWindows) }],
-          structuredContent: { maintenanceWindows, count: maintenanceWindows.length },
+          content: [
+            { type: 'text', text: JSON.stringify(maintenanceWindows) },
+            ...(note ? [{ type: 'text' as const, text: note }] : []),
+          ],
+          structuredContent: {
+            maintenanceWindows,
+            count: maintenanceWindows.length,
+            total: paged.total,
+            ...(paged.nextCursor !== undefined && { nextCursor: paged.nextCursor }),
+          },
         };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';

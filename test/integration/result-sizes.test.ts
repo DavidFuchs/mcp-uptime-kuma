@@ -136,6 +136,14 @@ export const resultSizeTests: Array<{ name: string; fn: TestFn }> = [
             'listMaintenanceWindows (fields title,active)'
           )
         );
+        instanceRows.push(
+          await measure(
+            client,
+            'listMaintenanceWindows',
+            { status: 'scheduled,under-maintenance' },
+            'listMaintenanceWindows (status scheduled,under-maintenance)'
+          )
+        );
 
         const report = [
           '### Tool result sizes',
