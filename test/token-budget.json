@@ -24,6 +24,18 @@
     "perRequestMin": 15675,
     "perRequestMax": 45139
   },
+  "dynamicStart": {
+    "tools": 15,
+    "instructions": 944,
+    "core": 23237,
+    "description": 6437,
+    "inputSchema": 15924,
+    "outputSchema": 15332,
+    "annotations": 903,
+    "advertised": 40943,
+    "perRequestMin": 24181,
+    "perRequestMax": 41887
+  },
   "tools": {
     "checkDomainExpirySupport": {
       "core": 766,

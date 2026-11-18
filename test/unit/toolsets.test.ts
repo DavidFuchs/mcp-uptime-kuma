@@ -101,7 +101,7 @@ describe('server instructions', () => {
 
     expect(instructions).toContain("start with 'getMonitorSummary'");
     expect(quotedTools(instructions).sort()).toEqual(
-      ['getMonitorSummary', 'updateMonitor', 'updateNotification', 'updateSettings'].sort()
+      ['getMonitorSummary', 'enableToolsets', 'updateMonitor', 'updateNotification', 'updateSettings'].sort()
     );
   });
 

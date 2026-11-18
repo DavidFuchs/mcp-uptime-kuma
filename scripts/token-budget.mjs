@@ -28,7 +28,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const outPath = join(root, 'test', 'token-budget.json');
 const check = process.argv.includes('--check');
 
-async function listTools(readOnly) {
+async function listTools(readOnly, dynamicToolsets = false) {
   // Tools register without a reachable Uptime Kuma: the initial login failure is not fatal.
   // A closed local port fails fast instead of waiting on a network timeout.
   const transport = new StdioClientTransport({
@@ -39,6 +39,7 @@ async function listTools(readOnly) {
       UPTIME_KUMA_URL: 'http://127.0.0.1:9',
       UPTIME_KUMA_READ_ONLY: readOnly ? 'true' : '',
       UPTIME_KUMA_TOOLSETS: '',
+      UPTIME_KUMA_DYNAMIC_TOOLSETS: dynamicToolsets ? 'true' : '',
     },
     stderr: 'ignore',
   });
@@ -98,6 +99,8 @@ function measureMode({ tools, instructions }) {
 
 const all = measureMode(await listTools(false));
 const readOnly = measureMode(await listTools(true));
+// UPTIME_KUMA_DYNAMIC_TOOLSETS at the start of a session, before any toolset is loaded.
+const dynamicStart = measureMode(await listTools(false, true));
 
 const budget = {
   $comment:
@@ -106,13 +109,15 @@ const budget = {
     'advertised = everything tools/list carries, which some clients send in full.',
   all: all.totals,
   readOnly: readOnly.totals,
+  dynamicStart: dynamicStart.totals,
   tools: all.perTool,
 };
 
 const json = `${JSON.stringify(budget, null, 2)}\n`;
 const summary =
   `${all.totals.tools} tools: ${all.totals.perRequestMin} to ${all.totals.perRequestMax} characters per request ` +
-  `(read-only: ${readOnly.totals.tools} tools, ${readOnly.totals.perRequestMin} to ${readOnly.totals.perRequestMax})`;
+  `(read-only: ${readOnly.totals.tools} tools, ${readOnly.totals.perRequestMin} to ${readOnly.totals.perRequestMax}; ` +
+  `dynamic at start: ${dynamicStart.totals.tools} tools, ${dynamicStart.totals.perRequestMin} to ${dynamicStart.totals.perRequestMax})`;
 
 if (check) {
   let current = '';

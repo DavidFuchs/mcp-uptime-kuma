@@ -123,7 +123,7 @@ export function formatConsole(summary: Summary, results: RunResult[]): string {
 export function writeResults(
   dir: string,
   results: RunResult[],
-  meta: { model: string; gitSha: string; startedAt: string }
+  meta: { model: string; gitSha: string; startedAt: string; serverEnv?: Record<string, string> }
 ): void {
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'summary.json'), JSON.stringify({ ...meta, results }, null, 2));

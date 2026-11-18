@@ -66,6 +66,8 @@ export interface ClaudeRunOptions {
   timeoutMs: number;
   config: TestConfig;
   rawPath: string;
+  /** Extra settings for the MCP server under test (see SERVER_ENV_KEYS in args.ts). */
+  serverEnv?: Record<string, string>;
 }
 
 export class ClaudeTimeoutError extends Error {
@@ -93,8 +95,9 @@ export function abortActiveClaude(): boolean {
   return true;
 }
 
-export function buildMcpConfig(config: TestConfig, repoRoot: string): object {
-  const env: Record<string, string> = { UPTIME_KUMA_URL: config.url };
+export function buildMcpConfig(config: TestConfig, repoRoot: string, serverEnv: Record<string, string> = {}): object {
+  // The settings first, so they cannot replace the URL or credentials set after them.
+  const env: Record<string, string> = { ...serverEnv, UPTIME_KUMA_URL: config.url };
   if (config.username) env.UPTIME_KUMA_USERNAME = config.username;
   if (config.password) env.UPTIME_KUMA_PASSWORD = config.password;
   if (config.jwtToken) env.UPTIME_KUMA_JWT_TOKEN = config.jwtToken;
@@ -252,7 +255,7 @@ export async function runClaude(opts: ClaudeRunOptions): Promise<Trace> {
   const repoRoot = join(import.meta.dirname, '../..');
   // Empty cwd: the repo's CLAUDE.md / AGENTS.md must not be picked up.
   mkdirSync(cwd);
-  writeFileSync(mcpConfigPath, JSON.stringify(buildMcpConfig(opts.config, repoRoot)));
+  writeFileSync(mcpConfigPath, JSON.stringify(buildMcpConfig(opts.config, repoRoot, opts.serverEnv)));
 
   const bin = process.env.CLAUDE_BIN ?? 'claude';
   const args = buildClaudeArgs({

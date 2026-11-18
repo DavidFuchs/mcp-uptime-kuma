@@ -12,7 +12,15 @@ import type { UptimeKumaConfig } from './types/index.js';
 import { INCLUDE_SECRETS_DESCRIPTION } from './redact.js';
 import { VERSION } from './version.js';
 import { createKumaSession, type KumaSession } from './kuma-session.js';
-import { installToolRegistration, isToolEnabled, parseToolsets, type ToolSelection } from './tools/registration.js';
+import {
+  installToolRegistration,
+  isToolEnabled,
+  parseToolsets,
+  TOOLSETS,
+  type ToolSelection,
+  type ToolsetName,
+} from './tools/registration.js';
+import { installDynamicToolsets, INITIAL_TOOLSETS } from './tools/dynamic-toolsets.js';
 import type { ToolContext } from './tools/context.js';
 import { registerMonitorReadTools } from './tools/monitors-read.js';
 import { registerMonitorWriteTools } from './tools/monitors-write.js';
@@ -59,6 +67,7 @@ const INSTRUCTION_SECTIONS: Array<{ heading: string; lines: string[] }> = [
     lines: [
       `- For status questions ("what's down?", "how is everything?") start with 'getMonitorSummary'.`,
       `- Read results leave out fields that are null or empty: a field that is not there has no value.`,
+      `- Only some tools are loaded at the start. When a task needs tools that are not listed, call 'enableToolsets' first; its description lists the toolsets.`,
     ],
   },
   {
@@ -120,7 +129,17 @@ export async function createServer(
     // Re-parsed so a library caller passing an unknown name gets the same error as the env var.
     toolsets: config.toolsets ? parseToolsets(config.toolsets.join(',') || 'all') : undefined,
   };
-  const instructions = buildInstructions((name) => isToolEnabled(name, selection), readOnlyMode);
+  // With UPTIME_KUMA_DYNAMIC_TOOLSETS, enableToolsets exists when any allowed tool is outside the
+  // toolsets loaded at the start; the instructions name it only then.
+  const loadsMore =
+    config.dynamicToolsets === true &&
+    (Object.keys(TOOLSETS) as ToolsetName[]).some(
+      (t) => !INITIAL_TOOLSETS.includes(t) && TOOLSETS[t].some((name) => isToolEnabled(name, selection))
+    );
+  const instructions = buildInstructions(
+    (name) => (name === 'enableToolsets' ? loadsMore : isToolEnabled(name, selection)),
+    readOnlyMode
+  );
 
   const server = new McpServer(
     {
@@ -136,7 +155,7 @@ export async function createServer(
   );
 
   // Must come before the first registerTool: it changes what registering a tool does.
-  installToolRegistration(server, selection);
+  const registered = installToolRegistration(server, selection);
 
   // Handle logging level changes via the underlying server
   server.server.setRequestHandler(SetLevelRequestSchema, async (request) => {
@@ -200,6 +219,9 @@ export async function createServer(
   registerAPIKeyTools(ctx);
   registerDatabaseTools(ctx);
   registerMonitorHelperTools(ctx);
+
+  // Last, once every tool is registered: it disables the ones outside the initial toolsets.
+  if (config.dynamicToolsets === true) installDynamicToolsets(server, registered);
 
   return { server, client, authenticateClient };
 }
