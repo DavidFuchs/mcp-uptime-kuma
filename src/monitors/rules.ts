@@ -368,7 +368,7 @@ export const pushURLFor = async (
     url: `${base.slice(0, end)}/api/push/${token}?status=up&msg=OK&ping=`,
     note: primary
       ? "The host is Uptime Kuma's Primary Base URL setting."
-      : 'No Primary Base URL is set in Uptime Kuma, so the host is the address this MCP server connects with. If the sender reaches Uptime Kuma at another address, use that host instead, or set the Primary Base URL under Settings → General in Uptime Kuma (this MCP server cannot change settings).',
+      : 'No Primary Base URL is set in Uptime Kuma, so the host is the address this MCP server connects with. If the sender reaches Uptime Kuma at another address, use that host instead, or set the Primary Base URL in Uptime Kuma (primaryBaseURL, with updateSettings).',
   };
 };
 

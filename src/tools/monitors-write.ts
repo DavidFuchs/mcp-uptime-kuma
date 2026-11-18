@@ -186,7 +186,9 @@ export function registerMonitorWriteTools(ctx: ToolContext): void {
     domainExpiryNotification: z
       .boolean()
       .optional()
-      .describe('Notify before the domain registration expires. Needs Uptime Kuma 2.1 or later.'),
+      .describe(
+        'Notify before the domain registration expires. Needs Uptime Kuma 2.1 or later, and not every domain can be watched: see checkDomainExpirySupport.'
+      ),
     parent: numeric(z.number()).nullable().optional().describe('Parent group monitor ID'),
     docker_container: z.string().optional().describe('Docker container name (required for docker type)'),
     docker_host: numeric(z.number())
@@ -220,7 +222,9 @@ export function registerMonitorWriteTools(ctx: ToolContext): void {
       'dns_resolve_server defaults to 1.1.1.1 and dns_resolve_type to A.',
       `dns_resolve_type is one of ${DNS_RECORD_TYPES.dns.join(', ')}.`,
     ],
-    push: ['pushToken is generated when omitted, and the ping URL is returned by the call that creates the monitor.'],
+    push: [
+      'pushToken is generated when omitted, and the ping URL is returned by the call that creates the monitor. getPushExample gives sample code that calls it.',
+    ],
     group: ['A group has no check of its own. Put monitors in it with their parent field.'],
     mqtt: [
       'hostname is the broker, e.g. mqtt://broker.example.com, mqtts://… or ws://… for MQTT over WebSocket.',
@@ -571,7 +575,9 @@ export function registerMonitorWriteTools(ctx: ToolContext): void {
         domainExpiryNotification: z
           .boolean()
           .optional()
-          .describe('Notify before the domain registration expires. Needs Uptime Kuma 2.1 or later.'),
+          .describe(
+            'Notify before the domain registration expires. Needs Uptime Kuma 2.1 or later, and not every domain can be watched: see checkDomainExpirySupport.'
+          ),
         active: z.boolean().optional().describe('Whether the monitor is active'),
         docker_container: z.string().optional().describe('Docker container name (required for docker type)'),
         docker_host: numeric(z.number())

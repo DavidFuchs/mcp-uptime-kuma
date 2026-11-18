@@ -1,5 +1,27 @@
 [
   {
+    "name": "checkDomainExpirySupport",
+    "description": "Says whether Uptime Kuma can watch a domain's registration expiry (domainExpiryNotification), and which domain and top-level domain it would look up. Many top-level domains have no RDAP service and cannot be watched; check before switching the notification on, since Uptime Kuma accepts it either way. Pass a monitor's ID, or an address (a URL or a host name).",
+    "arguments": [
+      {
+        "name": "monitorID",
+        "type": "integer",
+        "desc": "A monitor whose address to check. Find IDs with listMonitors.",
+        "optional": true
+      },
+      {
+        "name": "address",
+        "type": "string",
+        "desc": "A URL (\"https://example.com/health\") or host name (\"db.example.com\") to check instead",
+        "optional": true
+      }
+    ],
+    "annotations": {
+      "title": "Check Domain Expiry Support",
+      "readOnlyHint": true
+    }
+  },
+  {
     "name": "clearAllStatistics",
     "description": "Deletes the heartbeats and uptime statistics of EVERY monitor, and restarts the active ones; monitors and settings are kept. Cannot be undone. Only when the user explicitly asks to reset all history: confirm with them first, then pass confirm: true. For one monitor use clearMonitorHeartbeats.",
     "arguments": [
@@ -406,7 +428,7 @@
       {
         "name": "domainExpiryNotification",
         "type": "boolean",
-        "desc": "Notify before the domain registration expires. Needs Uptime Kuma 2.1 or later.",
+        "desc": "Notify before the domain registration expires. Needs Uptime Kuma 2.1 or later, and not every domain can be watched: see checkDomainExpirySupport.",
         "optional": true
       },
       {
@@ -921,6 +943,33 @@
     }
   },
   {
+    "name": "getPushExample",
+    "description": "Returns ready-to-run code that reports to a push monitor every interval, from Uptime Kuma's own samples, with the monitor's push URL and interval filled in. Use it after creating a push monitor, for the user's cron job or script. The push URL holds the monitor's token, a credential: it reads \"***\" (and the code will not work) unless includeSecrets is set.",
+    "arguments": [
+      {
+        "name": "monitorID",
+        "type": "integer",
+        "desc": "The push monitor. Find IDs with listMonitors."
+      },
+      {
+        "name": "language",
+        "type": "string",
+        "desc": "One of bash-curl, csharp, docker, go, java, javascript-fetch, php, powershell, python, typescript-fetch (default: bash-curl)",
+        "optional": true
+      },
+      {
+        "name": "includeSecrets",
+        "type": "boolean",
+        "desc": "Return credentials in full instead of \"***\"; they then stay in the transcript. Default: false, or UPTIME_KUMA_INCLUDE_SECRETS.",
+        "optional": true
+      }
+    ],
+    "annotations": {
+      "title": "Get Push Example",
+      "readOnlyHint": true
+    }
+  },
+  {
     "name": "getSettings",
     "description": "Returns the Uptime Kuma server settings, such as timezone, primary base URL and data retention. Only settings that have been saved are returned, so a missing key (for example primaryBaseURL) has never been set. Credentials read \"***\" unless includeSecrets is set. To change a setting use updateSettings.",
     "arguments": [
@@ -972,6 +1021,28 @@
     ],
     "annotations": {
       "title": "List Docker Hosts",
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "listGames",
+    "description": "Finds the GameDig ID a gamedig (game server) monitor needs in its game field, by game name or ID, e.g. \"minecraft\", \"counter strike 2\", \"valheim\". Returns each match's ID, name, default port and notes. Uptime Kuma does not check the ID when the monitor is saved, so look it up rather than guess.",
+    "arguments": [
+      {
+        "name": "search",
+        "type": "string",
+        "desc": "Part of the game name or ID; matched loosely. Omit to list games from the start.",
+        "optional": true
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "desc": "How many to return (default: 20, up to 100)",
+        "optional": true
+      }
+    ],
+    "annotations": {
+      "title": "List Games",
       "readOnlyHint": true
     }
   },
@@ -1129,6 +1200,14 @@
     }
   },
   {
+    "name": "listPM2Processes",
+    "description": "Lists the PM2 processes on the Uptime Kuma host with their name, ID and status. A pm2 monitor names one, by name or ID, in typeFields.system_service_name. Fails if PM2 is not installed where Uptime Kuma runs (it isn't in Uptime Kuma's Docker image).",
+    "annotations": {
+      "title": "List PM2 Processes",
+      "readOnlyHint": true
+    }
+  },
+  {
     "name": "listProxies",
     "description": "Returns the proxies monitors can send their requests through, with protocol, host, port and username. An HTTP-type monitor uses one by ID in its proxyId field. Passwords read \"***\" unless includeSecrets is set.",
     "arguments": [
@@ -1262,6 +1341,21 @@
     "annotations": {
       "title": "Shrink Database",
       "idempotentHint": true
+    }
+  },
+  {
+    "name": "testChrome",
+    "description": "Starts a Chrome or Chromium binary on the Uptime Kuma host and returns its version, to check that real-browser monitors without a remote browser can run. Defaults to the chromeExecutable setting those monitors use. With no path set, Uptime Kuma looks for one, and in its Docker image INSTALLS Chromium with apt when none is there, which can take minutes. Only paths on Uptime Kuma's own list of known Chrome locations are allowed, unless its host sets UPTIME_KUMA_ALLOW_ALL_CHROME_EXEC=1. For a remote browser use testRemoteBrowser.",
+    "arguments": [
+      {
+        "name": "executable",
+        "type": "string",
+        "desc": "Path of the binary to start, e.g. \"/usr/bin/chromium\". \"\" auto-detects; \"#playwright_chromium\" is the Chromium Playwright downloaded. Default: the chromeExecutable setting.",
+        "optional": true
+      }
+    ],
+    "annotations": {
+      "title": "Test Chrome"
     }
   },
   {
@@ -1703,7 +1797,7 @@
       {
         "name": "domainExpiryNotification",
         "type": "boolean",
-        "desc": "Notify before the domain registration expires. Needs Uptime Kuma 2.1 or later.",
+        "desc": "Notify before the domain registration expires. Needs Uptime Kuma 2.1 or later, and not every domain can be watched: see checkDomainExpirySupport.",
         "optional": true
       },
       {

@@ -315,7 +315,7 @@ export const MONITOR_FIELD_DOCS: Record<keyof typeof TYPE_SPECIFIC_MONITOR_FIELD
     'smtp: "secure" for SMTPS, "starttls" to require STARTTLS, "nostarttls" to never use it. Omit to use STARTTLS when offered.',
 
   // ── gamedig ──
-  game: 'GameDig game ID, e.g. "minecraft" (required for gamedig)',
+  game: 'GameDig game ID, e.g. "minecraft" (required for gamedig). Look it up with listGames.',
   gamedigGivenPortOnly: "Query only the given port instead of also trying the game's default ports (default: true)",
   gamedigToken: `Token for games whose query needs one. ${SECRET_NOTE}`,
 
@@ -350,7 +350,7 @@ export const MONITOR_FIELD_DOCS: Record<keyof typeof TYPE_SPECIFIC_MONITOR_FIELD
 
   // ── system-service, pm2 ──
   system_service_name:
-    'Service name for system-service (the systemd unit or Windows service name, no spaces) or the process name for pm2. Required for both.',
+    'Service name for system-service (the systemd unit or Windows service name, no spaces) or the process name or ID for pm2 (see listPM2Processes). Required for both.',
 
   // ── manual ──
   manual_status:
