@@ -152,6 +152,15 @@ export function registerMonitorHelperTools(ctx: ToolContext): void {
           structuredContent: { processes, count: processes.length },
         };
       } catch (error) {
+        // Uptime Kuma runs `pm2 jlist`; ENOENT is the shell finding no pm2 to run.
+        if (error instanceof Error && /\bENOENT\b/.test(error.message)) {
+          return fail(
+            'list the PM2 processes',
+            new Error(
+              `PM2 is not installed where Uptime Kuma runs, so pm2 monitors cannot work there (${error.message})`
+            )
+          );
+        }
         return fail('list the PM2 processes', error);
       }
     }

@@ -11,6 +11,9 @@ type Structured = Record<string, any>;
 const raw = ({ client }: TestContext, name: string, args: Record<string, unknown> = {}) =>
   client.callTool({ name, arguments: args }) as Promise<CallToolResult & { structuredContent: Structured }>;
 
+/** The text of a result, error or not (extractText throws on an error). */
+const textOf = (result: CallToolResult) => result.content.map((c) => (c.type === 'text' ? c.text : '')).join('\n');
+
 const caller =
   (ctx: TestContext) =>
   async (name: string, args: Record<string, unknown> = {}) => {
@@ -34,9 +37,9 @@ export const monitorHelperTests: Array<{ name: string; fn: TestFn }> = [
     name: 'listPM2Processes answers with a list, or says PM2 is missing',
     fn: async (ctx) => {
       const result = await raw(ctx, 'listPM2Processes');
-      const text = extractText(result, 'listPM2Processes');
+      const text = textOf(result);
       if (result.isError) {
-        if (!/PM2/.test(text)) throw new Error(`unexpected error: ${text}`);
+        if (!/PM2 is not installed/.test(text)) throw new Error(`unexpected error: ${text}`);
         console.log(`  ✓ no PM2 in the test image: ${text.slice(0, 100)}`);
       } else {
         console.log(`  ✓ ${result.structuredContent.count} PM2 processes`);
@@ -47,7 +50,7 @@ export const monitorHelperTests: Array<{ name: string; fn: TestFn }> = [
     name: 'testChrome reaches Uptime Kuma, which refuses a path off its list (nothing is installed)',
     fn: async (ctx) => {
       const result = await raw(ctx, 'testChrome', { executable: '/bin/sh' });
-      const text = extractText(result, 'testChrome');
+      const text = textOf(result);
       if (!result.isError || !/not allowed/i.test(text)) throw new Error(`expected a refusal: ${text}`);
       console.log('  ✓ /bin/sh refused by Uptime Kuma');
     },
@@ -66,7 +69,7 @@ export const monitorHelperTests: Array<{ name: string; fn: TestFn }> = [
         if (!shown.code.includes(`/api/push/${token}?status=up`) || !/interval = 45/.test(shown.code)) {
           throw new Error(`URL or interval not filled in:\n${shown.code}`);
         }
-        if (shown.code.includes('example.com')) throw new Error('the placeholder URL is still there');
+        if (shown.code.includes('/api/push/key?')) throw new Error('the placeholder URL is still there');
         console.log(`  ✓ python example for push monitor ${monitorID}: token and interval 45 filled in`);
       } finally {
         await ctx.client.callTool({ name: 'deleteMonitor', arguments: { monitorID } });

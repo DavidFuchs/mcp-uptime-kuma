@@ -130,6 +130,15 @@ describe('monitor-creation helper tools', () => {
     expect(result.structuredContent).toEqual({ processes: [{ id: '0', name: 'api', status: 'online' }], count: 1 });
   });
 
+  it('listPM2Processes says PM2 is not installed rather than only ENOENT', async () => {
+    vi.mocked(UptimeKumaClient.prototype.getPM2ProcessList).mockRejectedValue(
+      new Error('Unable to query PM2 process list (ENOENT).')
+    );
+    const result = await call('listPM2Processes');
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/PM2 is not installed where Uptime Kuma runs/);
+  });
+
   it('testChrome tests the stored chromeExecutable unless given a path', async () => {
     await call('testChrome');
     expect(testChrome).toHaveBeenLastCalledWith('/usr/bin/chromium');
