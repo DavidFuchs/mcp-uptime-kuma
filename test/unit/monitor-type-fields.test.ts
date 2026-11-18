@@ -673,13 +673,13 @@ describe('type-specific monitor fields (#112)', () => {
 
       expect((await client.callTool({ name: 'getMonitor', arguments: { monitorID: 7 } })).isError).toBeFalsy();
       expect(client.getInstructions()).toContain('READ-ONLY');
-      expect(client.getInstructions()).not.toContain('createMonitor');
+      expect(client.getInstructions()).not.toContain('updateMonitor');
     });
 
     it('leaves the instructions and tools alone otherwise', async () => {
       const { client } = await connectServer();
 
-      expect(client.getInstructions()).toContain("'createMonitor' / 'updateMonitor' / 'deleteMonitor'");
+      expect(client.getInstructions()).toContain("'updateMonitor'");
       expect(client.getInstructions()).not.toContain('READ-ONLY');
     });
   });

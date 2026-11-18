@@ -91,29 +91,31 @@ describe('server instructions', () => {
     const { names, instructions } = await connect(config);
     const mentioned = quotedTools(instructions);
 
-    expect(mentioned.length).toBeGreaterThan(0);
     expect(mentioned.filter((t) => !names.includes(t))).toEqual([]);
   });
 
-  it('mention every tool when nothing is excluded, so a new tool cannot be forgotten silently', () => {
+  // They are sent with every request, so they hold only what applies across tools; what each
+  // tool is for is in its own description, which a client that ignores the instructions still sees.
+  it('point status questions at getMonitorSummary, and leave the rest to the tool descriptions', () => {
     const instructions = buildInstructions(() => true, false);
 
-    for (const tool of ['getMonitorSummary', 'listHeartbeats', 'updateSettings', 'setMaintenanceWindowActive']) {
-      expect(instructions).toContain(`'${tool}'`);
-    }
+    expect(instructions).toContain("start with 'getMonitorSummary'");
+    expect(quotedTools(instructions).sort()).toEqual(
+      ['getMonitorSummary', 'updateMonitor', 'updateNotification', 'updateSettings'].sort()
+    );
   });
 
-  it('drop a heading whose lines were all left out', async () => {
+  it('drop the getMonitorSummary line when that tool is left out', async () => {
     const { instructions } = await connect({ toolsets: ['heartbeats'], readOnly: true });
 
-    expect(instructions).toContain("'listHeartbeats'");
-    expect(instructions).not.toContain('WRITE operations');
+    expect(instructions).not.toContain('getMonitorSummary');
+    expect(instructions).toContain('leave out fields that are null or empty');
   });
 
   it('keep the "***" round-trip line when any one update tool is present', () => {
     const onlySettings = buildInstructions((t) => t === 'updateSettings' || t === 'getSettings', false);
 
-    expect(onlySettings).toContain('restores the stored value');
-    expect(buildInstructions((t) => t === 'getSettings', true)).not.toContain('restores the stored value');
+    expect(onlySettings).toContain("sent back to 'updateSettings' keeps the stored value");
+    expect(buildInstructions((t) => t === 'getSettings', true)).not.toContain('keeps the stored value');
   });
 });
