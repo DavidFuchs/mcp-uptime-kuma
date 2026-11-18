@@ -51,57 +51,21 @@ export { MONITOR_TYPE_FIELD_NAMES } from './monitors/fields.js';
  * tool list. A heading whose lines were all dropped goes with them.
  */
 const INSTRUCTION_SECTIONS: Array<{ heading: string; lines: string[] }> = [
+  // Only what holds across tools. A line that only restated one tool's description cost every
+  // request its characters again, and a client that ignores the instructions never saw it, so
+  // each tool's description carries what it is and when to use it on its own.
   {
-    heading: 'READ operations:',
+    heading: 'READING:',
     lines: [
+      `- For status questions ("what's down?", "how is everything?") start with 'getMonitorSummary'.`,
       `- Read results leave out fields that are null or empty: a field that is not there has no value.`,
-      `- START with 'getMonitorSummary' for status overview ("how is everything?", "what's down?").`,
-      `- Use 'listHeartbeats' for historical data, with monitorID for one monitor. More than one beat comes back as a summary of the period, which answers most history questions; pass raw: true only when the user wants the individual beats.`,
-      `- Use 'getMonitorUptime' for uptime percentage and ping over a period ("uptime this week"), up to a year.`,
-      `- Use 'listMonitors' when you need configuration details (URLs, intervals, notification settings).`,
-      `- Use 'listNotifications' to see notification channels.`,
-      `- Use 'listTags' to see available tags.`,
-      `- Use 'listMaintenanceWindows' to see maintenance windows and the monitors each one covers.`,
-      `- Use 'listStatusPages' to see status page configurations, or 'getStatusPage' for one page's full details (groups + monitors).`,
-      `- Use 'listIncidents' for a status page's incident history; 'getStatusPage' includes the incidents showing now.`,
-      `- Use 'listDockerHosts' to see configured docker daemons (used by docker container monitors).`,
-      `- Use 'listProxies' / 'listRemoteBrowsers' for the IDs a monitor's proxyId / remote_browser field takes, and 'listAPIKeys' for API keys.`,
-      `- Use 'getSettings' for server settings such as timezone and data retention.`,
-      `- Use 'getDatabaseInfo' for the database type, its size and how long history is kept.`,
-    ],
-  },
-  {
-    heading: 'WRITE operations:',
-    lines: [
-      `- Use 'createMonitor' / 'updateMonitor' / 'deleteMonitor' to manage monitors.`,
-      `- Call 'getMonitorTypeFields' before creating or reconfiguring a monitor: it names the fields a type needs. Type-specific fields go in the typeFields argument.`,
-      `- Use 'setMonitorActive' to temporarily stop/start checks.`,
-      `- While setting up a monitor: 'listGames' finds a gamedig monitor's game ID, 'listPM2Processes' a pm2 monitor's process, 'testChrome' checks real-browser monitors can start Chrome, and 'checkDomainExpirySupport' whether domainExpiryNotification can work for its address.`,
-      `- Use 'getPushExample' after creating a push monitor, for sample code that reports to it.`,
-      `- Use 'createNotification' / 'updateNotification' / 'deleteNotification' to manage notification channels.`,
-      `- Use 'testNotification' to send a real test message through a saved channel.`,
-      `- Call 'getNotificationTypeFields' before creating a notification channel: type and field names are case-sensitive. 'listNotificationTypes' lists the types.`,
-      `- Use 'createTag' / 'updateTag' / 'deleteTag' to manage tags.`,
-      `- Use 'createMaintenanceWindow' / 'updateMaintenanceWindow' / 'deleteMaintenanceWindow' to manage maintenance windows. Pass monitorIDs — a window with no monitors suppresses nothing.`,
-      `- Use 'setMaintenanceWindowActive' to switch a maintenance window off and on.`,
-      `- Use 'createDockerHost' / 'updateDockerHost' / 'deleteDockerHost' to manage docker daemon connections.`,
-      `- Use 'testDockerHost' to verify a docker daemon is reachable before saving.`,
-      `- Use 'createStatusPage' / 'updateStatusPage' / 'deleteStatusPage' to manage status pages. Creating returns an empty page — follow up with updateStatusPage to set groups and monitors.`,
-      `- Use 'createIncident' to post an incident banner on a status page, 'updateIncident' as it develops and 'resolveIncident' when it is over. 'deleteIncident' removes one from the history.`,
-      `- Use 'clearMonitorEvents' / 'clearMonitorHeartbeats' to reset one monitor's history; 'clearAllStatistics' resets every monitor's, only when the user asks.`,
-      `- Use 'createProxy' / 'updateProxy' / 'deleteProxy' to manage the proxies monitors send requests through.`,
-      `- Use 'testRemoteBrowser' before 'createRemoteBrowser'; 'updateRemoteBrowser' / 'deleteRemoteBrowser' manage the rest.`,
-      `- Use 'createAPIKey' to make an API key (shown only once); 'setAPIKeyActive' / 'deleteAPIKey' switch one off or remove it.`,
-      `- Use 'updateSettings' to change server settings.`,
-      `- Use 'shrinkDatabase' to give the space of cleared history back to the disk (SQLite only).`,
     ],
   },
   {
     heading: 'CREDENTIALS:',
     lines: [
-      `- Read tools return "***" in place of passwords, tokens, API keys and HTTP headers. To attach a notification channel to a monitor you only need its id, so the common workflows never need the real values.`,
-      `- Pass includeSecrets: true (or set UPTIME_KUMA_INCLUDE_SECRETS=true) only when the value itself is needed. It will be written to this conversation's transcript.`,
-      `- "***" sent back to {UPDATE_TOOLS} restores the stored value rather than overwriting it, so a read-edit-write round trip is safe.`,
+      `- Passwords, tokens, API keys and HTTP headers read "***". The common workflows never need the real values (attaching a notification channel takes only its id), so pass includeSecrets: true only when the value itself is needed: it is then written to this conversation's transcript.`,
+      `- "***" sent back to {UPDATE_TOOLS} keeps the stored value, so a read-edit-write round trip is safe.`,
     ],
   },
 ];
@@ -121,7 +85,9 @@ export function buildInstructions(enabled: (tool: string) => boolean, readOnly: 
     return tools.every(enabled) ? line : undefined;
   };
 
-  const parts = ['This MCP server provides access to Uptime Kuma monitoring data and management operations.'];
+  const parts = [
+    "This MCP server provides access to Uptime Kuma monitoring data and management operations. Each tool's description says what it does and when to use it.",
+  ];
   for (const { heading, lines } of INSTRUCTION_SECTIONS) {
     const kept = lines.map(render).filter((line): line is string => line !== undefined);
     if (kept.length > 0) parts.push([heading, ...kept].join('\n'));
