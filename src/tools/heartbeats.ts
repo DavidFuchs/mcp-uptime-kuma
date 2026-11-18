@@ -4,6 +4,7 @@ import type { ToolContext } from './context.js';
 import { HeartbeatSchema, type Heartbeat } from '../types/index.js';
 import { redactHeartbeat } from '../redact.js';
 import { numeric } from './schema.js';
+import { HeartbeatSummarySchema, summariseHeartbeats } from './heartbeat-summary.js';
 
 /** The tool that reports check history. */
 export function registerHeartbeatTools(ctx: ToolContext): void {
@@ -17,7 +18,7 @@ export function registerHeartbeatTools(ctx: ToolContext): void {
     {
       title: 'List Heartbeats',
       description:
-        'Returns check history (status, response time, message), newest first, keyed by monitor ID: for one monitor when monitorID is given, otherwise for every monitor. Only the latest beat per monitor is returned unless maxHeartbeats is set (up to 100; keep it at 10 or less for one monitor and 5 or less for all, unless asked for more). important: true returns only the status changes for one monitor, which is history and not the current status. For current status use getMonitorSummary. Credentials inside a message URL read "***" unless includeSecrets is set.',
+        'Returns check history (status, response time, message), newest first, keyed by monitor ID: for one monitor when monitorID is given, otherwise for every monitor. Only the latest beat per monitor is returned unless maxHeartbeats is set (up to 100). For more than one beat it returns a summary per monitor instead of the rows: the time span, counts by status, ping min/avg/max, the latest beat and since when it has had that status, and each period of DOWN beats with its first message. That answers whether and when it went down, why, and whether it is back; pass raw: true only when the user wants the individual beats. important: true returns only the status changes for one monitor, which is history and not the current status. For current status use getMonitorSummary. Credentials inside a message URL read "***" unless includeSecrets is set.',
       inputSchema: {
         monitorID: numeric(z.number().int().positive())
           .optional()
@@ -31,17 +32,32 @@ export function registerHeartbeatTools(ctx: ToolContext): void {
           .describe(
             "Return only IMPORTANT beats — the status changes behind Uptime Kuma's event list — fetched live from the server rather than the cache. Needs monitorID. History only: the newest important beat is not the monitor's current status."
           ),
+        raw: z
+          .boolean()
+          .optional()
+          .describe(
+            'Return the individual beats instead of the summary when maxHeartbeats is more than 1 (default: false). Only when the user wants the beats themselves; then keep maxHeartbeats at 10 or less for one monitor and 5 or less for all, unless asked for more.'
+          ),
         includeSecrets: includeSecretsParam,
       },
       outputSchema: {
         heartbeats: z
           .record(z.string(), z.array(HeartbeatSchema))
-          .describe('Map of monitor IDs to their heartbeats, newest first'),
+          .optional()
+          .describe(
+            'Map of monitor IDs to their heartbeats, newest first. Returned for one beat, with raw, or with important.'
+          ),
+        summaries: z
+          .record(z.string(), HeartbeatSummarySchema)
+          .optional()
+          .describe(
+            'Map of monitor IDs to a summary of their beats; a monitor with no beats is left out. Returned for more than one beat, unless raw.'
+          ),
         monitorCount: z.number(),
         totalHeartbeatCount: z.number(),
       },
     },
-    async ({ monitorID, maxHeartbeats, important, includeSecrets }) => {
+    async ({ monitorID, maxHeartbeats, important, raw: wantsRows, includeSecrets }) => {
       if (important && monitorID === undefined) {
         throw new McpError(
           ErrorCode.InvalidParams,
@@ -74,14 +90,27 @@ export function registerHeartbeatTools(ctx: ToolContext): void {
           : Object.fromEntries(Object.entries(raw).map(([id, beats]) => [id, beats.map((hb) => redactHeartbeat(hb))]));
 
         const totalHeartbeatCount = Object.values(heartbeats).reduce((sum, beats) => sum + beats.length, 0);
+        const counts = { monitorCount: Object.keys(heartbeats).length, totalHeartbeatCount };
 
+        // One beat is already as small as its summary, and the event list (important) is a list
+        // of status changes the caller asked to read, so both stay rows. The summary is built
+        // from the redacted beats, so the messages it quotes are scrubbed as the rows would be.
+        if (count === 1 || important || wantsRows) {
+          return {
+            content: [{ type: 'text', text: JSON.stringify(heartbeats) }],
+            structuredContent: { heartbeats, ...counts },
+          };
+        }
+
+        const summaries = Object.fromEntries(
+          Object.entries(heartbeats).flatMap(([id, beats]) => {
+            const summary = summariseHeartbeats(beats);
+            return summary ? [[id, summary]] : [];
+          })
+        );
         return {
-          content: [{ type: 'text', text: JSON.stringify(heartbeats) }],
-          structuredContent: {
-            heartbeats,
-            monitorCount: Object.keys(heartbeats).length,
-            totalHeartbeatCount,
-          },
+          content: [{ type: 'text', text: JSON.stringify(summaries) }],
+          structuredContent: { summaries, ...counts },
         };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';

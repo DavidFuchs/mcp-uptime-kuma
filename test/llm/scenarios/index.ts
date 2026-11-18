@@ -22,6 +22,7 @@ import statusPageGroups from './status-page-groups.js';
 import dockerContainer from './docker-container.js';
 import maintenanceEdit from './maintenance-edit.js';
 import maintenanceRecurring from './maintenance-recurring.js';
+import heartbeatHistory from './heartbeat-history.js';
 
 export const scenarios: Scenario<any>[] = [
   pauseAndTag,
@@ -47,4 +48,5 @@ export const scenarios: Scenario<any>[] = [
   dockerContainer,
   maintenanceEdit,
   maintenanceRecurring,
+  heartbeatHistory,
 ];

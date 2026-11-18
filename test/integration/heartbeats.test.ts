@@ -37,7 +37,7 @@ export const heartbeatTests: Array<{ name: string; fn: TestFn }> = [
       const monitorID = monitors[0].id;
       const result = (await client.callTool({
         name: 'listHeartbeats',
-        arguments: { monitorID, maxHeartbeats: 5 },
+        arguments: { monitorID, maxHeartbeats: 5, raw: true },
       })) as CallToolResult;
       const data = JSON.parse(extractText(result, 'listHeartbeats'));
       if (Object.keys(data).join() !== String(monitorID)) {
@@ -66,7 +66,7 @@ export const heartbeatTests: Array<{ name: string; fn: TestFn }> = [
           extractText(
             (await client.callTool({
               name: 'listHeartbeats',
-              arguments: { monitorID: s.id, maxHeartbeats: 5 },
+              arguments: { monitorID: s.id, maxHeartbeats: 5, raw: true },
             })) as CallToolResult,
             'listHeartbeats'
           )
@@ -93,6 +93,43 @@ export const heartbeatTests: Array<{ name: string; fn: TestFn }> = [
         }
       }
       console.log(`  ✓ #56: monitor ${target} returned ${beats.length} beats, newest-first`);
+    },
+  },
+  {
+    name: 'listHeartbeats summarises more than one beat, matching the rows',
+    fn: async ({ client }) => {
+      type Beat = { time: string; status: number };
+      type Summary = { from: string; beats: number; counts: Record<string, number>; latest: { time: string } };
+      const call = async (args: Record<string, unknown>) =>
+        (
+          (await client.callTool({
+            name: 'listHeartbeats',
+            arguments: { maxHeartbeats: 20, ...args },
+          })) as CallToolResult & {
+            structuredContent: { heartbeats?: Record<string, Beat[]>; summaries?: Record<string, Summary> };
+          }
+        ).structuredContent;
+
+      const rows = (await call({ raw: true })).heartbeats ?? {};
+      const id = Object.keys(rows).find((k) => rows[k].length >= 2);
+      if (id === undefined) {
+        console.log('  ⚠ heartbeat summary: skipped (no monitor with ≥2 heartbeats yet)');
+        return;
+      }
+
+      // Read both from one call each; a beat may arrive in between, so compare the summary
+      // with rows fetched right after it.
+      const summary = (await call({ monitorID: Number(id) })).summaries?.[id];
+      const after = (await call({ monitorID: Number(id), raw: true })).heartbeats?.[id] ?? [];
+      if (!summary) throw new Error(`no summary for monitor ${id}`);
+      const total = Object.values(summary.counts).reduce((a, b) => a + b, 0);
+      if (total !== summary.beats) throw new Error(`counts add up to ${total}, not ${summary.beats}`);
+      if (summary.beats < 2 || summary.beats > 20) throw new Error(`summarised ${summary.beats} beats`);
+      if (Date.parse(summary.from) > Date.parse(summary.latest.time)) throw new Error('from is after latest.time');
+      if (Date.parse(summary.latest.time) > Date.parse(after[0].time)) {
+        throw new Error(`summary ends at ${summary.latest.time}, after the newest beat ${after[0].time}`);
+      }
+      console.log(`  ✓ heartbeat summary: monitor ${id}, ${summary.beats} beats, ${JSON.stringify(summary.counts)}`);
     },
   },
   {

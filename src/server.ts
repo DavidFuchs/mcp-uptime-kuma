@@ -56,7 +56,7 @@ const INSTRUCTION_SECTIONS: Array<{ heading: string; lines: string[] }> = [
     lines: [
       `- Read results leave out fields that are null or empty: a field that is not there has no value.`,
       `- START with 'getMonitorSummary' for status overview ("how is everything?", "what's down?").`,
-      `- Use 'listHeartbeats' for historical data, with monitorID for one monitor (set maxHeartbeats to 5-10 unless the user asks for more).`,
+      `- Use 'listHeartbeats' for historical data, with monitorID for one monitor. More than one beat comes back as a summary of the period, which answers most history questions; pass raw: true only when the user wants the individual beats.`,
       `- Use 'getMonitorUptime' for uptime percentage and ping over a period ("uptime this week"), up to a year.`,
       `- Use 'listMonitors' when you need configuration details (URLs, intervals, notification settings).`,
       `- Use 'listNotifications' to see notification channels.`,

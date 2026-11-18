@@ -7,8 +7,14 @@ import { PREFIX } from './scenario.js';
  * server like the model does, but deterministically.
  */
 
+const PAGED_TOOLS = new Set(['listMonitors', 'listMaintenanceWindows']);
+
 /** Calls a tool and returns its structuredContent, else its text parsed as JSON, else the raw text. Throws on isError. */
 export async function call(ctx: TestContext, tool: string, args: Record<string, unknown> = {}): Promise<any> {
+  // These two return 50 records a page by default. Setup, checks and the sweep look records up
+  // by name or ID, so they read every page at once: an instance left with more than 50 by
+  // earlier runs must not make a check miss the record it grades, or the sweep leave one behind.
+  if (PAGED_TOOLS.has(tool) && args.limit === undefined) args = { ...args, limit: 100_000 };
   const result = (await ctx.client.callTool({ name: tool, arguments: args })) as CallToolResult;
   const text = (result.content as any[] | undefined)?.find((c) => c?.type === 'text')?.text ?? '';
   if (result.isError) throw new Error(`${tool} returned error: ${text}`);
