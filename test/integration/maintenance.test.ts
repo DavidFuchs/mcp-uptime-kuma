@@ -250,7 +250,8 @@ export const maintenanceTests: Array<{ name: string; fn: TestFn }> = [
           arguments: { maintenanceID, monitorIDs: [] },
         })) as CallToolResult;
         extractText(detachResult, 'updateMaintenanceWindow');
-        if ((await findWindow(client, maintenanceID)).monitorIDs.length !== 0)
+        // Read results leave an empty list out.
+        if (((await findWindow(client, maintenanceID)).monitorIDs ?? []).length !== 0)
           throw new Error('monitorIDs: [] did not detach');
         console.log('  ✓ updateMaintenanceWindow monitorIDs: [] detaches all');
       } finally {

@@ -6,6 +6,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { MONITOR_TYPE_FIELD_NAMES, looseFieldName } from '../monitors/fields.js';
+import { leanToolResult, type SchemaLike } from './lean-results.js';
 
 /**
  * The tools that remain when UPTIME_KUMA_READ_ONLY is set: the ones that only report.
@@ -377,8 +378,46 @@ export function installToolRegistration(server: McpServer, selection: ToolSelect
     if (shape && typeof shape === 'object' && !('_def' in shape) && !('_zod' in shape)) {
       config = { ...config, inputSchema: strictInputSchema(name, shape as z.ZodRawShape) };
     }
+    // Read results leave out null and empty values, except fields the output schema requires
+    // (see lean-results.ts). This runs before the SDK checks structuredContent against that
+    // schema.
+    if (READ_ONLY_TOOLS.has(name) && typeof cb === 'function') {
+      cb = leanHandler(cb as (...args: unknown[]) => unknown, config.outputSchema);
+    }
     return (registerToolUnstrict as unknown as (n: string, c: unknown, f: unknown) => unknown)(name, config, cb);
   }) as typeof server.registerTool;
+
+  /**
+   * Wraps a read tool's handler so its result leaves out null and empty values.
+   *
+   * The output schema is converted to JSON Schema the way the SDK advertises it (Zod's
+   * toJSONSchema with io: 'output'), on the first call rather than at registration, as the
+   * HTTP transport builds a server per request. A tool whose schema cannot be converted is
+   * returned untrimmed: without the list of required fields, trimming could break it.
+   */
+  function leanHandler(handler: (...args: unknown[]) => unknown, outputSchema: unknown) {
+    let schema: SchemaLike | null | undefined;
+    const resolveSchema = (): SchemaLike | null => {
+      if (schema !== undefined) return schema;
+      try {
+        if (!outputSchema || typeof outputSchema !== 'object') {
+          schema = {};
+        } else {
+          const zodSchema =
+            '_zod' in outputSchema ? (outputSchema as z.ZodType) : z.object(outputSchema as z.ZodRawShape);
+          schema = z.toJSONSchema(zodSchema, { io: 'output' }) as SchemaLike;
+        }
+      } catch {
+        schema = null;
+      }
+      return schema;
+    };
+    return async (...args: unknown[]) => {
+      const result = (await handler(...args)) as Record<string, unknown>;
+      const resolved = resolveSchema();
+      return resolved === null ? result : leanToolResult(result, resolved);
+    };
+  }
 
   /**
    * Builds the strict schema, and makes an unknown key the FIRST thing the caller reads.

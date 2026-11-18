@@ -435,11 +435,11 @@ describe('maintenance tools', () => {
       const result = (await client.callTool({ name: 'listMaintenanceWindows', arguments: {} })) as CallToolResult;
 
       expect(result.isError).toBeFalsy();
-      expect((result.structuredContent as { maintenanceWindows: unknown[] }).maintenanceWindows[0]).toMatchObject({
-        id: 4,
-        monitorIDs: [3, 9],
-        statusPageSlugs: [],
-      });
+      const window = (result.structuredContent as { maintenanceWindows: Record<string, unknown>[] })
+        .maintenanceWindows[0];
+      expect(window).toMatchObject({ id: 4, monitorIDs: [3, 9] });
+      // Shown on no status page: read results leave the empty list out.
+      expect(window).not.toHaveProperty('statusPageSlugs');
     });
 
     it('includes the status pages each window is shown on, by slug', async () => {

@@ -152,13 +152,16 @@ export const statusPageTests: Array<{ name: string; fn: TestFn }> = [
         if (result.isError) throw new Error(`${name} failed: ${extractText(result, name)}`);
         return result.structuredContent;
       };
-      const slugsOf = async (id: number) =>
-        (
+      // null when the window is not listed; read results leave an empty list out.
+      const slugsOf = async (id: number) => {
+        const window = (
           (await call('listMaintenanceWindows', {})).maintenanceWindows as Array<{
             id: number;
             statusPageSlugs?: string[];
           }>
-        ).find((w) => w.id === id)?.statusPageSlugs ?? null;
+        ).find((w) => w.id === id);
+        return window ? (window.statusPageSlugs ?? []) : null;
+      };
 
       await call('createStatusPage', { title: 'Maintenance Test Page', slug });
       let maintenanceID: number | undefined;
