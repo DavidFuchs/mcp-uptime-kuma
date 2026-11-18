@@ -2,7 +2,7 @@
  * What applies to every tool alike: which ones exist in read-only mode, the behaviour hints
  * each advertises, strict input schemas, and the shape of the advertised JSON Schema.
  */
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer, RegisteredTool } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { MONITOR_TYPE_FIELD_NAMES, looseFieldName } from '../monitors/fields.js';
@@ -344,7 +344,15 @@ function normalizeSchemaMap(value: unknown): unknown {
  * out that read-only mode or UPTIME_KUMA_TOOLSETS exclude, adds each tool's annotations, makes its input schema strict, and
  * normalizes the JSON Schema that tools/list advertises.
  */
-export function installToolRegistration(server: McpServer, selection: ToolSelection): void {
+/**
+ * Tools that belong to no toolset and are not filtered by the selection: they manage the tool
+ * list itself (see dynamic-toolsets.ts) and are registered only when that mode is on.
+ */
+const TOOL_LIST_TOOLS: ReadonlySet<string> = new Set(['enableToolsets']);
+
+/** Returns the tools registered from here on, by name, as the SDK handed them back. */
+export function installToolRegistration(server: McpServer, selection: ToolSelection): Map<string, RegisteredTool> {
+  const registered = new Map<string, RegisteredTool>();
   // Reject unknown keys instead of silently stripping them.
   //
   // registerTool is normally handed a raw Zod *shape*, which the SDK turns into a plain
@@ -371,7 +379,7 @@ export function installToolRegistration(server: McpServer, selection: ToolSelect
   ) => {
     // Read-only mode: a tool that is not registered cannot be called, listed, or cost context.
     // So do UPTIME_KUMA_TOOLSETS: a toolset left out costs nothing.
-    if (!isToolEnabled(name, selection)) return undefined;
+    if (!TOOL_LIST_TOOLS.has(name) && !isToolEnabled(name, selection)) return undefined;
     config = { annotations: toolAnnotations(name), ...config };
     const shape = config?.inputSchema as Record<string, unknown> | undefined;
     // Only upgrade raw shapes; anything already a Zod schema is left alone.
@@ -384,7 +392,13 @@ export function installToolRegistration(server: McpServer, selection: ToolSelect
     if (READ_ONLY_TOOLS.has(name) && typeof cb === 'function') {
       cb = leanHandler(cb as (...args: unknown[]) => unknown, config.outputSchema);
     }
-    return (registerToolUnstrict as unknown as (n: string, c: unknown, f: unknown) => unknown)(name, config, cb);
+    const tool = (registerToolUnstrict as unknown as (n: string, c: unknown, f: unknown) => RegisteredTool)(
+      name,
+      config,
+      cb
+    );
+    registered.set(name, tool);
+    return tool;
   }) as typeof server.registerTool;
 
   /**
@@ -511,4 +525,6 @@ export function installToolRegistration(server: McpServer, selection: ToolSelect
     }
     return setRequestHandlerUnpatched(requestSchema, handler);
   }) as typeof server.server.setRequestHandler;
+
+  return registered;
 }

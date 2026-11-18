@@ -632,6 +632,7 @@ need more than a line.
 |----------|---------|---------|
 | `UPTIME_KUMA_READ_ONLY` | `false` | `true` registers only the tools that read. See [Read-Only Mode](#read-only-mode). |
 | `UPTIME_KUMA_TOOLSETS` | all | Comma-separated tool sets to register, e.g. `monitors,heartbeats`. See [Choosing Tool Sets](#choosing-tool-sets). |
+| `UPTIME_KUMA_DYNAMIC_TOOLSETS` | `false` | `true` starts with the `monitors` tools and lets the assistant load the other tool sets when it needs them. stdio only. See [Loading Tool Sets on Demand](#loading-tool-sets-on-demand). |
 | `UPTIME_KUMA_INCLUDE_SECRETS` | `false` | `true` returns passwords, tokens and API keys in tool output instead of `***`. See [Credential Redaction](#credential-redaction). |
 
 **HTTP endpoint** (`-t streamable-http` only)
@@ -759,6 +760,30 @@ Most other tool sets refer to monitors by ID (maintenance windows, status pages,
 notifications are attached to monitors), so include `monitors` with them unless you already
 know the IDs.
 
+## Loading Tool Sets on Demand
+
+With `UPTIME_KUMA_DYNAMIC_TOOLSETS=true` the server starts with the `monitors` tool set and one
+more tool, `enableToolsets`, whose description lists the other tool sets. When a task needs one
+of them, such as `maintenance` for a maintenance window, the assistant calls `enableToolsets`
+and the server tells the client its tool list changed. The tools stay loaded for the rest of
+the session.
+
+At the start of a session that is 15 tools, about 7k tokens, instead of about 19k. A conversation
+that only touches monitors keeps that saving on every turn. One that needs another tool set pays
+one extra call to load it.
+
+```
+UPTIME_KUMA_DYNAMIC_TOOLSETS=true
+```
+
+- **stdio only.** The HTTP transport keeps no session and can't send the change notification, so
+  the server refuses to start with both. Use `UPTIME_KUMA_TOOLSETS` there.
+- **The client must refresh its tool list** when the server sends `notifications/tools/list_changed`.
+  Claude Code does. With a client that doesn't, the assistant would load a tool set and never
+  see its tools; leave this off for that client.
+- It combines with the other settings: `UPTIME_KUMA_TOOLSETS` still limits which tool sets can be
+  loaded, and read-only mode still leaves out every write tool.
+
 ## Securing the HTTP Endpoint
 
 Applies to `-t streamable-http` only. Anyone who can reach `/mcp` has full read/write control
@@ -844,7 +869,8 @@ container.
 set. If it is, the write tools aren't registered at all.
 
 **The assistant says a tool doesn't exist.** Check `UPTIME_KUMA_TOOLSETS`: only the tools in the
-listed tool sets are registered.
+listed tool sets are registered. With `UPTIME_KUMA_DYNAMIC_TOOLSETS=true`, a client that doesn't
+refresh its tool list never shows the assistant the tool sets it loads; turn the setting off.
 
 ## Contributing
 

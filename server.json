@@ -80,6 +80,13 @@
           "format": "string",
           "isSecret": false,
           "name": "UPTIME_KUMA_TOOLSETS"
+        },
+        {
+          "description": "Set to true to start with the monitors tools and let the assistant load the other tool sets when it needs them; the client must refresh its tool list on notifications/tools/list_changed",
+          "isRequired": false,
+          "format": "boolean",
+          "isSecret": false,
+          "name": "UPTIME_KUMA_DYNAMIC_TOOLSETS"
         }
       ]
     },

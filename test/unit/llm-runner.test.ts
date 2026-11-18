@@ -18,6 +18,14 @@ const run = (scenarioId: string, outcome: RunResult['outcome'], extra: Partial<R
 });
 
 describe('parseArgs', () => {
+  it('takes server settings, and only the ones that change what the model is offered', () => {
+    expect(parseArgs(['--server-env', 'UPTIME_KUMA_DYNAMIC_TOOLSETS=true']).serverEnv).toEqual({
+      UPTIME_KUMA_DYNAMIC_TOOLSETS: 'true',
+    });
+    expect(() => parseArgs(['--server-env', 'UPTIME_KUMA_URL=https://prod.example.com'])).toThrow(/KEY=VALUE/);
+    expect(() => parseArgs(['--server-env', 'UPTIME_KUMA_READ_ONLY'])).toThrow(/KEY=VALUE/);
+  });
+
   it('parseArgs defaults', () => {
     expect(parseArgs([])).toEqual({
       scenarios: [],
@@ -26,6 +34,7 @@ describe('parseArgs', () => {
       model: 'sonnet',
       minPassRate: 1,
       keepTraces: false,
+      serverEnv: {},
     });
   });
 
@@ -53,6 +62,7 @@ describe('parseArgs', () => {
       model: 'opus',
       minPassRate: 0.66,
       keepTraces: true,
+      serverEnv: {},
     });
   });
 

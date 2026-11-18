@@ -32,6 +32,8 @@ function validateEnvironment(): UptimeKumaConfig {
   // Leave out every tool that creates, changes or deletes. Same parsing as above: only an
   // explicit "true"/"1" enables it.
   const readOnly = /^(true|1)$/i.test(process.env.UPTIME_KUMA_READ_ONLY ?? '');
+  // Start with the monitors tools and load the other toolsets on demand (tools/dynamic-toolsets.ts).
+  const dynamicToolsets = /^(true|1)$/i.test(process.env.UPTIME_KUMA_DYNAMIC_TOOLSETS ?? '');
 
   if (!url) {
     console.error('Error: UPTIME_KUMA_URL environment variable is required');
@@ -70,7 +72,18 @@ function validateEnvironment(): UptimeKumaConfig {
     process.exit(1);
   }
 
-  return { url, username, password, token, jwtToken, includeSecrets, readOnly, toolsets, extraHeaders };
+  return {
+    url,
+    username,
+    password,
+    token,
+    jwtToken,
+    includeSecrets,
+    readOnly,
+    toolsets,
+    dynamicToolsets,
+    extraHeaders,
+  };
 }
 
 // Parse command-line arguments
@@ -255,6 +268,16 @@ async function runHttp(config: UptimeKumaConfig) {
 async function main() {
   const { transport } = parseArgs();
   const config = validateEnvironment();
+
+  // The HTTP transport builds a server per request and answers with plain JSON, so it could
+  // neither remember which toolsets a client loaded nor tell it the tool list changed. Running
+  // anyway would leave the model loading toolsets whose tools never appear.
+  if (config.dynamicToolsets && transport !== 'stdio') {
+    console.error(
+      'Error: UPTIME_KUMA_DYNAMIC_TOOLSETS needs the stdio transport. With streamable-http, choose the tools with UPTIME_KUMA_TOOLSETS instead.'
+    );
+    process.exit(1);
+  }
 
   if (transport === 'stdio') {
     await runStdio(config);

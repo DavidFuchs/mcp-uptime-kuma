@@ -227,6 +227,19 @@ describe('buildMcpConfig', () => {
   });
 });
 
+describe('buildMcpConfig server settings', () => {
+  it('passes them to the server, and cannot replace the URL or credentials', () => {
+    const cfg = buildMcpConfig({ url: 'http://localhost:3001', username: 'admin', password: 'pw' }, '/repo', {
+      UPTIME_KUMA_DYNAMIC_TOOLSETS: 'true',
+      UPTIME_KUMA_URL: 'https://prod.example.com',
+    }) as any;
+    expect(cfg.mcpServers['uptime-kuma'].env).toMatchObject({
+      UPTIME_KUMA_DYNAMIC_TOOLSETS: 'true',
+      UPTIME_KUMA_URL: 'http://localhost:3001',
+    });
+  });
+});
+
 describe('runClaude', () => {
   it('timeout yields error outcome', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'llm-driver-test-'));

@@ -135,6 +135,7 @@ async function runOnce(
       timeoutMs: TIMEOUT_MS,
       config: ctx.config,
       rawPath,
+      serverEnv: args.serverEnv,
     });
     assertions = await scenario.check(ctx, seed, trace);
   } catch (e) {
@@ -193,7 +194,12 @@ async function main(): Promise<number> {
   }
   rmSync(join(dir, 'preflight.jsonl'), { force: true });
 
-  console.log(`▶ ${selected.length} scenarios × ${args.repeat} runs, model ${args.model}\n`);
+  const settings = Object.entries(args.serverEnv).map(([k, v]) => `${k}=${v}`);
+  console.log(
+    `▶ ${selected.length} scenarios × ${args.repeat} runs, model ${args.model}` +
+      (settings.length > 0 ? `, server ${settings.join(' ')}` : '') +
+      '\n'
+  );
   const { client } = await createTestClient(config);
   const ctx: TestContext = { client, config };
   const results: RunResult[] = [];
@@ -239,7 +245,7 @@ async function main(): Promise<number> {
   }
 
   const summary = summarize(results, args.minPassRate);
-  writeResults(dir, results, { model: args.model, gitSha: gitSha(), startedAt });
+  writeResults(dir, results, { model: args.model, gitSha: gitSha(), startedAt, serverEnv: args.serverEnv });
   console.log(`\n${formatConsole(summary, results)}`);
   console.log(`\nResults: ${dir}`);
   return interrupt.interrupted ? 130 : summary.exitCode;

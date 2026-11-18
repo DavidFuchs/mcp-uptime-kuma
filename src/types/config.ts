@@ -29,4 +29,11 @@ export interface UptimeKumaConfig {
    * from UPTIME_KUMA_TOOLSETS. Undefined means every toolset. Combines with readOnly.
    */
   toolsets?: readonly string[];
+  /**
+   * Start with the monitors toolset and an enableToolsets tool that loads the others during the
+   * session (see tools/dynamic-toolsets.ts). Parsed from UPTIME_KUMA_DYNAMIC_TOOLSETS. Needs a
+   * client that refreshes its tool list on notifications/tools/list_changed, and the stdio
+   * transport. Optional and defaults to false.
+   */
+  dynamicToolsets?: boolean;
 }

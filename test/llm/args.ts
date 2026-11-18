@@ -7,7 +7,20 @@ export interface LlmArgs {
   model: string;
   minPassRate: number;
   keepTraces: boolean;
+  /** Settings passed to the MCP server under test, e.g. UPTIME_KUMA_DYNAMIC_TOOLSETS=true. */
+  serverEnv: Record<string, string>;
 }
+
+/**
+ * The server settings --server-env may set: the ones that change what the model is offered.
+ * The URL and credentials stay with the harness, which checks they point at a test instance.
+ */
+export const SERVER_ENV_KEYS = [
+  'UPTIME_KUMA_DYNAMIC_TOOLSETS',
+  'UPTIME_KUMA_TOOLSETS',
+  'UPTIME_KUMA_READ_ONLY',
+  'UPTIME_KUMA_INCLUDE_SECRETS',
+];
 
 export const USAGE = `Usage: npm run test:llm -- [options]
   --scenario <id>        run only this scenario (repeatable)
@@ -15,10 +28,19 @@ export const USAGE = `Usage: npm run test:llm -- [options]
   --repeat <n>           runs per scenario (default 1)
   --model <alias>        claude model (default sonnet)
   --min-pass-rate <0..1> per-scenario pass rate required to exit 0 (default 1)
-  --keep-traces          keep raw traces for passing runs too`;
+  --keep-traces          keep raw traces for passing runs too
+  --server-env KEY=VALUE set a server setting (repeatable): ${SERVER_ENV_KEYS.join(', ')}`;
 
 export function parseArgs(argv: string[]): LlmArgs {
-  const a: LlmArgs = { scenarios: [], tags: [], repeat: 1, model: 'sonnet', minPassRate: 1, keepTraces: false };
+  const a: LlmArgs = {
+    scenarios: [],
+    tags: [],
+    repeat: 1,
+    model: 'sonnet',
+    minPassRate: 1,
+    keepTraces: false,
+    serverEnv: {},
+  };
   const value = (i: number, flag: string): string => {
     const v = argv[i + 1];
     if (v === undefined || v.startsWith('--')) throw new Error(`${flag} needs a value\n\n${USAGE}`);
@@ -40,6 +62,18 @@ export function parseArgs(argv: string[]): LlmArgs {
       case '--keep-traces':
         a.keepTraces = true;
         break;
+      case '--server-env': {
+        const v = value(i++, flag);
+        const eq = v.indexOf('=');
+        const key = eq < 0 ? v : v.slice(0, eq);
+        if (eq < 0 || !SERVER_ENV_KEYS.includes(key)) {
+          throw new Error(`--server-env takes KEY=VALUE with KEY one of ${SERVER_ENV_KEYS.join(', ')}
+
+${USAGE}`);
+        }
+        a.serverEnv[key] = v.slice(eq + 1);
+        break;
+      }
       case '--repeat': {
         const n = Number(value(i++, flag));
         if (!Number.isInteger(n) || n < 1) throw new Error(`--repeat must be a whole number of at least 1\n\n${USAGE}`);
