@@ -129,6 +129,10 @@ export const resultSizeTests: Array<{ name: string; fn: TestFn }> = [
           instanceRows.push(await measure(client, name, {}));
         }
         instanceRows.push(
+          await measure(client, 'listHeartbeats', { maxHeartbeats: 100, raw: true }, 'listHeartbeats (100, raw)'),
+          await measure(client, 'listHeartbeats', { maxHeartbeats: 100 }, 'listHeartbeats (100, summary)')
+        );
+        instanceRows.push(
           await measure(
             client,
             'listMaintenanceWindows',

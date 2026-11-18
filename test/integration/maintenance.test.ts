@@ -13,7 +13,10 @@ import { UptimeKumaClient } from '../../src/uptime-kuma-client.js';
  */
 
 async function listWindows(client: Client): Promise<any[]> {
-  const result = (await client.callTool({ name: 'listMaintenanceWindows', arguments: {} })) as CallToolResult;
+  const result = (await client.callTool({
+    name: 'listMaintenanceWindows',
+    arguments: { limit: 100_000 },
+  })) as CallToolResult;
   const parsed = JSON.parse(extractText(result, 'listMaintenanceWindows'));
   // May be wrapped in { maintenanceWindows: [...] } or be a direct array
   const windows = Array.isArray(parsed) ? parsed : parsed.maintenanceWindows;

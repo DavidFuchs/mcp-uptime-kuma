@@ -155,7 +155,7 @@ export const statusPageTests: Array<{ name: string; fn: TestFn }> = [
       // null when the window is not listed; read results leave an empty list out.
       const slugsOf = async (id: number) => {
         const window = (
-          (await call('listMaintenanceWindows', {})).maintenanceWindows as Array<{
+          (await call('listMaintenanceWindows', { limit: 100_000 })).maintenanceWindows as Array<{
             id: number;
             statusPageSlugs?: string[];
           }>

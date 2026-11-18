@@ -37,7 +37,7 @@ export const monitorHistoryTests: Array<{ name: string; fn: TestFn }> = [
           extractText(
             (await client.callTool({
               name: 'listHeartbeats',
-              arguments: { monitorID, maxHeartbeats: 100 },
+              arguments: { monitorID, maxHeartbeats: 100, raw: true },
             })) as CallToolResult,
             'listHeartbeats'
           )

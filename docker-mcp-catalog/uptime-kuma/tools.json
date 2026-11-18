@@ -1054,7 +1054,7 @@
   },
   {
     "name": "listHeartbeats",
-    "description": "Returns check history (status, response time, message), newest first, keyed by monitor ID: for one monitor when monitorID is given, otherwise for every monitor. Only the latest beat per monitor is returned unless maxHeartbeats is set (up to 100; keep it at 10 or less for one monitor and 5 or less for all, unless asked for more). important: true returns only the status changes for one monitor, which is history and not the current status. For current status use getMonitorSummary. Credentials inside a message URL read \"***\" unless includeSecrets is set.",
+    "description": "Returns check history (status, response time, message), newest first, keyed by monitor ID: for one monitor when monitorID is given, otherwise for every monitor. Only the latest beat per monitor is returned unless maxHeartbeats is set (up to 100). For more than one beat it returns a summary per monitor instead of the rows: the time span, counts by status, ping min/avg/max, the latest beat and since when it has had that status, and each period of DOWN beats with its first message. That answers whether and when it went down, why, and whether it is back; pass raw: true only when the user wants the individual beats. important: true returns only the status changes for one monitor, which is history and not the current status. For current status use getMonitorSummary. Credentials inside a message URL read \"***\" unless includeSecrets is set.",
     "arguments": [
       {
         "name": "monitorID",
@@ -1072,6 +1072,12 @@
         "name": "important",
         "type": "boolean",
         "desc": "Return only IMPORTANT beats — the status changes behind Uptime Kuma's event list — fetched live from the server rather than the cache. Needs monitorID. History only: the newest important beat is not the monitor's current status.",
+        "optional": true
+      },
+      {
+        "name": "raw",
+        "type": "boolean",
+        "desc": "Return the individual beats instead of the summary when maxHeartbeats is more than 1 (default: false). Only when the user wants the beats themselves; then keep maxHeartbeats at 10 or less for one monitor and 5 or less for all, unless asked for more.",
         "optional": true
       },
       {
