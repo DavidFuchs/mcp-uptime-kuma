@@ -6,6 +6,7 @@ import { redactSecrets } from '../redact.js';
 import { numeric, requiredId } from './schema.js';
 import { MONITOR_TYPES } from '../monitors/fields.js';
 import { fieldsParam, parseFields, pickFields } from './fields.js';
+import { pageById, pageNote, pagingOutput, pagingParams } from './paging.js';
 
 /** The tools that report on monitors: their configuration, their types and their current status. */
 export function registerMonitorReadTools(ctx: ToolContext): void {
@@ -103,11 +104,12 @@ export function registerMonitorReadTools(ctx: ToolContext): void {
     {
       title: 'List Monitors',
       description:
-        'Returns the configuration of every monitor, or of those matching the filters (keywords, type, active, maintenance, tags, parent group). Use it to find monitor IDs or compare settings; for current UP/DOWN status use getMonitorSummary instead. Type-specific fields such as url, hostname and port are returned only with includeTypeSpecificFields; fields returns only the fields you name.',
+        'Returns the configuration of every monitor, or of those matching the filters (keywords, type, active, maintenance, tags, parent group). Use it to find monitor IDs or compare settings; for current UP/DOWN status use getMonitorSummary instead. Type-specific fields such as url, hostname and port are returned only with includeTypeSpecificFields; fields returns only the fields you name. Returns up to 50 monitors per call; pass nextCursor back as cursor for the next page.',
       inputSchema: {
         includeTypeSpecificFields,
         fields: monitorFields,
         ...monitorFilters,
+        ...pagingParams('monitors'),
         includeSecrets: includeSecretsParam,
       },
       outputSchema: {
@@ -116,12 +118,15 @@ export function registerMonitorReadTools(ctx: ToolContext): void {
           .describe(
             'Array of monitor objects with common fields plus uptime/avgPing. May include type-specific fields when includeTypeSpecificFields is true; with fields, only the fields asked for. Credentials (pushToken, basic_auth_pass, bearer_token, headers, ...) read "***" unless includeSecrets is set.'
           ),
-        count: z.number(),
+        count: z.number().describe('How many monitors this page holds'),
+        ...pagingOutput,
       },
     },
     async ({
       includeTypeSpecificFields,
       fields,
+      limit,
+      cursor,
       keywords,
       type,
       active,
@@ -155,23 +160,24 @@ export function registerMonitorReadTools(ctx: ToolContext): void {
                 parentId,
                 includeTypeSpecificFields: false,
               });
-        const raw = Object.values(monitorList);
+        const paged = pageById(Object.values(monitorList), limit, cursor);
         // This is the tool an agent reaches for to answer "what am I monitoring?", so it
         // is both the highest-volume caller and the one carrying the most credentials.
-        const monitors = (wantsSecrets(includeSecrets) ? raw : raw.map((m) => redactSecrets(m))).map((m) =>
-          pickFields(m, selection)
+        const monitors = paged.page.map((m) =>
+          pickFields(wantsSecrets(includeSecrets) ? m : redactSecrets(m), selection)
         );
+        const note = pageNote('monitors', paged);
 
         return {
           content: [
-            {
-              type: 'text',
-              text: JSON.stringify(monitors),
-            },
+            { type: 'text', text: JSON.stringify(monitors) },
+            ...(note ? [{ type: 'text' as const, text: note }] : []),
           ],
           structuredContent: {
             monitors,
             count: monitors.length,
+            total: paged.total,
+            ...(paged.nextCursor !== undefined && { nextCursor: paged.nextCursor }),
           },
         };
       } catch (error) {

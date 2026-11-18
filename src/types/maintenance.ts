@@ -13,6 +13,12 @@ export const MaintenanceSchema = z
       .optional()
       .describe('Scheduling strategy'),
     active: z.boolean().optional().describe('Whether the maintenance window is active'),
+    // A string, not an enum: this validates what the read tools return, and a status Uptime Kuma
+    // adds later must not make every window unreadable (#112 was the same mistake for monitors).
+    status: z
+      .string()
+      .optional()
+      .describe('Where the window is now: inactive, scheduled, under-maintenance, ended or unknown'),
     timezone: z.string().optional().describe('Timezone for the maintenance window'),
     dateRange: z
       .array(z.string().nullable())

@@ -111,6 +111,7 @@ describe('read tools with fields', () => {
         { id: 8, name: 'blog' },
       ],
       count: 2,
+      total: 2,
     });
   });
 
@@ -120,7 +121,7 @@ describe('read tools with fields', () => {
     } as never);
     const client = await connect();
     const result = await call(client, 'listMonitors', { fields: 'basic_auth_pass' });
-    expect(result.structuredContent).toEqual({ monitors: [{ id: 7, basic_auth_pass: '***' }], count: 1 });
+    expect(result.structuredContent).toEqual({ monitors: [{ id: 7, basic_auth_pass: '***' }], count: 1, total: 1 });
   });
 
   it('listMaintenanceWindows skips the per-window lookups it was not asked for', async () => {
@@ -136,12 +137,20 @@ describe('read tools with fields', () => {
     const client = await connect();
 
     const titles = await call(client, 'listMaintenanceWindows', { fields: 'title' });
-    expect(titles.structuredContent).toEqual({ maintenanceWindows: [{ id: 4, title: 'Weekly restart' }], count: 1 });
+    expect(titles.structuredContent).toEqual({
+      maintenanceWindows: [{ id: 4, title: 'Weekly restart' }],
+      count: 1,
+      total: 1,
+    });
     expect(getMonitorMaintenance).not.toHaveBeenCalled();
     expect(getMaintenanceStatusPages).not.toHaveBeenCalled();
 
     const monitors = await call(client, 'listMaintenanceWindows', { fields: 'monitorIDs' });
-    expect(monitors.structuredContent).toEqual({ maintenanceWindows: [{ id: 4, monitorIDs: [7] }], count: 1 });
+    expect(monitors.structuredContent).toEqual({
+      maintenanceWindows: [{ id: 4, monitorIDs: [7] }],
+      count: 1,
+      total: 1,
+    });
     expect(getMaintenanceStatusPages).not.toHaveBeenCalled();
   });
 });

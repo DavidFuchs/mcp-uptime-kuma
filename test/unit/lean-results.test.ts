@@ -173,6 +173,6 @@ describe('read tools through the server', () => {
     const result = (await client.callTool({ name: 'listMonitors', arguments: {} })) as CallToolResult;
 
     expect(result.isError).toBeFalsy();
-    expect(result.structuredContent).toEqual({ monitors: [], count: 0 });
+    expect(result.structuredContent).toEqual({ monitors: [], count: 0, total: 0 });
   });
 });
