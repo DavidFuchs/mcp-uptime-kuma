@@ -250,8 +250,11 @@ export function toolAnnotations(name: string): {
   return { readOnlyHint: false, destructiveHint: destructive, idempotentHint: idempotent, openWorldHint: openWorld };
 }
 
-const DRAFT_07_DIALECT = 'http://json-schema.org/draft-07/schema#';
-const DIALECT_2020_12 = 'https://json-schema.org/draft/2020-12/schema';
+// The dialect stamps the SDK and Zod put on a schema. Both are dropped: see issue #83 below.
+const DIALECT_STAMPS: ReadonlySet<unknown> = new Set([
+  'http://json-schema.org/draft-07/schema#',
+  'https://json-schema.org/draft/2020-12/schema',
+]);
 
 // Keywords whose value is a map of schemas keyed by arbitrary names, not by JSON Schema
 // keywords. Descending into one has to stop treating its keys as keywords.
@@ -275,9 +278,13 @@ const isEmptySchema = (value: unknown): value is Record<string, never> =>
  * dialect (2020-12, per SEP-1613) reject every tool outright before ever calling it
  * (see modelcontextprotocol/typescript-sdk#745, still open upstream).
  *
- * None of the schemas advertised here use anything that differs between the two drafts (no
- * `dependencies`, no positional tuple items), so relabeling the declared dialect is safe —
- * only the version stamp was wrong, not the shape.
+ * The stamp is dropped rather than relabeled. The MCP spec (2025-11-25, "Schema Dialect")
+ * makes 2020-12 the default for a schema without `$schema`, so clients read the schemas the
+ * same way, and the stamp no longer costs about 50 characters on every tool's input and output
+ * schema in every request. None of the schemas advertised here use anything that differs
+ * between draft-07 and 2020-12 (no `dependencies`, no positional tuple items), so a client that
+ * predates that default and falls back to draft-07 reads them the same way too; a unit test
+ * compiles each one under both.
  *
  * Issue #55: Home Assistant rejects the valid empty-schema form Zod emits for
  * z.record(..., z.unknown()), so `additionalProperties: {}` is rewritten to the equivalent
@@ -296,8 +303,8 @@ export function normalizeAdvertisedSchema(value: unknown): unknown {
     for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
       if (key === 'additionalProperties' && isEmptySchema(val)) {
         out[key] = true;
-      } else if (key === '$schema' && val === DRAFT_07_DIALECT) {
-        out[key] = DIALECT_2020_12;
+      } else if (key === '$schema' && DIALECT_STAMPS.has(val)) {
+        // Dropped: see issue #83 above.
       } else if (
         (key === 'minimum' && val === Number.MIN_SAFE_INTEGER) ||
         (key === 'maximum' && val === Number.MAX_SAFE_INTEGER)
