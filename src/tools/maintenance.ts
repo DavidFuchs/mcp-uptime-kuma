@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { ToolContext } from './context.js';
 import { MaintenanceSchema } from '../types/index.js';
 import { numeric, requiredId } from './schema.js';
+import { fieldsParam, parseFields, pickFields, wantsField } from './fields.js';
 
 /** The maintenance window tools. */
 export function registerMaintenanceTools(ctx: ToolContext): void {
@@ -317,23 +318,39 @@ export function registerMaintenanceTools(ctx: ToolContext): void {
     {
       title: 'List Maintenance Windows',
       description:
-        'Returns every maintenance window with its schedule, whether it is active, monitorIDs (the monitors it suppresses) and statusPageSlugs (the status pages that announce it). A window with an empty monitorIDs list suppresses nothing. Use it to find the ID that updateMaintenanceWindow, setMaintenanceWindowActive and deleteMaintenanceWindow take.',
-      inputSchema: {},
+        'Returns every maintenance window with its schedule, whether it is active, monitorIDs (the monitors it suppresses) and statusPageSlugs (the status pages that announce it). A window with an empty monitorIDs list suppresses nothing. Use it to find the ID that updateMaintenanceWindow, setMaintenanceWindowActive and deleteMaintenanceWindow take; fields returns only the fields you name.',
+      inputSchema: {
+        fields: fieldsParam(
+          'Only these fields, comma-separated, e.g. "title,active,monitorIDs"; id is always returned. Default: every field.'
+        ),
+      },
       outputSchema: {
-        maintenanceWindows: z.array(MaintenanceSchema).describe('Array of maintenance windows'),
+        // With `fields`, a window carries only what was asked for, so no field can be required.
+        maintenanceWindows: z
+          .array(MaintenanceSchema.partial())
+          .describe('Array of maintenance windows; with fields, only the fields asked for'),
         count: z.number(),
       },
     },
-    async () => {
+    async ({ fields }) => {
       await authenticateClient();
 
       try {
+        const selection = parseFields(fields);
+        // Each of these is a request per window, so skip the ones the caller did not ask for.
+        const withMonitors = wantsField(selection, 'monitorIDs');
+        const withPages = wantsField(selection, 'statusPageSlugs');
         const maintenanceWindows = await Promise.all(
-          client.getMaintenanceList().map(async (w) => ({
-            ...w,
-            monitorIDs: w.id === undefined ? [] : await client.getMonitorMaintenance(w.id),
-            statusPageSlugs: w.id === undefined ? [] : await statusPageSlugsOf(w.id),
-          }))
+          client.getMaintenanceList().map(async (w) =>
+            pickFields(
+              {
+                ...w,
+                ...(withMonitors && { monitorIDs: w.id === undefined ? [] : await client.getMonitorMaintenance(w.id) }),
+                ...(withPages && { statusPageSlugs: w.id === undefined ? [] : await statusPageSlugsOf(w.id) }),
+              },
+              selection
+            )
+          )
         );
         return {
           content: [{ type: 'text', text: JSON.stringify(maintenanceWindows) }],

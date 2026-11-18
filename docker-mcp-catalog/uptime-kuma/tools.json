@@ -814,7 +814,7 @@
   },
   {
     "name": "getMonitor",
-    "description": "Returns one monitor's configuration by ID (check interval, notifications, tags, parent group) with its uptime and average ping. Type-specific fields such as url, hostname and port are returned only with includeTypeSpecificFields. Read it before updateMonitor. For current status use getMonitorSummary; for check history, listHeartbeats. Find IDs with listMonitors.",
+    "description": "Returns one monitor's configuration by ID (check interval, notifications, tags, parent group) with its uptime and average ping. Type-specific fields such as url, hostname and port are returned only with includeTypeSpecificFields; fields returns only the fields you name. Read it before updateMonitor. For current status use getMonitorSummary; for check history, listHeartbeats. Find IDs with listMonitors.",
     "arguments": [
       {
         "name": "monitorID",
@@ -825,6 +825,12 @@
         "name": "includeTypeSpecificFields",
         "type": "boolean",
         "desc": "Also return type-specific fields such as url, hostname and port (default: false)",
+        "optional": true
+      },
+      {
+        "name": "fields",
+        "type": "string",
+        "desc": "Only these fields, comma-separated, e.g. \"name,url,active\"; id is always returned. A type-specific field named here is returned without includeTypeSpecificFields. Default: every field.",
         "optional": true
       },
       {
@@ -1103,7 +1109,15 @@
   },
   {
     "name": "listMaintenanceWindows",
-    "description": "Returns every maintenance window with its schedule, whether it is active, monitorIDs (the monitors it suppresses) and statusPageSlugs (the status pages that announce it). A window with an empty monitorIDs list suppresses nothing. Use it to find the ID that updateMaintenanceWindow, setMaintenanceWindowActive and deleteMaintenanceWindow take.",
+    "description": "Returns every maintenance window with its schedule, whether it is active, monitorIDs (the monitors it suppresses) and statusPageSlugs (the status pages that announce it). A window with an empty monitorIDs list suppresses nothing. Use it to find the ID that updateMaintenanceWindow, setMaintenanceWindowActive and deleteMaintenanceWindow take; fields returns only the fields you name.",
+    "arguments": [
+      {
+        "name": "fields",
+        "type": "string",
+        "desc": "Only these fields, comma-separated, e.g. \"title,active,monitorIDs\"; id is always returned. Default: every field.",
+        "optional": true
+      }
+    ],
     "annotations": {
       "title": "List Maintenance Windows",
       "readOnlyHint": true
@@ -1111,12 +1125,18 @@
   },
   {
     "name": "listMonitors",
-    "description": "Returns the configuration of every monitor, or of those matching the filters (keywords, type, active, maintenance, tags, parent group). Use it to find monitor IDs or compare settings; for current UP/DOWN status use getMonitorSummary instead. Type-specific fields such as url, hostname and port are returned only with includeTypeSpecificFields.",
+    "description": "Returns the configuration of every monitor, or of those matching the filters (keywords, type, active, maintenance, tags, parent group). Use it to find monitor IDs or compare settings; for current UP/DOWN status use getMonitorSummary instead. Type-specific fields such as url, hostname and port are returned only with includeTypeSpecificFields; fields returns only the fields you name.",
     "arguments": [
       {
         "name": "includeTypeSpecificFields",
         "type": "boolean",
         "desc": "Also return type-specific fields such as url, hostname and port (default: false)",
+        "optional": true
+      },
+      {
+        "name": "fields",
+        "type": "string",
+        "desc": "Only these fields, comma-separated, e.g. \"name,url,active\"; id is always returned. A type-specific field named here is returned without includeTypeSpecificFields. Default: every field.",
         "optional": true
       },
       {

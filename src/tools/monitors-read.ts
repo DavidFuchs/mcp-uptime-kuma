@@ -5,6 +5,7 @@ import { MonitorBaseSchema, MonitorSummarySchema } from '../types/index.js';
 import { redactSecrets } from '../redact.js';
 import { numeric, requiredId } from './schema.js';
 import { MONITOR_TYPES } from '../monitors/fields.js';
+import { fieldsParam, parseFields, pickFields } from './fields.js';
 
 /** The tools that report on monitors: their configuration, their types and their current status. */
 export function registerMonitorReadTools(ctx: ToolContext): void {
@@ -16,6 +17,11 @@ export function registerMonitorReadTools(ctx: ToolContext): void {
     .boolean()
     .optional()
     .describe('Also return type-specific fields such as url, hostname and port (default: false)');
+  const monitorFields = fieldsParam(
+    'Only these fields, comma-separated, e.g. "name,url,active"; id is always returned. A type-specific field named here is returned without includeTypeSpecificFields. Default: every field.'
+  );
+  // With `fields`, a monitor carries only what was asked for, so no field can be required.
+  const MonitorResultSchema = MonitorBaseSchema.partial().passthrough();
   const monitorFilters = {
     keywords: z
       .string()
@@ -48,25 +54,29 @@ export function registerMonitorReadTools(ctx: ToolContext): void {
     {
       title: 'Get Monitor',
       description:
-        "Returns one monitor's configuration by ID (check interval, notifications, tags, parent group) with its uptime and average ping. Type-specific fields such as url, hostname and port are returned only with includeTypeSpecificFields. Read it before updateMonitor. For current status use getMonitorSummary; for check history, listHeartbeats. Find IDs with listMonitors.",
+        "Returns one monitor's configuration by ID (check interval, notifications, tags, parent group) with its uptime and average ping. Type-specific fields such as url, hostname and port are returned only with includeTypeSpecificFields; fields returns only the fields you name. Read it before updateMonitor. For current status use getMonitorSummary; for check history, listHeartbeats. Find IDs with listMonitors.",
       inputSchema: {
         monitorID: requiredId('The ID of the monitor to retrieve'),
         includeTypeSpecificFields,
+        fields: monitorFields,
         includeSecrets: includeSecretsParam,
       },
       outputSchema: {
-        monitor: MonitorBaseSchema.passthrough().describe(
-          'Monitor object with common fields plus uptime/avgPing. May include type-specific fields when includeTypeSpecificFields is true. Credentials (pushToken, basic_auth_pass, bearer_token, headers, ...) read "***" unless includeSecrets is set.'
+        monitor: MonitorResultSchema.describe(
+          'Monitor object with common fields plus uptime/avgPing. May include type-specific fields when includeTypeSpecificFields is true; with fields, only the fields asked for. Credentials (pushToken, basic_auth_pass, bearer_token, headers, ...) read "***" unless includeSecrets is set.'
         ),
       },
     },
-    async ({ monitorID, includeTypeSpecificFields, includeSecrets }) => {
+    async ({ monitorID, includeTypeSpecificFields, fields, includeSecrets }) => {
       await authenticateClient();
 
       try {
-        const monitor = includeTypeSpecificFields
-          ? client.getMonitor(monitorID, true)
-          : client.getMonitor(monitorID, false);
+        const selection = parseFields(fields);
+        // A selection may name type-specific fields, so read them all and pick afterwards.
+        const monitor =
+          includeTypeSpecificFields || selection
+            ? client.getMonitor(monitorID, true)
+            : client.getMonitor(monitorID, false);
 
         if (!monitor) {
           throw new Error(`Monitor with ID ${monitorID} not found`);
@@ -74,7 +84,7 @@ export function registerMonitorReadTools(ctx: ToolContext): void {
 
         // Redact on a copy. getMonitor() spreads the cached row, but nested values are
         // still shared with monitorListCache — which updateMonitor merges over on write.
-        const result = wantsSecrets(includeSecrets) ? monitor : redactSecrets(monitor);
+        const result = pickFields(wantsSecrets(includeSecrets) ? monitor : redactSecrets(monitor), selection);
 
         return {
           content: [{ type: 'text', text: JSON.stringify(result) }],
@@ -93,48 +103,64 @@ export function registerMonitorReadTools(ctx: ToolContext): void {
     {
       title: 'List Monitors',
       description:
-        'Returns the configuration of every monitor, or of those matching the filters (keywords, type, active, maintenance, tags, parent group). Use it to find monitor IDs or compare settings; for current UP/DOWN status use getMonitorSummary instead. Type-specific fields such as url, hostname and port are returned only with includeTypeSpecificFields.',
+        'Returns the configuration of every monitor, or of those matching the filters (keywords, type, active, maintenance, tags, parent group). Use it to find monitor IDs or compare settings; for current UP/DOWN status use getMonitorSummary instead. Type-specific fields such as url, hostname and port are returned only with includeTypeSpecificFields; fields returns only the fields you name.',
       inputSchema: {
         includeTypeSpecificFields,
+        fields: monitorFields,
         ...monitorFilters,
         includeSecrets: includeSecretsParam,
       },
       outputSchema: {
         monitors: z
-          .array(MonitorBaseSchema.passthrough())
+          .array(MonitorResultSchema)
           .describe(
-            'Array of monitor objects with common fields plus uptime/avgPing. May include type-specific fields when includeTypeSpecificFields is true. Credentials (pushToken, basic_auth_pass, bearer_token, headers, ...) read "***" unless includeSecrets is set.'
+            'Array of monitor objects with common fields plus uptime/avgPing. May include type-specific fields when includeTypeSpecificFields is true; with fields, only the fields asked for. Credentials (pushToken, basic_auth_pass, bearer_token, headers, ...) read "***" unless includeSecrets is set.'
           ),
         count: z.number(),
       },
     },
-    async ({ includeTypeSpecificFields, keywords, type, active, maintenance, tags, parentId, includeSecrets }) => {
+    async ({
+      includeTypeSpecificFields,
+      fields,
+      keywords,
+      type,
+      active,
+      maintenance,
+      tags,
+      parentId,
+      includeSecrets,
+    }) => {
       await authenticateClient();
 
       try {
-        const monitorList = includeTypeSpecificFields
-          ? client.getMonitorList({
-              keywords,
-              type,
-              active,
-              maintenance,
-              tags,
-              parentId,
-              includeTypeSpecificFields: true,
-            })
-          : client.getMonitorList({
-              keywords,
-              type,
-              active,
-              maintenance,
-              tags,
-              parentId,
-              includeTypeSpecificFields: false,
-            });
+        const selection = parseFields(fields);
+        // A selection may name type-specific fields, so read them all and pick afterwards.
+        const monitorList =
+          includeTypeSpecificFields || selection
+            ? client.getMonitorList({
+                keywords,
+                type,
+                active,
+                maintenance,
+                tags,
+                parentId,
+                includeTypeSpecificFields: true,
+              })
+            : client.getMonitorList({
+                keywords,
+                type,
+                active,
+                maintenance,
+                tags,
+                parentId,
+                includeTypeSpecificFields: false,
+              });
         const raw = Object.values(monitorList);
         // This is the tool an agent reaches for to answer "what am I monitoring?", so it
         // is both the highest-volume caller and the one carrying the most credentials.
-        const monitors = wantsSecrets(includeSecrets) ? raw : raw.map((m) => redactSecrets(m));
+        const monitors = (wantsSecrets(includeSecrets) ? raw : raw.map((m) => redactSecrets(m))).map((m) =>
+          pickFields(m, selection)
+        );
 
         return {
           content: [

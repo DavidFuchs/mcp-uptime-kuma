@@ -90,6 +90,13 @@ export const resultSizeTests: Array<{ name: string; fn: TestFn }> = [
             'listMonitors (3 seeded, type-specific fields)',
             length('monitors')
           ),
+          await measure(
+            client,
+            'listMonitors',
+            { ...filter, fields: 'name,type,url,hostname,active' },
+            'listMonitors (3 seeded, fields name,type,url,hostname,active)',
+            length('monitors')
+          ),
           await measure(client, 'getMonitor', { monitorID: first }, 'getMonitor (http)'),
           await measure(
             client,
@@ -121,6 +128,14 @@ export const resultSizeTests: Array<{ name: string; fn: TestFn }> = [
         ]) {
           instanceRows.push(await measure(client, name, {}));
         }
+        instanceRows.push(
+          await measure(
+            client,
+            'listMaintenanceWindows',
+            { fields: 'title,active' },
+            'listMaintenanceWindows (fields title,active)'
+          )
+        );
 
         const report = [
           '### Tool result sizes',
