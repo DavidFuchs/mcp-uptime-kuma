@@ -75,6 +75,12 @@ jobs:
       - name: Check Docker MCP Catalog tool list
         run: npm run docker-catalog:tools -- --check
 
+      # Clients send every tool's description and schema to the model on each request, so
+      # test/token-budget.json records their size. A change to a tool must update it, which
+      # puts the cost of the change in the pull request's diff.
+      - name: Check tool-list token budget
+        run: npm run token-budget -- --check
+
       - name: Run unit tests
         run: npm run test:coverage
 

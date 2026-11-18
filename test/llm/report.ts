@@ -12,15 +12,22 @@ export interface SummaryRow {
   costUsd: number;
   degraded: boolean;
   passRate: number;
+  /** Over the runs whose session reported usage; undefined when none did. */
+  avgInputTokens?: number;
+  avgOutputTokens?: number;
+  /** Characters of tool results the model received per run, over the runs with a trace. */
+  avgResultChars: number;
 }
 
 export interface Summary {
   rows: SummaryRow[];
   totalCostUsd: number;
+  totalInputTokens: number;
   exitCode: 0 | 1;
 }
 
 const avg = (xs: number[]) => (xs.length === 0 ? 0 : xs.reduce((a, b) => a + b, 0) / xs.length);
+const avgOrUndefined = (xs: number[]) => (xs.length === 0 ? undefined : avg(xs));
 
 export function summarize(results: RunResult[], minPassRate: number): Summary {
   const ids = [...new Set(results.map((r) => r.scenarioId))];
@@ -28,6 +35,7 @@ export function summarize(results: RunResult[], minPassRate: number): Summary {
     const rs = results.filter((r) => r.scenarioId === scenarioId);
     const traced = rs.filter((r) => r.trace);
     const passes = rs.filter((r) => r.outcome === 'pass').length;
+    const tokens = traced.flatMap((r) => (r.trace!.tokens ? [r.trace!.tokens] : []));
     return {
       scenarioId,
       passes,
@@ -37,6 +45,9 @@ export function summarize(results: RunResult[], minPassRate: number): Summary {
       costUsd: rs.reduce((sum, r) => sum + (r.trace?.costUsd ?? 0), 0),
       degraded: rs.some((r) => r.degraded),
       passRate: rs.length === 0 ? 0 : passes / rs.length,
+      avgInputTokens: avgOrUndefined(tokens.map((t) => t.input)),
+      avgOutputTokens: avgOrUndefined(tokens.map((t) => t.output)),
+      avgResultChars: avg(traced.map((r) => r.trace!.toolCalls.reduce((sum, c) => sum + c.resultText.length, 0))),
     };
   });
   const anyError = results.some((r) => r.outcome === 'error');
@@ -44,6 +55,7 @@ export function summarize(results: RunResult[], minPassRate: number): Summary {
   return {
     rows,
     totalCostUsd: rows.reduce((sum, r) => sum + r.costUsd, 0),
+    totalInputTokens: results.reduce((sum, r) => sum + (r.trace?.tokens?.input ?? 0), 0),
     exitCode: anyError || belowThreshold ? 1 : 0,
   };
 }
@@ -70,6 +82,8 @@ export function formatConsole(summary: Summary, results: RunResult[]): string {
         `${r.passes}/${r.runs} pass`.padEnd(11),
         `avg ${r.avgToolCalls.toFixed(1)} calls`.padEnd(15),
         `${r.avgToolErrors.toFixed(1)} errors`.padEnd(12),
+        `${r.avgInputTokens === undefined ? '-' : Math.round(r.avgInputTokens)} in`.padEnd(10),
+        `${r.avgResultChars.toFixed(0)} result chars`.padEnd(19),
         `$${r.costUsd.toFixed(2)}`,
         r.degraded ? '  ⚠ degraded' : '',
       ].join(' ')
@@ -82,7 +96,8 @@ export function formatConsole(summary: Summary, results: RunResult[]): string {
   const ms = results.reduce((sum, r) => sum + (r.trace?.durationMs ?? 0), 0);
   lines.push('');
   lines.push(
-    `Total: ${passes}/${runs} runs passed, ${errors} errors, $${summary.totalCostUsd.toFixed(2)}, ${(ms / 1000).toFixed(0)}s in claude`
+    `Total: ${passes}/${runs} runs passed, ${errors} errors, ${summary.totalInputTokens} input tokens, ` +
+      `$${summary.totalCostUsd.toFixed(2)}, ${(ms / 1000).toFixed(0)}s in claude`
   );
 
   const notable = results.filter((r) => r.outcome !== 'pass' || r.degraded);

@@ -36,7 +36,8 @@
     "test": "node scripts/vitest.mjs run",
     "test:watch": "node scripts/vitest.mjs",
     "test:coverage": "node scripts/vitest.mjs run --coverage",
-    "docker-catalog:tools": "node scripts/docker-catalog-tools.mjs"
+    "docker-catalog:tools": "node scripts/docker-catalog-tools.mjs",
+    "token-budget": "node scripts/token-budget.mjs"
   },
   "keywords": [
     "mcp",

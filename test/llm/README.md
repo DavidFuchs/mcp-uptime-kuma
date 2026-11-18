@@ -72,9 +72,15 @@ offered directly (no tool-search step), and the user-level `~/.claude/CLAUDE.md`
 ## Reading the results
 
 ```
-pause-and-tag               2/2 pass    avg 5.0 calls   0.0 errors   $0.06
-create-dns-monitor          1/2 pass    avg 4.5 calls   1.5 errors   $0.08   ⚠ degraded
+pause-and-tag               2/2 pass    avg 5.0 calls   0.0 errors   61234 in   3120 result chars   $0.06
+create-dns-monitor          1/2 pass    avg 4.5 calls   1.5 errors   88410 in   9876 result chars   $0.08   ⚠ degraded
 ```
+
+`in` is the average input tokens per run: the whole context, cached or not, summed over every
+model turn, so it includes Claude Code's own system prompt and grows with every tool result
+the model carries. `result chars` is the average size of the tool results the model received.
+Together they show what a change to the tools costs in a real session; compare runs with the
+same model and scenarios.
 
 | Outcome | Meaning |
 |---|---|
