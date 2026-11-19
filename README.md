@@ -781,11 +781,13 @@ UPTIME_KUMA_DYNAMIC_TOOLSETS=true
 - **The client must refresh its tool list** when the server sends `notifications/tools/list_changed`.
   Claude Code does. With a client that doesn't, the assistant would load a tool set and never
   see its tools; leave this off for that client.
-- **Not behind an MCP gateway** such as mcpjungle. mcpjungle reads the tool list once, when the
-  server is registered, and ignores the change notification, so loaded tool sets never reach the
-  assistant. In its default stateless mode it also starts a new server process for each call, so a
-  tool set loaded in one call is gone by the next. Turn this off, choose the tools with
-  `UPTIME_KUMA_TOOLSETS`, and register the server again so the gateway stores the full list.
+- **Not behind an MCP gateway** that stores the tool list, such as mcpjungle. mcpjungle reads the
+  tool list once, when the server is registered, and offers clients only those tools. It doesn't
+  act on the change notification, so the tool sets the assistant loads never reach it, and
+  mcpjungle refuses calls to them. Its `stateful` session mode doesn't help: it keeps the process
+  alive but doesn't refresh the list. Leave this setting out of the server's `env` in the
+  registration config, choose the tools with `UPTIME_KUMA_TOOLSETS` (or with an mcpjungle tool
+  group), and register again with `mcpjungle register --force` so mcpjungle stores the full list.
 - It combines with the other settings: `UPTIME_KUMA_TOOLSETS` still limits which tool sets can be
   loaded, and read-only mode still leaves out every write tool.
 
@@ -878,6 +880,8 @@ listed tool sets are registered. With `UPTIME_KUMA_DYNAMIC_TOOLSETS=true`, a cli
 refresh its tool list never shows the assistant the tool sets it loads; turn the setting off.
 The same happens behind a gateway such as mcpjungle: turn the setting off and register the
 server with the gateway again (see [Loading Tool Sets on Demand](#loading-tool-sets-on-demand)).
+A tool added by an upgrade of this server also stays hidden behind mcpjungle until you register
+it again.
 
 ## Contributing
 
