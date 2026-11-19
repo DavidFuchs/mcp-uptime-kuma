@@ -1,6 +1,6 @@
 # mcp-uptime-kuma
 
-A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for [Uptime Kuma](https://github.com/louislam/uptime-kuma) *version 2*. Supports stdio and streamable HTTP transports.
+A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for [Uptime Kuma](https://github.com/louislam/uptime-kuma) *version 2*. It supports both the stdio and streamable HTTP transports.
 
 [![npm version](https://img.shields.io/npm/v/%40davidfuchs%2Fmcp-uptime-kuma?style=flat&label=npm)](https://www.npmjs.com/package/@davidfuchs/mcp-uptime-kuma)
 [![npm downloads](https://img.shields.io/npm/d18m/%40davidfuchs%2Fmcp-uptime-kuma?style=flat&label=downloads&color=blue)](https://www.npmjs.com/package/@davidfuchs/mcp-uptime-kuma)
@@ -38,23 +38,26 @@ Once it's connected, you manage Uptime Kuma by asking your AI assistant in plain
   Docker hosts, server settings and the database. See [Available Tools](#available-tools).
 - **Live data.** The server keeps a Socket.IO connection open to Uptime Kuma, so status and
   heartbeats are current without polling.
-- **Context-friendly.** Summaries come first and full detail only when asked for. The roughly
-  85 type-specific monitor fields are looked up on demand instead of filling every conversation.
+- **Easy on context.** Tools return summaries by default and full detail only when asked. The
+  roughly 85 type-specific monitor fields are looked up when needed instead of being loaded
+  into every conversation.
 - **Credentials stay out of transcripts.** Read tools return `***` for passwords, tokens and
-  API keys, and writing `***` back keeps the stored value. See [Credential Redaction](#credential-redaction).
-- **Read-only mode.** One setting removes every tool that creates, changes or deletes. See
-  [Read-Only Mode](#read-only-mode).
-- **Load only what you use.** Choose tool sets (monitors, maintenance, …) to keep the tool
-  list small in the conversation. See [Choosing Tool Sets](#choosing-tool-sets).
-- **Annotated tools.** Every tool says whether it only reads, and whether it deletes or
-  replaces, so your client can run reads unattended and ask before the rest.
+  API keys, and if the assistant sends `***` back, the stored value is left alone. See
+  [Credential Redaction](#credential-redaction).
+- **Read-only mode.** One setting removes every tool that can create, change or delete
+  anything. See [Read-Only Mode](#read-only-mode).
+- **Load only what you use.** Pick the tool sets you need (monitors, maintenance, …) to keep
+  the tool list short. See [Choosing Tool Sets](#choosing-tool-sets).
+- **Annotated tools.** Every tool declares whether it only reads data and whether it can
+  delete or overwrite anything, so your client can run reads automatically and ask you
+  before the rest.
 - **Run it locally or share it.** Use stdio through `npx`, or streamable HTTP in Docker with
   bearer-token auth, `Origin` checks and rate limiting.
 
 ## Example Conversation
 
 ![MCP server answering questions about Uptime Kuma monitors](.github/images/screenshot-1.png)
-*Conversation in [LibreChat](https://github.com/danny-avila/LibreChat) where the `mcp-uptime-kuma` server is providing real-time information from Uptime Kuma.*
+*A conversation in [LibreChat](https://github.com/danny-avila/LibreChat), with `mcp-uptime-kuma` providing live information from Uptime Kuma.*
 
 ## Setup
 
@@ -66,27 +69,28 @@ Setup takes two steps: pick how the server runs, then point your AI client at it
 |---|---|---|
 | How it runs | Your AI client starts it on your machine with `npx` and talks to it over stdin/stdout | One long-running container, usually next to Uptime Kuma, that clients reach at `http://<host>:3000/mcp` |
 | Needs | Node.js 22+ on each machine that uses it | Docker on one host |
-| Uptime Kuma credentials live | In each client's config | Only in the container |
+| Where Uptime Kuma credentials are stored | In each client's config | Only in the container |
 | Best for | One person, one or two machines. The quickest way to try it. | Several machines or people, a homelab, or web clients such as claude.ai |
 
 If you're not sure, start with **local**. Every client below supports it, and you can switch later.
 
 Either way you need:
 
-- **Uptime Kuma 2.0 or later.** The server talks to Uptime Kuma 2's socket API; 1.x is not supported.
-- **Your Uptime Kuma URL and a way to log in to it.** A username and password work. Use a JWT
-  token if you have 2FA, or nothing at all if authentication is disabled. See
-  [Authentication Methods](#authentication-methods).
+- **Uptime Kuma 2.0 or later.** The server uses Uptime Kuma 2's Socket.IO API, so 1.x isn't
+  supported.
+- **Your Uptime Kuma URL and a way to log in to it.** A username and password will do. If you
+  use 2FA, use a JWT instead, and if authentication is turned off, you don't need anything.
+  See [Authentication Methods](#authentication-methods).
 
 Trying it out for the first time? Add `UPTIME_KUMA_READ_ONLY=true` to the environment in any of
-the examples below. The assistant can then look at everything but change nothing. Remove it
-once you're comfortable. See [Read-Only Mode](#read-only-mode).
+the examples below. The assistant will be able to see everything but won't be able to change
+anything. Remove it once you're comfortable. See [Read-Only Mode](#read-only-mode).
 
 ### 2. Start the shared server (Docker only)
 
 Skip this step if you chose local.
 
-Generate a secret that clients will present as a bearer token:
+Generate a secret for clients to send as a bearer token:
 
 ```bash
 openssl rand -base64 32
@@ -110,16 +114,16 @@ docker run -d \
 Prefer Compose? Download the provided [docker-compose.yml](docker-compose.yml), fill in the
 same variables, and run `docker compose up -d`.
 
-Check it's up with `curl http://your-docker-host:3000/health`.
+To check that it's running, use `curl http://your-docker-host:3000/health`.
 
 > **Don't skip `MCP_AUTH_TOKEN`.** Without it, anyone who can reach port 3000 gets full
 > read/write control of your Uptime Kuma instance. Plain `http://` also sends the token
 > unencrypted, so put the server behind a TLS reverse proxy before it leaves your LAN. See
 > [Securing the HTTP Endpoint](#securing-the-http-endpoint).
 
-In the client examples below, `UPTIME_KUMA_MCP_TOKEN` is an environment variable on the
-machine running the client. It holds the same value as `MCP_AUTH_TOKEN`. Clients that can't
-read environment variables take the token directly.
+In the client examples below, `UPTIME_KUMA_MCP_TOKEN` is an environment variable, set on the
+machine running the client, that holds the same value as `MCP_AUTH_TOKEN`. For clients that
+can't read environment variables, the examples put the token in the config directly.
 
 ### 3. Connect your client
 
@@ -138,11 +142,11 @@ as `io.github.DavidFuchs/mcp-uptime-kuma`. Clients and directories that read the
 find it and show its settings for you to fill in.
 
 Every local example runs `@davidfuchs/mcp-uptime-kuma@latest`. Keep the `@latest` suffix.
-Without it, npx reuses whatever version it cached the first time it ran and never picks up
-new releases.
+Without it, npx keeps using whichever version it cached the first time it ran, and never picks
+up new releases.
 
-After connecting, ask something like *"How are my monitors doing?"* to check it works. If it
-doesn't, see [Troubleshooting](#troubleshooting).
+Once you're connected, ask something like *"How are my monitors doing?"* to check that it's
+working. If it isn't, see [Troubleshooting](#troubleshooting).
 
 #### Claude Code
 
@@ -172,7 +176,7 @@ contain it. Run `/mcp` inside Claude Code to check the connection.
 
 #### Claude Desktop and claude.ai
 
-**Local (Claude Desktop only):** open *Settings → Developer → Edit Config* to open
+**Local (Claude Desktop only):** go to *Settings → Developer → Edit Config* to open
 `claude_desktop_config.json`, add the server, then restart Claude Desktop:
 
 ```json
@@ -195,15 +199,15 @@ contain it. Run `/mcp` inside Claude Code to check the connection.
 *Customize → Connectors*, click *+ Add*, then *Add custom connector*. Give it a name and
 enter `https://your-public-host/mcp`. Under *Authentication* choose *No sign in*, and under
 *Request headers* add `Authorization: Bearer your_generated_secret`. On a Team or Enterprise
-plan, an owner adds it for everyone under *Organization settings → Connectors*. Claude
-connects from Anthropic's cloud, not from your computer. The server must therefore be
-reachable over public HTTPS, for example through a reverse proxy or Cloudflare Tunnel. A
-`localhost` or LAN address won't work.
+plan, an owner adds it for everyone under *Organization settings → Connectors*. Because Claude
+connects from Anthropic's cloud rather than from your computer, the server has to be reachable
+over public HTTPS, for example through a reverse proxy or Cloudflare Tunnel. A `localhost` or
+LAN address won't work.
 
-**Shared server on your LAN (Claude Desktop):** connectors can't reach a private address.
-Instead, bridge to it from `claude_desktop_config.json` with
-[`mcp-remote`](https://www.npmjs.com/package/mcp-remote). `--allow-http` is only needed for a
-plain `http://` URL that isn't `localhost`.
+**Shared server on your LAN (Claude Desktop):** connectors can't reach private addresses, so
+use [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) in `claude_desktop_config.json`
+to bridge to the server. You only need `--allow-http` for a plain `http://` URL that isn't
+`localhost`.
 
 ```json
 {
@@ -228,7 +232,7 @@ plain `http://` URL that isn't `localhost`.
 
 Copilot reads `~/.copilot/mcp-config.json`, which VS Code's Copilot Chat and the `copilot` CLI
 share. You can also use a `.mcp.json` at the root of a workspace. Values written as `${NAME}`
-come from the environment of the machine running the server.
+are read from the environment on the machine running the server.
 
 **Local:**
 
@@ -268,9 +272,9 @@ come from the environment of the machine running the server.
 ```
 
 Older VS Code setups keep servers in `.vscode/mcp.json` or the profile `mcp.json` instead.
-Those use a top-level `"servers"` key rather than `"mcpServers"`, and VS Code is phasing
-them out. On a Business or Enterprise plan, an admin may first need to turn on the
-*MCP servers in Copilot* policy.
+Those files use a top-level `"servers"` key rather than `"mcpServers"`, and VS Code is
+phasing them out. On a Business or Enterprise plan, an admin may need to turn on the
+*MCP servers in Copilot* policy first.
 
 #### Codex and ChatGPT
 
@@ -300,8 +304,8 @@ UPTIME_KUMA_USERNAME = "your_username"
 UPTIME_KUMA_PASSWORD = "your_password"
 ```
 
-**Shared server:** add this to `config.toml`, and set `UPTIME_KUMA_MCP_TOKEN` in the
-environment Codex starts from:
+**Shared server:** add this to `config.toml`, and make sure `UPTIME_KUMA_MCP_TOKEN` is set in
+the environment Codex is launched from:
 
 ```toml
 [mcp_servers.uptime-kuma]
@@ -309,12 +313,12 @@ url = "http://your-docker-host:3000/mcp"
 bearer_token_env_var = "UPTIME_KUMA_MCP_TOKEN"
 ```
 
-Either way, you can add `default_tools_approval_mode = "writes"` to the server's table. Codex
-then runs the read-only tools unattended and asks before anything that changes your
-instance, using the [tool annotations](#features) this server provides.
+With either setup, you can add `default_tools_approval_mode = "writes"` to the server's table.
+Codex will then use this server's [tool annotations](#features) to run read-only tools without
+asking, and check with you before anything that changes your instance.
 
 **ChatGPT on the web** isn't supported. Its custom connectors call the server from OpenAI's
-cloud and authenticate with OAuth or not at all, so they can't send the bearer token this
+cloud and only support OAuth or no authentication, so they can't send the bearer token this
 server requires. Use the ChatGPT desktop app or Codex instead.
 
 #### Cursor
@@ -372,10 +376,10 @@ mcpServers:
     serverInstructions: true
 ```
 
-**Shared server:** LibreChat blocks MCP connections to private addresses by default, and that
-includes `localhost`, LAN IPs and a container name on a Docker network. List the host from the
-URL under `allowedDomains` to allow it. Once `allowedDomains` is set, it's a strict allowlist:
-list your other MCP servers' hosts there too, or they'll stop connecting.
+**Shared server:** by default, LibreChat blocks MCP connections to private addresses, including
+`localhost`, LAN IPs and container names on a Docker network. To allow the server, add the host
+from its URL to `allowedDomains`. Once `allowedDomains` is set, it's a strict allowlist, so add
+your other MCP servers' hosts too, or they'll stop connecting.
 
 ```yaml
 mcpServers:
@@ -391,14 +395,14 @@ mcpSettings:
     - 'mcp-uptime-kuma'
 ```
 
-LibreChat runs in a browser. If you set `ALLOWED_ORIGIN` on the server, include your
+LibreChat runs in a browser, so if you set `ALLOWED_ORIGIN` on the server, include your
 LibreChat origin in it.
 
 #### Other clients
 
 Most other clients, including Windsurf, Cline, Zed and Gemini CLI, accept some variation of
-the standard `mcpServers` block. Check your client's docs for the file location and the key it
-uses for HTTP servers (`url`, `serverUrl` or `httpUrl`).
+the standard `mcpServers` block. Check your client's docs to find where the file goes and
+which key it uses for HTTP servers (`url`, `serverUrl` or `httpUrl`).
 
 ```json
 {
@@ -415,8 +419,8 @@ uses for HTTP servers (`url`, `serverUrl` or `httpUrl`).
 For a shared server, use `"url": "http://your-docker-host:3000/mcp"` and
 `"headers": { "Authorization": "Bearer your_generated_secret" }` instead of `command`/`args`/`env`.
 
-No Node.js on the machine? Clients can run the server locally through Docker instead of npx,
-because the image speaks stdio by default:
+No Node.js on the machine? The Docker image uses stdio by default, so clients can run the
+server locally with Docker instead of npx:
 
 ```json
 {
@@ -447,27 +451,27 @@ because the image speaks stdio by default:
 | `getMonitorSummary` | Get a quick overview of all monitors with their current status. Supports filtering. |
 | `listMonitors` | Get the full list of all monitors with configurations. Supports filtering. |
 | `listMonitorTypes` | Get all available monitor types supported by Uptime Kuma. |
-| `getMonitorTypeFields` | Get the required and optional fields of one monitor type: what each means and accepts, whether it is passed at the top level or in `typeFields`, and the defaults applied. |
+| `getMonitorTypeFields` | Get the required and optional fields for a monitor type: what each one means, the values it accepts, its default, and whether it goes at the top level or in `typeFields`. |
 | `getMonitor` | Get detailed configuration for a specific monitor by ID. |
-| `createMonitor` | Create a new monitor of any type (requires name, type, and whatever that type checks, e.g. `url` for http or `hostname` for ping). Type-specific fields, including HTTP authentication, go in `typeFields`. |
+| `createMonitor` | Create a monitor of any type. It needs a name, a type, and whatever that type checks, such as `url` for http or `hostname` for ping. Type-specific fields, including HTTP authentication, go in `typeFields`. |
 | `updateMonitor` | Update an existing monitor's configuration, including changing its type in place (keeps the ID and history). |
 | `deleteMonitor` | Permanently delete a monitor and all its heartbeat history. |
 | `setMonitorActive` | Pause a monitor to stop its checks, or resume a paused one. |
-| `listGames` | Find the GameDig ID a game server (`gamedig`) monitor needs, by game name. |
+| `listGames` | Look up a game's GameDig ID by name, for a game server (`gamedig`) monitor. |
 | `listPM2Processes` | List the PM2 processes on the Uptime Kuma host, for a `pm2` monitor. |
-| `testChrome` | Check that real-browser monitors can start Chrome on the Uptime Kuma host. With no path set, Uptime Kuma's Docker image installs Chromium first, which can take minutes. |
-| `getPushExample` | Sample code (bash, Python, PowerShell, Go and more) that reports to a push monitor, with its URL and interval filled in. The token is hidden unless `includeSecrets` is set. |
-| `checkDomainExpirySupport` | Whether Uptime Kuma can watch an address's domain registration expiry, and why not if it can't. |
+| `testChrome` | Check that real-browser monitors can start Chrome on the Uptime Kuma host. If no Chrome path is set, Uptime Kuma's Docker image installs Chromium first, which can take a few minutes. |
+| `getPushExample` | Get sample code (bash, Python, PowerShell, Go and more) for reporting to a push monitor, with its URL and interval already filled in. The token is hidden unless `includeSecrets` is set. |
+| `checkDomainExpirySupport` | Check whether Uptime Kuma can track domain expiry for an address, and if it can't, why not. |
 
 ### Heartbeats
 
 | Tool | Purpose |
 |------|---------|
 | `listHeartbeats` | Get status check history for one monitor or for all of them. |
-| `getMonitorUptime` | Get a monitor's uptime percentage and ping over the last N hours (up to a year), with when checks failed. |
-| `clearMonitorEvents` | Empty a monitor's event list (its status changes). Heartbeats and uptime are kept. |
-| `clearMonitorHeartbeats` | Delete one monitor's heartbeats and uptime statistics, so its history starts again. |
-| `clearAllStatistics` | Delete every monitor's heartbeats and uptime statistics. Needs `confirm: true`. |
+| `getMonitorUptime` | Get a monitor's uptime percentage and ping over the last N hours (up to a year), plus when its checks failed. |
+| `clearMonitorEvents` | Clear a monitor's event list (its status changes). Its heartbeats and uptime data are kept. |
+| `clearMonitorHeartbeats` | Delete one monitor's heartbeats and uptime statistics, so its history starts from scratch. |
+| `clearAllStatistics` | Delete every monitor's heartbeats and uptime statistics. Requires `confirm: true`. |
 
 ### Notifications
 
@@ -475,11 +479,11 @@ because the image speaks stdio by default:
 |------|---------|
 | `listNotifications` | List all configured notification channels (Slack, Discord, email, webhooks, etc.). |
 | `listNotificationTypes` | List every notification type Uptime Kuma supports, with the exact type string to use. |
-| `getNotificationTypeFields` | Get the required and optional config fields of one notification type. Covers the common types. |
+| `getNotificationTypeFields` | Get the required and optional config fields for a notification type. Covers the most common types. |
 | `createNotification` | Create a new notification channel. |
-| `updateNotification` | Update an existing notification channel; only the fields you pass change. |
+| `updateNotification` | Update a notification channel. Only the fields you pass are changed. |
 | `deleteNotification` | Permanently delete a notification channel. |
-| `testNotification` | Send a real test message through a saved channel to check its settings work. |
+| `testNotification` | Send a test message through a saved channel to check that its settings work. |
 
 ### Tags
 
@@ -496,8 +500,8 @@ because the image speaks stdio by default:
 |------|---------|
 | `listMaintenanceWindows` | List all maintenance windows, with the monitors each one covers and the status pages that announce it. |
 | `createMaintenanceWindow` | Schedule a new maintenance window, attach the monitors it suppresses, and optionally show it on status pages. |
-| `updateMaintenanceWindow` | Change a maintenance window's schedule, details, monitor list, or the status pages it is shown on. |
-| `setMaintenanceWindowActive` | Switch a maintenance window off (ends a manual window) or back on (starts one). |
+| `updateMaintenanceWindow` | Change a maintenance window's schedule, details, monitor list, or the status pages it appears on. |
+| `setMaintenanceWindowActive` | Turn a maintenance window off (which ends a manual window) or back on (which starts one). |
 | `deleteMaintenanceWindow` | Permanently delete a maintenance window. |
 
 ### Status Pages
@@ -508,38 +512,38 @@ because the image speaks stdio by default:
 | `getStatusPage` | Get one status page by slug, including its groups, the monitors in each group, and active incidents. Works for unpublished pages too. |
 | `createStatusPage` | Create a new, empty status page with a title and slug. Follow up with `updateStatusPage` to add groups and monitors. |
 | `updateStatusPage` | Change a status page's settings (description, theme, published, custom domains, CSS, …) and, optionally, replace its groups and their monitors. |
-| `deleteStatusPage` | Permanently delete a status page; its URL stops working. |
-| `listIncidents` | List a status page's incidents, newest first and ten at a time, resolved ones included. |
-| `createIncident` | Post an incident banner (title, Markdown body, color) on a status page. It shows at once. |
+| `deleteStatusPage` | Permanently delete a status page. Its URL will stop working. |
+| `listIncidents` | List a status page's incidents, including resolved ones, newest first and ten at a time. |
+| `createIncident` | Post an incident banner (title, Markdown body, color) on a status page. It appears immediately. |
 | `updateIncident` | Change an incident's title, body or color, or take it off the page without resolving it. Fields you don't pass keep their values. |
-| `resolveIncident` | Mark an incident as over: it leaves the page but stays in the history. |
-| `deleteIncident` | Permanently delete an incident, history included. |
+| `resolveIncident` | Mark an incident as resolved. It comes off the page but stays in the history. |
+| `deleteIncident` | Permanently delete an incident, including from the history. |
 
 ### Docker Hosts
 
 | Tool | Purpose |
 |------|---------|
-| `listDockerHosts` | List the docker daemon connections that docker container monitors use. |
-| `testDockerHost` | Check that a docker daemon is reachable, without saving it. Reports the number of containers on success. |
-| `createDockerHost` | Add a docker daemon connection, over a unix socket or TCP (e.g. a docker socket proxy). |
-| `updateDockerHost` | Change an existing docker daemon connection. Fields you don't pass keep their values. |
-| `deleteDockerHost` | Permanently delete a docker daemon connection. Monitors that used it are kept but lose their docker host. |
+| `listDockerHosts` | List the Docker daemon connections used by Docker container monitors. |
+| `testDockerHost` | Check that a Docker daemon is reachable, without saving it. If it is, reports how many containers it has. |
+| `createDockerHost` | Add a Docker daemon connection over a Unix socket or TCP (for example, through a Docker socket proxy). |
+| `updateDockerHost` | Change a Docker daemon connection. Fields you don't pass keep their values. |
+| `deleteDockerHost` | Permanently delete a Docker daemon connection. Monitors that used it are kept, but no longer have a Docker host. |
 
 ### Proxies
 
 | Tool | Purpose |
 |------|---------|
-| `listProxies` | List the HTTP and SOCKS proxies monitors can send requests through. A monitor uses one by ID in `proxyId`. |
-| `createProxy` | Add a proxy, optionally with a login, as the default, or applied to every monitor at once. |
-| `updateProxy` | Change a proxy; fields you don't pass keep their values, and `"***"` keeps the password. |
-| `deleteProxy` | Permanently delete a proxy. Monitors that used it go direct. |
+| `listProxies` | List the HTTP and SOCKS proxies that monitors can send requests through. A monitor picks one by setting its ID in `proxyId`. |
+| `createProxy` | Add a proxy, optionally with a login. It can be made the default, or applied to every monitor at once. |
+| `updateProxy` | Change a proxy. Fields you don't pass keep their values, and `"***"` keeps the password. |
+| `deleteProxy` | Permanently delete a proxy. Monitors that used it connect directly instead. |
 
 ### Remote Browsers
 
 | Tool | Purpose |
 |------|---------|
-| `listRemoteBrowsers` | List the remote Chrome instances (e.g. browserless) real-browser monitors can run in. Tokens in the URL are hidden. |
-| `testRemoteBrowser` | Check that Uptime Kuma can drive a browser at a URL, or at a saved remote browser, without saving anything. |
+| `listRemoteBrowsers` | List the remote Chrome instances (such as browserless) that real-browser monitors can run in. Tokens in URLs are hidden. |
+| `testRemoteBrowser` | Check that Uptime Kuma can control a browser at a given URL, or a saved remote browser, without saving anything. |
 | `createRemoteBrowser` | Add a remote browser by name and `ws://` / `wss://` URL. |
 | `updateRemoteBrowser` | Change a remote browser's name or URL. |
 | `deleteRemoteBrowser` | Permanently delete a remote browser. Monitors that used it fall back to the built-in Chromium. |
@@ -548,29 +552,29 @@ because the image speaks stdio by default:
 
 | Tool | Purpose |
 |------|---------|
-| `listAPIKeys` | List API keys with their status and expiry. The keys themselves can't be read back. |
-| `createAPIKey` | Create an API key, optionally expiring. The key is shown only in this answer. Once any key exists, `/metrics` takes API keys instead of the admin login. |
-| `setAPIKeyActive` | Switch an API key off or back on. |
+| `listAPIKeys` | List API keys with their status and expiry. The keys themselves can't be retrieved. |
+| `createAPIKey` | Create an API key, with an optional expiry date. The key is only shown once, in the response. Once any API key exists, `/metrics` requires an API key instead of the admin login. |
+| `setAPIKeyActive` | Turn an API key off or back on. |
 | `deleteAPIKey` | Permanently delete an API key. |
 
 ### Database
 
 | Tool | Purpose |
 |------|---------|
-| `getDatabaseInfo` | Which database Uptime Kuma uses, the SQLite file's size, and how many days of history it keeps. |
-| `shrinkDatabase` | Give the space of cleared history back to the disk (SQLite `VACUUM`). Checks are not recorded while it runs, and it needs free disk space about the database's size. |
+| `getDatabaseInfo` | Get which database Uptime Kuma uses, the size of its SQLite file, and how many days of history it keeps. |
+| `shrinkDatabase` | Reclaim the disk space left behind by cleared history (SQLite `VACUUM`). Checks aren't recorded while it runs, and it needs about as much free disk space as the database takes up. |
 
 ### Settings
 
 | Tool | Purpose |
 |------|---------|
 | `getSettings` | Get Uptime Kuma server settings, such as timezone, primary base URL, and data retention. |
-| `updateSettings` | Change server settings: timezone, primary base URL, entry page, data retention, expiry warning days, search engine indexing, update checks, reverse-proxy trust, NSCD, the Chrome path, API and Prometheus access, the Steam and Globalping credentials, and whether login is required. Settings you don't pass keep their values; sending `"***"` back for a credential keeps it. Turning login off needs the admin password. |
+| `updateSettings` | Change server settings: timezone, primary base URL, entry page, data retention, expiry warning days, search engine indexing, update checks, reverse-proxy trust, NSCD, the Chrome path, API and Prometheus access, the Steam and Globalping credentials, and whether login is required. Settings you don't pass are left unchanged, and sending `"***"` for a credential keeps the stored one. Turning off login requires the admin password. |
 
 ### Type-specific monitor fields
 
-`createMonitor` and `updateMonitor` declare the fields most monitors use (`url`, `hostname`,
-`port`, `keyword`, `interval`, …) as ordinary arguments. Everything specific to one kind of
+`createMonitor` and `updateMonitor` take the fields most monitors use (`url`, `hostname`,
+`port`, `keyword`, `interval`, …) as regular arguments. Anything specific to one kind of
 monitor goes in a single `typeFields` object:
 
 ```
@@ -580,25 +584,26 @@ createMonitor({ name: "Broker", type: "mqtt", hostname: "mqtt://broker.example.c
                 typeFields: { mqttTopic: "sensors/#" } })
 ```
 
-`getMonitorTypeFields({ type })` lists what a type needs and accepts. The fields are kept out
-of the tool definitions on purpose: there are about 85 of them, and tool definitions are loaded
-into every conversation whether or not a monitor is ever created. `typeFields` is still
-validated — an unknown name or a bad value is refused, with the accepted spelling suggested.
+Call `getMonitorTypeFields({ type })` to see what a type requires and accepts. These fields are
+deliberately left out of the tool definitions: there are about 85 of them, and tool definitions
+are loaded into every conversation, whether or not you ever create a monitor. `typeFields` is
+still validated. An unknown field name or an invalid value is rejected, and the error suggests
+the correct spelling.
 
-`getMonitor` returns these fields at the top level of the monitor, as Uptime Kuma stores them.
-To change one, pass it inside `typeFields`.
+`getMonitor` returns these fields at the top level of the monitor, the way Uptime Kuma stores
+them. To change one, you still pass it inside `typeFields`.
 
 ### Filtering
 
-`getMonitorSummary` and `listMonitors` support filtering by:
+`getMonitorSummary` and `listMonitors` can filter by:
 
-- **keywords**: Space-separated keywords for fuzzy matching against monitor pathNames
-- **type**: Monitor type(s), comma-separated (e.g., `"http"`, `"http,ping,dns"`)
-- **active**: Filter by active (`true`) or inactive (`false`) monitors
-- **maintenance**: Filter by maintenance mode status
-- **tags**: Tag name and optional value, comma-separated (e.g., `"production"`, `"env=staging"`)
-- **parentId**: Group monitor ID, returning that group's **direct** children. Pass `null` for top-level monitors (those with no parent). Not recursive — to walk deeper, use each child group's own `childrenIDs`.
-- **status** (getMonitorSummary only): Heartbeat status (`"0"`=DOWN, `"1"`=UP, `"2"`=PENDING, `"3"`=MAINTENANCE)
+- **keywords**: space-separated keywords, fuzzy-matched against each monitor's `pathName`
+- **type**: one or more monitor types, comma-separated (e.g. `"http"`, `"http,ping,dns"`)
+- **active**: `true` for active monitors, `false` for paused ones
+- **maintenance**: whether the monitor is in maintenance
+- **tags**: tag names with optional values, comma-separated (e.g. `"production"`, `"env=staging"`)
+- **parentId**: a group monitor's ID, to get that group's **direct** children. Pass `null` for top-level monitors (those without a parent). This isn't recursive; to go deeper, use each child group's `childrenIDs`.
+- **status** (`getMonitorSummary` only): the current heartbeat status (`"0"`=DOWN, `"1"`=UP, `"2"`=PENDING, `"3"`=MAINTENANCE)
 
 **Examples:**
 ```javascript
@@ -612,47 +617,47 @@ listMonitors({ parentId: null })                       // Top-level monitors onl
 
 ## Configuration Reference
 
-Every setting is an environment variable. The sections after this table explain the ones that
-need more than a line.
+All settings are environment variables. The ones that need more than a line of explanation
+are covered in the sections after these tables.
 
 **Connecting to Uptime Kuma** (both transports)
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `UPTIME_KUMA_URL` | *required* | Address of your Uptime Kuma 2 instance, e.g. `http://192.168.1.10:3001`. |
-| `UPTIME_KUMA_USERNAME` | unset | Username to log in with. See [Authentication Methods](#authentication-methods). |
-| `UPTIME_KUMA_PASSWORD` | unset | Password to log in with. |
-| `UPTIME_KUMA_2FA_TOKEN` | unset | Current 2FA code. It expires within seconds, so prefer `UPTIME_KUMA_JWT_TOKEN` when 2FA is on. |
-| `UPTIME_KUMA_JWT_TOKEN` | unset | JWT to log in with instead of a username and password. Takes precedence over them. |
-| `UPTIME_KUMA_HEADERS` | unset | JSON object of extra headers sent on every request, for an [authenticating proxy](#behind-an-authenticating-proxy-cloudflare-access-etc) in front of Uptime Kuma. |
+| `UPTIME_KUMA_URL` | *required* | The address of your Uptime Kuma 2 instance, e.g. `http://192.168.1.10:3001`. |
+| `UPTIME_KUMA_USERNAME` | unset | The username to log in with. See [Authentication Methods](#authentication-methods). |
+| `UPTIME_KUMA_PASSWORD` | unset | The password to log in with. |
+| `UPTIME_KUMA_2FA_TOKEN` | unset | A current 2FA code. These expire within seconds, so use `UPTIME_KUMA_JWT_TOKEN` instead if you have 2FA turned on. |
+| `UPTIME_KUMA_JWT_TOKEN` | unset | A JWT to log in with. If set, it's used instead of the username and password. |
+| `UPTIME_KUMA_HEADERS` | unset | A JSON object of extra headers to send with every request, for an [authenticating proxy](#behind-an-authenticating-proxy-cloudflare-access-etc) in front of Uptime Kuma. |
 
 **What the server exposes** (both transports)
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `UPTIME_KUMA_READ_ONLY` | `false` | `true` registers only the tools that read. See [Read-Only Mode](#read-only-mode). |
-| `UPTIME_KUMA_TOOLSETS` | all | Comma-separated tool sets to register, e.g. `monitors,heartbeats`. See [Choosing Tool Sets](#choosing-tool-sets). |
-| `UPTIME_KUMA_DYNAMIC_TOOLSETS` | `false` | `true` starts with the `monitors` tools and lets the assistant load the other tool sets when it needs them. stdio only. See [Loading Tool Sets on Demand](#loading-tool-sets-on-demand). |
+| `UPTIME_KUMA_READ_ONLY` | `false` | `true` registers only read-only tools. See [Read-Only Mode](#read-only-mode). |
+| `UPTIME_KUMA_TOOLSETS` | all | A comma-separated list of tool sets to register, e.g. `monitors,heartbeats`. See [Choosing Tool Sets](#choosing-tool-sets). |
+| `UPTIME_KUMA_DYNAMIC_TOOLSETS` | `false` | `true` starts with only the `monitors` tools and lets the assistant load other tool sets as it needs them. stdio only. See [Loading Tool Sets on Demand](#loading-tool-sets-on-demand). |
 | `UPTIME_KUMA_INCLUDE_SECRETS` | `false` | `true` returns passwords, tokens and API keys in tool output instead of `***`. See [Credential Redaction](#credential-redaction). |
 
 **HTTP endpoint** (`-t streamable-http` only)
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `MCP_AUTH_TOKEN` | unset (no auth) | Shared secret clients must send as `Authorization: Bearer <token>`. See [Securing the HTTP Endpoint](#securing-the-http-endpoint). |
-| `ALLOWED_ORIGIN` | `*` (no check) | Comma-separated browser origins allowed to call `/mcp`. |
-| `HOST` | `0.0.0.0` | Address to bind. |
-| `PORT` | `3000` | Port to listen on. |
-| `TRUST_PROXY` | unset (no trust) | Trust `X-Forwarded-For` from a reverse proxy: a hop count, `true`/`false`, or an IP/subnet list. |
-| `RATE_LIMIT_MAX` | `1000` | Requests per client IP every 15 minutes. `0` turns the limit off. |
+| `MCP_AUTH_TOKEN` | unset (no auth) | A shared secret that clients must send as `Authorization: Bearer <token>`. See [Securing the HTTP Endpoint](#securing-the-http-endpoint). |
+| `ALLOWED_ORIGIN` | `*` (no check) | A comma-separated list of browser origins allowed to call `/mcp`. |
+| `HOST` | `0.0.0.0` | The address to bind to. |
+| `PORT` | `3000` | The port to listen on. |
+| `TRUST_PROXY` | unset (no trust) | Whether to trust `X-Forwarded-For` from a reverse proxy: a hop count, `true`/`false`, or a list of IPs or subnets. |
+| `RATE_LIMIT_MAX` | `1000` | The maximum number of requests per client IP in each 15-minute window. `0` turns off the limit. |
 
-The transport itself is a command-line option, not a variable: `-t stdio` (the default) or
-`-t streamable-http`.
+The transport is set with a command-line option rather than a variable: `-t stdio` (the
+default) or `-t streamable-http`.
 
 ## Authentication Methods
 
 ### Anonymous Authentication
-If authentication is disabled on your Uptime Kuma instance, only `UPTIME_KUMA_URL` is required.
+If authentication is turned off in Uptime Kuma, you only need `UPTIME_KUMA_URL`.
 
 ### Username/Password Authentication
 ```
@@ -663,7 +668,7 @@ UPTIME_KUMA_2FA_TOKEN=123456  # Optional, only if 2FA is enabled
 ```
 
 ### JWT Token Authentication
-Recommended for 2FA users. Takes precedence over username/password if both are provided.
+Recommended if you use 2FA. If you set both, the JWT is used instead of the username and password.
 
 ```
 UPTIME_KUMA_URL=http://your-instance:3001
@@ -682,17 +687,18 @@ npx -p @davidfuchs/mcp-uptime-kuma@latest mcp-uptime-kuma-get-jwt http://localho
 docker run --rm davidfuchs/mcp-uptime-kuma:latest get-jwt http://host.docker.internal:3001 admin mypassword
 ```
 
-**From browser:** Open Developer Tools → Storage/Application → Local Storage → find `token` key.
+**From your browser:** while logged in to Uptime Kuma, open Developer Tools → Storage/Application →
+Local Storage and copy the value of the `token` key.
 
 ### Behind an Authenticating Proxy (Cloudflare Access, etc.)
 
-If Uptime Kuma sits behind a proxy that demands its own credentials — a Cloudflare Zero Trust
-Access application, oauth2-proxy, an API gateway — set `UPTIME_KUMA_HEADERS` to a JSON object of
-headers to send on every request. It combines with any of the methods above, which still handle
-logging in to Uptime Kuma itself.
+If Uptime Kuma is behind a proxy that requires its own credentials, such as a Cloudflare Zero
+Trust Access application, oauth2-proxy or an API gateway, set `UPTIME_KUMA_HEADERS` to a JSON
+object of headers to send with every request. You still use one of the methods above to log in
+to Uptime Kuma itself.
 
-For Cloudflare Access, create a service token, add a *Service Auth* policy to the application that
-allows it, then:
+For Cloudflare Access, create a service token, add a *Service Auth* policy to the application
+that allows it, and then set:
 
 ```
 UPTIME_KUMA_URL=https://uptime.example.com
@@ -701,34 +707,35 @@ UPTIME_KUMA_USERNAME=your_username
 UPTIME_KUMA_PASSWORD=your_password
 ```
 
-In an MCP client's JSON config the value is a string, so the inner quotes need escaping:
+In an MCP client's JSON config, the value has to be a string, so escape the inner quotes:
 
 ```json
 "UPTIME_KUMA_HEADERS": "{\"CF-Access-Client-Id\":\"<client-id>.access\",\"CF-Access-Client-Secret\":\"<client-secret>\"}"
 ```
 
-`mcp-uptime-kuma-get-jwt` reads the same variable. A malformed value stops the server at startup
-with an error naming the offending header; header values are never logged.
+`mcp-uptime-kuma-get-jwt` reads the same variable. If the value is malformed, the server won't
+start, and the error names the header that caused it. Header values are never logged.
 
 ## Read-Only Mode
 
-To expose only the tools that report, and none that create, change, pause or delete, set:
+To expose only tools that read data, and none that create, change, pause or delete anything,
+set:
 
 ```
 UPTIME_KUMA_READ_ONLY=true
 ```
 
-The write tools are then not registered at all, so they cannot be called and take up no room in
-the conversation. Eighteen tools remain: the `get…` and `list…` tools, minus
-`getMonitorTypeFields`, `listNotificationTypes` and `getNotificationTypeFields`, which only
-serve the write tools. This limits what the MCP server
-offers; it does not change what the Uptime Kuma account itself is allowed to do.
+The write tools aren't registered at all, so they can't be called and don't take up any space
+in the conversation. That leaves 18 tools: the `get…` and `list…` tools, except
+`getMonitorTypeFields`, `listNotificationTypes` and `getNotificationTypeFields`, which are only
+useful when writing. This only limits what the MCP server offers. It doesn't change what the
+Uptime Kuma account is allowed to do.
 
 ## Choosing Tool Sets
 
-Every registered tool's definition is sent to the model at the start of each conversation, so
-all 67 take up roughly 19k tokens before you ask anything. To register only the areas you use,
-set `UPTIME_KUMA_TOOLSETS` to a comma-separated list:
+The definition of every registered tool is sent to the model at the start of each
+conversation, so all 67 tools use about 19k tokens before you've asked anything. To register
+only the parts you use, set `UPTIME_KUMA_TOOLSETS` to a comma-separated list:
 
 ```
 UPTIME_KUMA_TOOLSETS=monitors,heartbeats
@@ -749,84 +756,92 @@ UPTIME_KUMA_TOOLSETS=monitors,heartbeats
 | `api-keys` | `listAPIKeys`, `createAPIKey`, `setAPIKeyActive`, `deleteAPIKey` |
 | `database` | `getDatabaseInfo`, `shrinkDatabase` |
 
-Unset, empty or `all` registers every tool set. An unknown name stops the server at startup
-with the list of valid ones, rather than quietly running with fewer tools.
+If it's unset, empty or `all`, every tool set is registered. If it contains an unknown name,
+the server won't start and lists the valid ones, rather than silently running with fewer tools.
 
-It combines with [read-only mode](#read-only-mode): `UPTIME_KUMA_READ_ONLY=true` with
-`UPTIME_KUMA_TOOLSETS=monitors,heartbeats` leaves six tools, about 2.3k tokens, which is enough
-for "what's down?" and "how has this been doing?".
+It works together with [read-only mode](#read-only-mode): setting `UPTIME_KUMA_READ_ONLY=true`
+and `UPTIME_KUMA_TOOLSETS=monitors,heartbeats` leaves just six tools (about 2.3k tokens), which
+is enough for questions like "what's down?" and "how has this been doing?".
 
 Most other tool sets refer to monitors by ID (maintenance windows, status pages, tags and
-notifications are attached to monitors), so include `monitors` with them unless you already
-know the IDs.
+notifications are all attached to monitors), so include `monitors` unless you already know the
+IDs.
 
 ## Loading Tool Sets on Demand
 
-With `UPTIME_KUMA_DYNAMIC_TOOLSETS=true` the server starts with the `monitors` tool set and one
-more tool, `enableToolsets`, whose description lists the other tool sets. When a task needs one
-of them, such as `maintenance` for a maintenance window, the assistant calls `enableToolsets`
-and the server tells the client its tool list changed. The tools stay loaded for the rest of
-the session.
+With `UPTIME_KUMA_DYNAMIC_TOOLSETS=true`, the server starts with just the `monitors` tool set
+plus one extra tool, `enableToolsets`, whose description lists the other tool sets. When a task
+needs one of them (`maintenance` to schedule a maintenance window, for example), the assistant
+calls `enableToolsets`, and the server notifies the client that its tool list has changed. The
+new tools stay loaded for the rest of the session.
 
-At the start of a session that is 15 tools, about 7k tokens, instead of about 19k. A conversation
-that only touches monitors keeps that saving on every turn. One that needs another tool set pays
-one extra call to load it.
+That means a session starts with 15 tools (about 7k tokens) instead of 67 (about 19k). A
+conversation that only deals with monitors saves those tokens on every turn, and one that needs
+another tool set costs just one extra call to load it.
 
 ```
 UPTIME_KUMA_DYNAMIC_TOOLSETS=true
 ```
 
-- **stdio only.** The HTTP transport keeps no session and can't send the change notification, so
-  the server refuses to start with both. Use `UPTIME_KUMA_TOOLSETS` there.
-- **The client must refresh its tool list** when the server sends `notifications/tools/list_changed`.
-  Claude Code does. With a client that doesn't, the assistant would load a tool set and never
-  see its tools; leave this off for that client.
-- It combines with the other settings: `UPTIME_KUMA_TOOLSETS` still limits which tool sets can be
-  loaded, and read-only mode still leaves out every write tool.
+- **stdio only.** The HTTP transport doesn't keep sessions and can't send the change
+  notification, so the server won't start if you combine the two. With HTTP, use
+  `UPTIME_KUMA_TOOLSETS` instead.
+- **Your client has to refresh its tool list** when the server sends
+  `notifications/tools/list_changed`. Claude Code does this. If your client doesn't, the
+  assistant can load a tool set but will never see the new tools, so leave this setting off.
+- **It doesn't work behind mcpjungle** or any other gateway that caches the tool list. mcpjungle
+  fetches the list once, when you register the server, and ignores the change notification. The
+  assistant can call `enableToolsets`, but the new tools never show up, and mcpjungle rejects any
+  call to them. Switching mcpjungle to `stateful` sessions doesn't help, since that keeps the
+  process running but never refreshes the list. Instead, remove this setting from the `env` in
+  your mcpjungle config, use `UPTIME_KUMA_TOOLSETS` (or an mcpjungle tool group) to choose the
+  tools, and re-register with `mcpjungle register --force` so mcpjungle picks up the full list.
+- It works alongside the other settings. `UPTIME_KUMA_TOOLSETS` still limits which tool sets can
+  be loaded, and read-only mode still leaves out all the write tools.
 
 ## Securing the HTTP Endpoint
 
-Applies to `-t streamable-http` only. Anyone who can reach `/mcp` has full read/write control
-of your Uptime Kuma instance, and the defaults are permissive so that upgrading can't break an
-existing deployment. The server warns at startup when it's unprotected. For anything beyond
-your own machine:
+This section only applies to `-t streamable-http`. Anyone who can reach `/mcp` has full
+read/write control of your Uptime Kuma instance. The defaults are permissive so that upgrading
+doesn't break existing deployments, but the server logs a warning at startup if the endpoint is
+unprotected. If the server can be reached from anywhere other than your own machine:
 
 - **Set `MCP_AUTH_TOKEN`** to a long random secret (`openssl rand -base64 32`). Clients then
   send it as `Authorization: Bearer <token>`.
 - **Set `ALLOWED_ORIGIN`** if you use a browser-based client. This blocks DNS rebinding
   attacks, which a token alone doesn't stop.
-- **Put it behind a TLS reverse proxy** before it leaves your LAN. Set `TRUST_PROXY` then, so
-  rate limiting sees real client IPs.
+- **Put it behind a TLS reverse proxy** before exposing it outside your LAN, and set
+  `TRUST_PROXY` so rate limiting sees the real client IPs.
 
-`/health` stays unauthenticated so container healthchecks keep working. It reports only
-liveness. The image's own healthcheck probes it when the container runs the HTTP transport,
-so `docker ps` shows the container as healthy or not; under stdio there is nothing to probe
-and the check passes.
+`/health` doesn't require authentication, so container health checks keep working, and it only
+reports whether the server is up. The image's built-in health check uses it when the container
+runs the HTTP transport, so `docker ps` shows whether the container is healthy. With stdio
+there's nothing to check, so the health check always passes.
 
-The details, including why `Origin` validation matters separately from the token and how
-`TRUST_PROXY` can be abused, are in [docs/http-security.md](https://github.com/DavidFuchs/mcp-uptime-kuma/blob/main/docs/http-security.md).
+For more detail, including why `Origin` validation matters even with a token and how
+`TRUST_PROXY` can be abused, see [docs/http-security.md](https://github.com/DavidFuchs/mcp-uptime-kuma/blob/main/docs/http-security.md).
 
 ## Credential Redaction
 
 Read tools return `***` in place of passwords, tokens, API keys and HTTP headers. Tool output
-lands in your conversation transcript, and asking "what am I monitoring?" shouldn't write a
-live SMTP password into it.
+ends up in your conversation transcript, and asking "what am I monitoring?" shouldn't put a
+live SMTP password in it.
 
-- **Writing `***` back is safe.** `updateMonitor` and `updateNotification` keep the stored
-  value when a field arrives as `***`, so the assistant can read, edit and write a
-  configuration without wiping its credentials.
-- **Push tokens are returned when they're created**, by `createMonitor` or by switching a
-  monitor to push, since the sender can't be set up without them.
-- **To see real values**, pass `includeSecrets: true` on a call, or set
-  `UPTIME_KUMA_INCLUDE_SECRETS=true` for every call.
+- **Sending `***` back is safe.** When a field comes in as `***`, `updateMonitor` and
+  `updateNotification` keep the stored value, so the assistant can read a configuration, edit
+  it and save it without wiping its credentials.
+- **Push tokens are shown when they're created**, either by `createMonitor` or by switching a
+  monitor to the push type, because you need the token to set up whatever sends the pushes.
+- **To see the real values**, pass `includeSecrets: true` on a single call, or set
+  `UPTIME_KUMA_INCLUDE_SECRETS=true` to show them on every call.
 
-[docs/credential-redaction.md](https://github.com/DavidFuchs/mcp-uptime-kuma/blob/main/docs/credential-redaction.md) lists exactly what each tool
-withholds and how credentials inside URLs are handled.
+[docs/credential-redaction.md](https://github.com/DavidFuchs/mcp-uptime-kuma/blob/main/docs/credential-redaction.md)
+lists exactly what each tool hides and how credentials inside URLs are handled.
 
 ## Troubleshooting
 
 **Where to look first.** In Claude Code or Codex, run `/mcp` to see whether the server
-connected. The server writes its errors to stderr:
+connected. The server logs its errors to stderr, which you can find here:
 
 - **VS Code:** run *MCP: List Servers*, pick the server and choose *Show Output*.
 - **Claude Desktop:** look for `mcp-server-uptime-kuma.log` in its logs folder:
@@ -834,11 +849,12 @@ connected. The server writes its errors to stderr:
   `~/.config/Claude/logs` on Linux.
 - **Docker:** run `docker logs mcp-uptime-kuma`.
 
-**The server connects but every tool call fails.** The server stays up even when it can't log
-in to Uptime Kuma. That way it recovers on its own when Uptime Kuma restarts. Look for
-`Initial authentication failed, will retry on demand` in the logs. It is followed by the reason:
+**The server connects but every tool call fails.** The server keeps running even when it can't
+log in to Uptime Kuma, so that it can recover on its own after Uptime Kuma restarts. Look for
+`Initial authentication failed, will retry on demand` in the logs, followed by the reason:
 
-- *Can't reach the address.* Check `UPTIME_KUMA_URL` from the machine the server runs on.
+- *Can't reach the address.* Make sure `UPTIME_KUMA_URL` is reachable from the machine the
+  server runs on.
   Inside a container, `localhost` is the container itself. Use the host's LAN IP, the Uptime
   Kuma container's name on a shared Docker network, or `host.docker.internal` (Docker Desktop).
 - *`authInvalidToken`.* The JWT is wrong or no longer valid. Generate a new one with
@@ -847,20 +863,20 @@ in to Uptime Kuma. That way it recovers on its own when Uptime Kuma restarts. Lo
   a few seconds, so a value saved in a config file works once at most. Use a JWT instead.
 
 **The client gets `401` from the shared server.** The token the client sends doesn't match
-`MCP_AUTH_TOKEN`. Check for a missing `Bearer ` prefix, stray whitespace or quotes copied
-along with the secret, and that the client's environment variable is set where the client
-starts. A GUI app launched from the Dock or Start menu doesn't see variables exported in your
-shell profile.
+`MCP_AUTH_TOKEN`. Check for a missing `Bearer ` prefix or for whitespace or quotes copied along
+with the secret, and make sure the environment variable is set where the client is launched. A
+GUI app launched from the Dock or Start menu doesn't see variables exported in your shell
+profile.
 
 **A browser-based client gets `403`.** Its origin isn't listed in `ALLOWED_ORIGIN`. Add it
 exactly as the browser sends it, with scheme and port, for example `http://localhost:5173`.
 
-**You get `429 Too Many Requests`.** One client IP made more than `RATE_LIMIT_MAX` requests
-in 15 minutes. Behind a reverse proxy, every client usually shares the proxy's IP. Set
-`TRUST_PROXY` (see [Running behind a reverse proxy](https://github.com/DavidFuchs/mcp-uptime-kuma/blob/main/docs/http-security.md#running-behind-a-reverse-proxy)), or
+**You get `429 Too Many Requests`.** A single client IP made more than `RATE_LIMIT_MAX`
+requests in 15 minutes. Behind a reverse proxy, all clients usually appear to come from the
+proxy's IP, so set `TRUST_PROXY` (see [Running behind a reverse proxy](https://github.com/DavidFuchs/mcp-uptime-kuma/blob/main/docs/http-security.md#running-behind-a-reverse-proxy)), or
 raise the limit.
 
-**A new release's tools or fixes don't show up.** npx is running a cached older version.
+**A new release's tools or fixes don't show up.** npx is running an older cached version.
 Make sure the package is written as `@davidfuchs/mcp-uptime-kuma@latest`, then restart the
 client. With Docker, run `docker pull davidfuchs/mcp-uptime-kuma:latest` and recreate the
 container.
@@ -868,9 +884,13 @@ container.
 **The assistant can't create or change anything.** Check whether `UPTIME_KUMA_READ_ONLY` is
 set. If it is, the write tools aren't registered at all.
 
-**The assistant says a tool doesn't exist.** Check `UPTIME_KUMA_TOOLSETS`: only the tools in the
-listed tool sets are registered. With `UPTIME_KUMA_DYNAMIC_TOOLSETS=true`, a client that doesn't
-refresh its tool list never shows the assistant the tool sets it loads; turn the setting off.
+**The assistant says a tool doesn't exist.** Check `UPTIME_KUMA_TOOLSETS`, since only the tools
+in the listed tool sets are registered. If `UPTIME_KUMA_DYNAMIC_TOOLSETS=true` and your client
+doesn't refresh its tool list, the assistant never sees the tool sets it loads, so turn the
+setting off.
+If you're running behind mcpjungle, the same thing happens: turn the setting off and
+re-register the server (see [Loading Tool Sets on Demand](#loading-tool-sets-on-demand)).
+mcpjungle also won't see tools added in a new version of this server until you re-register it.
 
 ## Contributing
 
