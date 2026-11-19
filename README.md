@@ -781,6 +781,11 @@ UPTIME_KUMA_DYNAMIC_TOOLSETS=true
 - **The client must refresh its tool list** when the server sends `notifications/tools/list_changed`.
   Claude Code does. With a client that doesn't, the assistant would load a tool set and never
   see its tools; leave this off for that client.
+- **Not behind an MCP gateway** such as mcpjungle. mcpjungle reads the tool list once, when the
+  server is registered, and ignores the change notification, so loaded tool sets never reach the
+  assistant. In its default stateless mode it also starts a new server process for each call, so a
+  tool set loaded in one call is gone by the next. Turn this off, choose the tools with
+  `UPTIME_KUMA_TOOLSETS`, and register the server again so the gateway stores the full list.
 - It combines with the other settings: `UPTIME_KUMA_TOOLSETS` still limits which tool sets can be
   loaded, and read-only mode still leaves out every write tool.
 
@@ -871,6 +876,8 @@ set. If it is, the write tools aren't registered at all.
 **The assistant says a tool doesn't exist.** Check `UPTIME_KUMA_TOOLSETS`: only the tools in the
 listed tool sets are registered. With `UPTIME_KUMA_DYNAMIC_TOOLSETS=true`, a client that doesn't
 refresh its tool list never shows the assistant the tool sets it loads; turn the setting off.
+The same happens behind a gateway such as mcpjungle: turn the setting off and register the
+server with the gateway again (see [Loading Tool Sets on Demand](#loading-tool-sets-on-demand)).
 
 ## Contributing
 
